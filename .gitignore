@@ -44,3 +44,6 @@ data/
 *.db*
 
 .vercel
+
+# Symlinks com caminho absoluto desta maquina, gerados a partir de .agents/skills
+.claude/skills/
