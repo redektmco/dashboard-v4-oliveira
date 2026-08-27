@@ -1,69 +1,304 @@
-import Image from "next/image";
+import Link from "next/link";
+import { portfolio, portfolioSummary, listOpenPlans, today } from "@/lib/repo";
+import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
+import { PortfolioTable, type Row } from "@/components/portfolio-table";
+import { BandChip, ClientLink, ConfidenceTag, Delta, Panel, Stat, brl, dateBR } from "@/components/ui";
+import { daysBetween } from "@/lib/model/scoring";
+import { Icon } from "@/components/icon";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+
+export default async function CarteiraPage() {
+  const at = today();
+  const [rows, plans] = await Promise.all([portfolio(at), listOpenPlans()]);
+  const summary = portfolioSummary(rows);
+
+  const view: Row[] = rows.map((r) => ({
+    id: r.client.id,
+    name: r.client.name,
+    type: ACCOUNT_TYPE_LABEL[r.client.account_type],
+    typeKey: r.client.account_type,
+    gt: r.client.gt_name ?? "—",
+    account: r.client.account_name ?? "—",
+    mrr: r.client.mrr,
+    renewal: r.client.renewal_date,
+    renewalIn: r.client.renewal_date ? daysBetween(at, r.client.renewal_date) : null,
+    score: r.score.score,
+    band: r.score.band,
+    rawBand: r.score.rawBand,
+    confidence: r.score.confidence,
+    delta7: r.delta7,
+    overrides: r.score.overrides.map((o) => o.trigger),
+    history: r.history.map((h) => h.score),
+    perfAge: r.score.provenance.performance.ageDays,
+    checkinAge: r.score.provenance.checkin.ageDays,
+    openPlans: r.openPlans,
+  }));
+
+  // Triagem diária por exceção — briefing 6.
+  const bandChanged = rows.filter((r) => r.bandChanged48h);
+  const withOverride = rows.filter((r) => r.score.overrides.length > 0);
+  const movers = rows.filter((r) => !r.bandChanged48h && (r.delta7 ?? 0) <= -3);
+  const stale = summary.staleFills;
+  const renewals = rows
+    .filter((r) => {
+      const d = r.client.renewal_date ? daysBetween(at, r.client.renewal_date) : null;
+      return d !== null && d <= 60;
+    })
+    .sort((a, b) => daysBetween(at, a.client.renewal_date!) - daysBetween(at, b.client.renewal_date!));
+
+  const total = rows.length || 1;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <span className="eyebrow">Unidade Oliveira &amp; Co</span>
+          <h1 className="mt-1 font-display text-[28px] font-bold leading-tight tracking-tight">
+            Saúde da carteira
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="mt-1 text-sm text-ink-400">
+            Recompute de {dateBR(at)} · {rows.length} contas ativas · ordenado por risco
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <div className="flex gap-2">
+          <Link href="/modelo" className="btn">
+            <Icon name="target" size={14} />
+            Como o score é calculado
+          </Link>
         </div>
-      </main>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <Stat
+          label="Vermelho"
+          value={summary.byBand.vermelho}
+          tone="vermelho"
+          hint={`${Math.round((summary.byBand.vermelho / total) * 100)}% da carteira`}
+        />
+        <Stat
+          label="Amarelo"
+          value={summary.byBand.amarelo}
+          tone="amarelo"
+          hint="janela onde a intervenção ainda muda o desfecho"
+        />
+        <Stat
+          label="Verde"
+          value={summary.byBand.verde}
+          tone="verde"
+          hint={`${Math.round((summary.byBand.verde / total) * 100)}% da carteira`}
+        />
+        <Stat
+          label="MRR em risco"
+          value={brl(summary.mrrAtRisk)}
+          hint={`de ${brl(summary.mrrTotal)} na carteira`}
+          tone={summary.mrrAtRisk > summary.mrrTotal * 0.3 ? "vermelho" : "default"}
+          accent
+        />
+        <Stat
+          label="Confiança < alta"
+          value={stale.length}
+          tone={stale.length ? "amarelo" : "default"}
+          hint="cobrar preenchimento é trabalho diário"
+        />
+      </div>
+
+      {/* -------------------- Triagem diária -------------------- */}
+      <Panel
+        title="Triagem diária"
+        subtitle="Por exceção — só o que mudou ou não pode esperar. ~5 minutos."
+      >
+        <div className="grid gap-px bg-[var(--border-hair)] md:grid-cols-2 xl:grid-cols-4">
+          <TriageBox
+            title="Trocou de banda (48h)"
+            empty="Nenhuma troca de banda."
+            items={bandChanged.map((r) => ({
+              id: r.client.id,
+              name: r.client.name,
+              detail: (
+                <span className="flex items-center gap-2">
+                  <BandChip band={r.score.band} />
+                  <Delta value={r.delta7} suffix=" em 7d" />
+                </span>
+              ),
+            }))}
+          />
+          <TriageBox
+            title="Overrides disparados"
+            empty="Nenhum override ativo."
+            items={withOverride.map((r) => ({
+              id: r.client.id,
+              name: r.client.name,
+              detail: (
+                <span className="text-xs text-vermelho-fg">
+                  {r.score.overrides.map((o) => o.trigger).join(" · ")}
+                </span>
+              ),
+            }))}
+          />
+          <TriageBox
+            title="Movers negativos"
+            empty="Ninguém caindo forte dentro da banda."
+            items={movers.map((r) => ({
+              id: r.client.id,
+              name: r.client.name,
+              detail: (
+                <span className="flex items-center gap-2">
+                  <Delta value={r.delta7} suffix=" em 7d" />
+                  <BandChip band={r.score.band} />
+                </span>
+              ),
+            }))}
+          />
+          <TriageBox
+            title="Dado desatualizado"
+            empty="Carteira toda com leitura fresca."
+            items={stale.map((r) => ({
+              id: r.client.id,
+              name: r.client.name,
+              detail: (
+                <span className="flex flex-wrap items-center gap-2">
+                  <ConfidenceTag c={r.score.confidence} compact />
+                  <span className="text-xs text-ink-400">
+                    perf{" "}
+                    {r.score.provenance.performance.ageDays === null
+                      ? "nunca"
+                      : `${r.score.provenance.performance.ageDays}d`}{" "}
+                    · check-in{" "}
+                    {r.score.provenance.checkin.ageDays === null
+                      ? "nunca"
+                      : `${r.score.provenance.checkin.ageDays}d`}
+                  </span>
+                </span>
+              ),
+            }))}
+          />
+        </div>
+      </Panel>
+
+      {/* -------------------- Carteira -------------------- */}
+      <PortfolioTable rows={view} />
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel
+          title="Planos em aberto"
+          subtitle="Cada risco tem plano, dono e prazo. O loop fecha na revisão semanal."
+        >
+          {plans.length === 0 ? (
+            <div className="px-4 py-8 text-center text-sm text-ink-400">Nenhum plano em aberto.</div>
+          ) : (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Risco</th>
+                  <th>Dono</th>
+                  <th>Prazo</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {plans.map((p) => {
+                  const late = p.due_date && p.due_date < at;
+                  return (
+                    <tr key={p.id}>
+                      <td>
+                        <ClientLink id={p.client_id} name={p.client_name} />
+                      </td>
+                      <td className="max-w-[300px] text-ink-300">{p.risk}</td>
+                      <td className="text-ink-300">{p.owner}</td>
+                      <td className={late ? "text-vermelho-fg" : "text-ink-300"}>{dateBR(p.due_date)}</td>
+                      <td className="text-ink-300">{p.status.replace("_", " ")}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </Panel>
+
+        <Panel
+          title="Renovações nos próximos 60 dias"
+          subtitle="Renovação x health — onde o problema custa o contrato."
+        >
+          {renewals.length === 0 ? (
+            <div className="px-4 py-8 text-center text-sm text-ink-400">
+              Nenhuma renovação na janela.
+            </div>
+          ) : (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Renova em</th>
+                  <th>Score</th>
+                  <th className="text-right">MRR</th>
+                </tr>
+              </thead>
+              <tbody>
+                {renewals.map((r) => {
+                  const d = daysBetween(at, r.client.renewal_date!);
+                  return (
+                    <tr key={r.client.id}>
+                      <td>
+                        <ClientLink id={r.client.id} name={r.client.name} />
+                        <div className="text-xs text-ink-500">{dateBR(r.client.renewal_date)}</div>
+                      </td>
+                      <td className={`tnum ${d <= 30 ? "text-amarelo-fg" : "text-ink-300"}`}>
+                        {d < 0 ? `vencida (${-d}d)` : `${d} dias`}
+                      </td>
+                      <td>
+                        <BandChip band={r.score.band}>
+                          {r.score.score === null ? "—" : Math.round(r.score.score)}
+                        </BandChip>
+                      </td>
+                      <td className="tnum text-right text-ink-300">{brl(r.client.mrr)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function TriageBox({
+  title,
+  items,
+  empty,
+}: {
+  title: string;
+  items: { id: number; name: string; detail: React.ReactNode }[];
+  empty: string;
+}) {
+  return (
+    <div className="bg-ink-900 px-4 py-3">
+      <div className="flex items-center justify-between">
+        <span className="label">{title}</span>
+        <span
+          className={`tnum text-xs font-semibold ${items.length ? "text-ink-100" : "text-ink-600"}`}
+        >
+          {items.length}
+        </span>
+      </div>
+      {items.length === 0 ? (
+        <p className="mt-2 text-xs text-ink-600">{empty}</p>
+      ) : (
+        <ul className="mt-2 space-y-2">
+          {items.slice(0, 5).map((i) => (
+            <li key={i.id} className="text-sm">
+              <ClientLink id={i.id} name={i.name} />
+              <div className="mt-0.5">{i.detail}</div>
+            </li>
+          ))}
+          {items.length > 5 && (
+            <li className="text-xs text-ink-500">+ {items.length - 5} na tabela abaixo</li>
+          )}
+        </ul>
+      )}
     </div>
   );
 }
