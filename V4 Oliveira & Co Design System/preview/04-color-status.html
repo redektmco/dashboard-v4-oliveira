@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Colors" name="Status colors" subtitle="Healthy · Em risco · Crítico" viewport="700x220" --><html lang="pt-BR"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css"><style>
+.swatches { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.sw {
+  border-radius: var(--radius-md);
+  padding: 16px;
+  min-height: 130px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  border: 1px solid var(--border);
+}
+.sw .role { font: var(--t-eyebrow); letter-spacing:.08em; text-transform:uppercase; }
+.sw .name { font: var(--t-h3); margin-top: 6px; }
+.sw .hex { font: var(--t-mono-sm); opacity: .75; }
+.sw.healthy { background: var(--v4-green); color:#0d2810; }
+.sw.warning { background: var(--v4-yellow); color:#3a2900; }
+.sw.critical { background: var(--v4-red-500); color:#fff; }
+</style></head><body><div class="card">
+  <div class="eyebrow" style="margin-bottom:14px;">Status semântico</div>
+  <div class="swatches">
+    <div class="sw healthy">
+      <div><div class="role">healthy / on-track</div><div class="name">Saudável</div></div>
+      <div class="hex">#52cc5a · --status-healthy</div>
+    </div>
+    <div class="sw warning">
+      <div><div class="role">warning / at risk</div><div class="name">Em risco</div></div>
+      <div class="hex">#ffc02a · --status-warning</div>
+    </div>
+    <div class="sw critical">
+      <div><div class="role">critical</div><div class="name">Crítico</div></div>
+      <div class="hex">#e50914 · --status-critical</div>
+    </div>
+  </div>
+</div></body></html>

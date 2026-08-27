@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Spacing" name="Elevation" subtitle="Subtle dark-theme shadows + red glow CTA" viewport="700x220" --><html lang="pt-BR"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css"><style>
+.card { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; padding-top: 36px; padding-bottom: 36px; }
+.s {
+  background: var(--bg-elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 18px;
+  height: 110px;
+  display: flex; flex-direction: column; justify-content: space-between;
+}
+.tk { font: var(--t-mono-sm); color: var(--fg-3); }
+.s1 { box-shadow: var(--shadow-1); }
+.s2 { box-shadow: var(--shadow-2); }
+.s3 { box-shadow: var(--shadow-red-glow); }
+</style></head><body><div class="card">
+  <div class="s s1"><div class="tk">--shadow-1</div><div class="tk" style="color:var(--fg-4);">card padrão</div></div>
+  <div class="s s2"><div class="tk">--shadow-2</div><div class="tk" style="color:var(--fg-4);">menu · modal</div></div>
+  <div class="s s3"><div class="tk">--shadow-red-glow</div><div class="tk" style="color:var(--fg-4);">CTA em foco</div></div>
+</div></body></html>

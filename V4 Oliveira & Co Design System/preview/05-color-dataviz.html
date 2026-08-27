@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Colors" name="Dataviz palette" subtitle="6-series chart palette anchored on V4 red" viewport="700x240" --><html lang="pt-BR"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css"><style>
+.legend { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 18px; }
+.dot { display: flex; align-items: center; gap: 8px; font: var(--t-mono-sm); color: var(--fg-3); }
+.dot i { display:block; width: 14px; height: 14px; border-radius: 3px; }
+.chart {
+  background: var(--bg-elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  height: 132px;
+  display: flex; align-items: flex-end; gap: 6px;
+}
+.bar { flex: 1; border-radius: 4px 4px 0 0; }
+</style></head><body><div class="card">
+  <div class="eyebrow" style="margin-bottom:14px;">Paleta de dataviz</div>
+  <div class="legend">
+    <div class="dot"><i style="background:var(--viz-1)"></i>red 500</div>
+    <div class="dot"><i style="background:var(--viz-2)"></i>yellow</div>
+    <div class="dot"><i style="background:var(--viz-3)"></i>green</div>
+    <div class="dot"><i style="background:var(--viz-4)"></i>gray 300</div>
+    <div class="dot"><i style="background:var(--viz-5)"></i>red 700</div>
+    <div class="dot"><i style="background:var(--viz-6)"></i>gray 600</div>
+  </div>
+  <div class="chart">
+    <div class="bar" style="background:var(--viz-1); height: 88%;"></div>
+    <div class="bar" style="background:var(--viz-2); height: 72%;"></div>
+    <div class="bar" style="background:var(--viz-3); height: 55%;"></div>
+    <div class="bar" style="background:var(--viz-4); height: 44%;"></div>
+    <div class="bar" style="background:var(--viz-5); height: 36%;"></div>
+    <div class="bar" style="background:var(--viz-6); height: 28%;"></div>
+    <div class="bar" style="background:var(--viz-1); height: 64%;"></div>
+    <div class="bar" style="background:var(--viz-2); height: 50%;"></div>
+    <div class="bar" style="background:var(--viz-3); height: 80%;"></div>
+    <div class="bar" style="background:var(--viz-4); height: 38%;"></div>
+    <div class="bar" style="background:var(--viz-5); height: 42%;"></div>
+    <div class="bar" style="background:var(--viz-6); height: 22%;"></div>
+  </div>
+</div></body></html>

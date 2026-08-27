@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<!-- @dsCard group="UI Kit — Bi Mobile" name="BI Mobile · App" subtitle="Companion app inside iOS frame, 4 screens" viewport="1100x900" -->
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>BI Mobile · Oliveira & Co · V4</title>
+  <link rel="icon" href="../../assets/v4-simbolo.webp">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body {
+      background: #050505;
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: 40px 24px;
+      gap: 48px;
+    }
+    .stage {
+      display: flex; align-items: center; gap: 48px;
+      flex-wrap: wrap; justify-content: center;
+    }
+    .ios-wrap {
+      position: relative;
+    }
+    .ios-wrap > div > div { /* the device chrome */
+      box-shadow: 0 60px 120px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08) !important;
+    }
+    .picker {
+      display: flex; flex-direction: column; gap: 14px;
+      max-width: 280px;
+    }
+    .picker h1 {
+      font: 800 28px/1.05 var(--font-display);
+      letter-spacing: -0.015em;
+      margin: 0 0 4px;
+    }
+    .picker p { font: var(--t-body); color: var(--fg-2); margin: 0 0 12px; }
+    .picker .ey {
+      font: 600 11px/1 var(--font-display);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--fg-3);
+      display: inline-flex; align-items: center; gap: 8px;
+      margin-bottom: 6px;
+    }
+    .picker .ey img { height: 18px; }
+    .picker-btn {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 12px; align-items: center;
+      padding: 12px 14px;
+      background: var(--bg-elev-1);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--fg-2);
+      text-align: left;
+      cursor: pointer;
+      transition: background 120ms;
+    }
+    .picker-btn:hover { background: var(--bg-elev-2); color: var(--fg); }
+    .picker-btn.active {
+      background: rgba(229,9,20,0.10);
+      border-color: rgba(229,9,20,0.4);
+      color: var(--fg);
+    }
+    .picker-btn .num {
+      width: 22px; height: 22px;
+      border-radius: 6px;
+      background: var(--bg-elev-3);
+      color: var(--fg-2);
+      display: flex; align-items: center; justify-content: center;
+      font: 700 11px/1 var(--font-mono);
+    }
+    .picker-btn.active .num { background: var(--accent); color: #fff; }
+    .picker-btn .n { font: var(--t-body-strong); }
+    .picker-btn .s { font: var(--t-caption); color: var(--fg-3); margin-top: 1px; }
+    .footnote {
+      font: var(--t-caption); color: var(--fg-4);
+      margin-top: 16px;
+      max-width: 280px;
+      line-height: 1.5;
+    }
+  </style>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script src="../../_ds_bundle.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState } = React;
+
+    const Stage = () => {
+      const [shot, setShot] = useState("interactive");
+      // For static thumbnails, drive the App by passing a `force` prop to MobileApp.
+      // Simpler: render the live MobileApp; "picker" buttons inject events.
+      const onPick = (id) => setShot(id);
+
+      // We forge a tiny wrapper to expose tab-set via custom event the App listens to.
+      // But MobileApp owns its state. So the picker is a hint, and we mount distinct
+      // App instances per shot for "isolated" screens.
+      const ShotApp = ({ initial }) => {
+        // re-instantiate by key
+        return <MobileApp key={initial} />;
+      };
+
+      return (
+        <div className="stage">
+          <div className="ios-wrap">
+            <IOSDevice width={402} height={874} dark={true}>
+              <MobileAppHost key={shot} initial={shot}/>
+            </IOSDevice>
+          </div>
+          <div className="picker">
+            <span className="ey">
+              <img src="../../assets/v4-simbolo.webp" alt=""/>
+              BI Mobile · Oliveira & Co
+            </span>
+            <h1>Companion no bolso do time.</h1>
+            <p>Quatro telas. Mesmo padrão visual do BI desktop, densidade adaptada ao polegar.</p>
+
+            <button className={"picker-btn " + (shot === "home" ? "active" : "")} onClick={() => onPick("home")}>
+              <span className="num">01</span>
+              <div><div className="n">Visão geral</div><div className="s">KPIs + atenção agora</div></div>
+            </button>
+            <button className={"picker-btn " + (shot === "clients" ? "active" : "")} onClick={() => onPick("clients")}>
+              <span className="num">02</span>
+              <div><div className="n">Clientes</div><div className="s">Busca + filtros + lista</div></div>
+            </button>
+            <button className={"picker-btn " + (shot === "detail" ? "active" : "")} onClick={() => onPick("detail")}>
+              <span className="num">03</span>
+              <div><div className="n">Cliente</div><div className="s">Health ring + stats + Método V4</div></div>
+            </button>
+            <button className={"picker-btn " + (shot === "notifs" ? "active" : "")} onClick={() => onPick("notifs")}>
+              <span className="num">04</span>
+              <div><div className="n">Notificações</div><div className="s">Crises · oportunidades</div></div>
+            </button>
+
+            <div className="footnote">
+              Toque nas abas dentro do dispositivo para navegar livremente, ou pule direto para uma tela pelas opções acima.
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // Tiny host that picks an initial tab/client for the MobileApp
+    const MobileAppHost = ({ initial }) => {
+      // We can't easily forward initial state into MobileApp without modifying it,
+      // but we wrap with a quick monkey-patch: clone the component but seed tab+client.
+      const { useState: useS } = React;
+      const [tab, setTab] = useS(
+        initial === "clients" ? "clients" :
+        initial === "notifs"  ? "notifs"  :
+        "home"
+      );
+      const [client, setClient] = useS(
+        initial === "detail"
+          ? { id: "fazenda", name: "Fazenda Zumbi", seg: "Agro", squad: "Volta", fee: 9800, invest: 12500, roas: 1.8, health: 34, status: "critical", months: 11, next: "Hoje · 14:30 · Crise" }
+          : null
+      );
+      const showClient = (c) => setClient(c);
+      const goTab = (t) => { setClient(null); setTab(t); };
+
+      return (
+        <>
+          {client
+            ? <ClientScreen client={client} onBack={() => setClient(null)}/>
+            : tab === "home"    ? <OverviewScreen onOpenClient={showClient} onTab={setTab}/>
+            : tab === "clients" ? <ClientsScreen onOpenClient={showClient}/>
+            : tab === "notifs"  ? <NotifsScreen/>
+            : <div className="m-screen"><header className="m-header"><div><div className="sub">Oliveira & Co</div><div className="ttl">Eu</div></div></header><div className="m-body"><div style={{ color: "var(--fg-3)", textAlign: "center", padding: 40 }}>Perfil — placeholder</div></div></div>}
+          <TabBar tab={tab} onTab={goTab}/>
+        </>
+      );
+    };
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<Stage/>);
+  </script>
+</body>
+</html>

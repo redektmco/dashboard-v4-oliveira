@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Components" name="Buttons" subtitle="Primary · secondary · ghost · states" viewport="700x240" --><html lang="pt-BR"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css"><style>
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 38px; padding: 0 16px;
+  border-radius: var(--radius-md);
+  font: var(--t-body-strong);
+  border: 1px solid transparent;
+  cursor: pointer; user-select: none;
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+.btn.primary { background: var(--accent); color: var(--on-accent); }
+.btn.primary:hover { background: var(--accent-hover); }
+.btn.primary:active { background: var(--accent-press); transform: translateY(1px); }
+.btn.secondary { background: var(--bg-elev-2); color: var(--fg); border-color: var(--border-strong); }
+.btn.secondary:hover { background: var(--bg-elev-3); }
+.btn.ghost { background: transparent; color: var(--fg-2); }
+.btn.ghost:hover { color: var(--fg); background: var(--bg-elev-1); }
+.btn.icon { padding: 0 12px; }
+.lbl { font: var(--t-mono-sm); color: var(--fg-4); margin: 14px 0 6px; }
+svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+</style></head><body><div class="card">
+  <div class="lbl">Primary · Secondary · Ghost</div>
+  <div class="row" style="gap: 10px;">
+    <button class="btn primary">Adicionar cliente
+      <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></svg>
+    </button>
+    <button class="btn secondary">Exportar relatório</button>
+    <button class="btn ghost">Cancelar</button>
+    <button class="btn secondary icon" aria-label="filtros">
+      <svg viewBox="0 0 24 24"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+    </button>
+  </div>
+  <div class="lbl">Estados — primary</div>
+  <div class="row" style="gap: 10px;">
+    <button class="btn primary">default</button>
+    <button class="btn primary" style="background: var(--accent-hover);">hover</button>
+    <button class="btn primary" style="background: var(--accent-press); transform: translateY(1px);">pressed</button>
+    <button class="btn primary" disabled style="opacity: .4; cursor: not-allowed;">disabled</button>
+  </div>
+</div></body></html>

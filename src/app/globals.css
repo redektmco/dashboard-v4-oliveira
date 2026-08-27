@@ -1,26 +1,259 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* =============================================================
+   V4 OLIVEIRA & CO — Design Tokens
+   Fonte: "V4 Oliveira & Co Design System/colors_and_type.css"
+   (brand.v4company.com). Não alterar os hexadecimais da marca.
+   ============================================================= */
+
+@theme {
+  /* --- Marca: vermelho V4 --- */
+  --color-v4-red: #e50914;
+  --color-v4-red-600: #b20710;
+  --color-v4-red-700: #80050b;
+  --color-v4-red-900: #400306;
+
+  /* --- Neutros (superfícies escuras, tema padrão do BI) --- */
+  --color-ink-950: #0d0d0d; /* --bg        página */
+  --color-ink-900: #1a1a1a; /* --bg-elev-1 painel */
+  --color-ink-850: #202020; /* --bg-elev-2 aninhado / hover */
+  --color-ink-800: #262626; /* --bg-elev-3 popover */
+  --color-ink-700: #333333;
+  --color-ink-600: #4a4a4a;
+  --color-ink-500: #666666;
+  --color-ink-400: #8a8a8a; /* --fg-3 terciário */
+  --color-ink-300: #b3b3b3; /* --fg-2 secundário */
+  --color-ink-100: #ffffff; /* --fg  primário */
+
+  /* --- Status: verde / amarelo da marca, crítico no vermelho V4 --- */
+  --color-verde: #52cc5a;
+  --color-verde-fg: #7fdf83;
+  --color-verde-dim: rgba(82, 204, 90, 0.14);
+  --color-amarelo: #ffc02a;
+  --color-amarelo-fg: #ffd05b;
+  --color-amarelo-dim: rgba(255, 192, 42, 0.16);
+  --color-vermelho: #e50914;
+  --color-vermelho-fg: #ff5560;
+  --color-vermelho-dim: rgba(229, 9, 20, 0.18);
+
+  --color-accent: #e50914;
+
+  /* --- Tipografia: Montserrat (display) + Inter (corpo) --- */
+  --font-display: var(--font-montserrat), "Montserrat", system-ui, sans-serif;
+  --font-sans: var(--font-inter), "Inter", system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, monospace;
+
+  /* --- Raios: eco da "moldura" arredondada do símbolo V4 --- */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --ease-v4: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --border-hair: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --shadow-1: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
 }
 
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-ink-950);
+  color: var(--color-ink-100);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+::selection {
+  background: var(--color-v4-red-700);
+  color: #fff;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-v4-red);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Números são cidadãos de primeira classe — sempre tabulares. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------- Superfícies ---------------- */
+
+.panel {
+  background: var(--color-ink-900);
+  border: 1px solid var(--border-hair);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* Barra vermelha à esquerda: só para conta em crise — é o único lugar
+   onde o vermelho invade a superfície, porque a urgência é o ponto. */
+.panel-critico {
+  border-color: rgba(229, 9, 20, 0.28);
+  box-shadow: inset 3px 0 0 var(--color-v4-red);
+}
+
+.label,
+.eyebrow {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ink-400);
+}
+
+/* ---------------- Formulários ---------------- */
+
+.field {
+  background: var(--color-ink-850);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.625rem;
+  color: var(--color-ink-100);
+  width: 100%;
+  font-size: 13px;
+  font-family: var(--font-sans);
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+.field:focus {
+  outline: none;
+  border-color: var(--color-v4-red);
+  box-shadow: 0 0 0 3px rgba(229, 9, 20, 0.18);
+}
+.field::placeholder {
+  color: var(--color-ink-500);
+}
+select.field {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--color-ink-400) 50%),
+    linear-gradient(135deg, var(--color-ink-400) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 55%, calc(100% - 11px) 55%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 2rem;
+}
+
+/* ---------------- Botões ---------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--border-strong);
+  background: var(--color-ink-850);
+  color: var(--color-ink-100);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+.btn:hover {
+  background: var(--color-ink-800);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn-primary {
+  background: var(--color-v4-red);
+  border-color: transparent;
+  color: #fff;
+}
+.btn-primary:hover {
+  background: var(--color-v4-red-600);
+}
+.btn-primary:active {
+  background: var(--color-v4-red-700);
+}
+.btn-sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------------- Tabelas ---------------- */
+/* Só divisórias horizontais — nunca linhas verticais.
+   O nome NÃO pode colidir com utilitário do Tailwind: `.grid` aplicava
+   `display: grid` na tabela e o cabeçalho parava de compartilhar as
+   colunas com o corpo. O `display: table` explícito abaixo é o cinto de
+   segurança para isso não voltar. */
+
+table.data-table {
+  display: table;
+  table-layout: auto;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+table.data-table thead {
+  display: table-header-group;
+}
+table.data-table tbody {
+  display: table-row-group;
+}
+table.data-table tr {
+  display: table-row;
+}
+table.data-table th,
+table.data-table td {
+  display: table-cell;
+}
+table.data-table th {
+  text-align: left;
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ink-400);
+  font-weight: 600;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--border-hair);
+  white-space: nowrap;
+}
+table.data-table td {
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid var(--border-hair);
+  vertical-align: middle;
+}
+table.data-table tbody tr {
+  transition: background var(--dur-fast) var(--ease-out);
+}
+table.data-table tbody tr:hover {
+  background: var(--color-ink-850);
+}
+table.data-table tbody tr:last-child td {
+  border-bottom: 0;
 }

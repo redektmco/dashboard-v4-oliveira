@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Components" name="Inputs · search" subtitle="Default + focused (red ring)" viewport="700x220" --><html lang="pt-BR"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css"><style>
+.field {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--bg-elev-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 0 12px; height: 38px;
+  margin-bottom: 12px;
+}
+.field input {
+  background: transparent; border: 0; outline: 0; color: var(--fg);
+  font: var(--t-body); flex: 1;
+}
+.field input::placeholder { color: var(--fg-4); }
+.field.focused { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(229,9,20,.18); }
+.kbd {
+  font: var(--t-mono-sm); color: var(--fg-3);
+  background: var(--bg-elev-3); border: 1px solid var(--border); border-radius: 4px;
+  padding: 2px 6px;
+}
+svg { width: 16px; height: 16px; stroke: var(--fg-3); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.lbl { font: var(--t-mono-sm); color: var(--fg-4); margin: 0 0 6px; }
+</style></head><body><div class="card">
+  <div class="lbl">Search · default</div>
+  <div class="field">
+    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+    <input placeholder="Buscar cliente, squad ou campanha…">
+    <span class="kbd">⌘ K</span>
+  </div>
+  <div class="lbl">Search · focused</div>
+  <div class="field focused">
+    <svg viewBox="0 0 24 24" style="stroke: var(--accent);"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+    <input value="Oliveira" autofocus>
+    <span class="kbd">esc</span>
+  </div>
+</div></body></html>

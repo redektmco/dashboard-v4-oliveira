@@ -1,0 +1,14 @@
+/* =============================================================
+   V4 OLIVEIRA & CO — Design System root stylesheet
+   -------------------------------------------------------------
+   Single entry point for consumers. Linking this one file pulls
+   in every global token + base style of the design system.
+
+   The per-product stylesheets (ui_kits/bi-desktop/styles.css,
+   ui_kits/bi-mobile/styles.css, slides/styles.css, preview cards)
+   are scoped to their surfaces and already @import this token
+   layer themselves — you only need to link THIS file to get the
+   foundations (colors, type, spacing, radii, shadows, motion).
+   ============================================================= */
+
+@import url("./colors_and_type.css");

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Components" name="Badges & chips" subtitle="Status pills + filter chips (Método V4)" viewport="700x220" --><html lang="pt-BR"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css"><style>
+.row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 22px; padding: 0 10px;
+  border-radius: 999px;
+  font: var(--t-caption);
+  letter-spacing: 0.02em;
+}
+.badge i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.badge.healthy  { background: rgba(82,204,90,.14); color: #7fdf83; }
+.badge.healthy  i { background: var(--v4-green); }
+.badge.warning  { background: rgba(255,192,42,.16); color: #ffd05b; }
+.badge.warning  i { background: var(--v4-yellow); }
+.badge.critical { background: rgba(229,9,20,.18); color: #ff5560; }
+.badge.critical i { background: var(--v4-red-500); }
+.badge.neutral  { background: var(--bg-elev-3); color: var(--fg-2); }
+.badge.neutral  i { background: var(--fg-4); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 12px;
+  border-radius: var(--radius-pill);
+  font: var(--t-body-strong); font-size: 12px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  color: var(--fg-2);
+}
+.chip.active { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+.lbl { font: var(--t-mono-sm); color: var(--fg-4); margin: 0 0 8px; }
+</style></head><body><div class="card">
+  <div class="lbl">Status pills</div>
+  <div class="row">
+    <span class="badge healthy"><i></i>Saudável</span>
+    <span class="badge warning"><i></i>Em risco</span>
+    <span class="badge critical"><i></i>Crítico</span>
+    <span class="badge neutral"><i></i>Sem dados</span>
+  </div>
+  <div class="lbl">Filter chips</div>
+  <div class="row">
+    <span class="chip active">Todos</span>
+    <span class="chip">Aquisição</span>
+    <span class="chip">Engajamento</span>
+    <span class="chip">Monetização</span>
+    <span class="chip">Retenção</span>
+  </div>
+</div></body></html>

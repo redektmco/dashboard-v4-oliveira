@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Components" name="Client row" subtitle="Table row + at-risk highlight" viewport="700x280" --><html lang="pt-BR"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css"><style>
+.tbl {
+  background: var(--bg-elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.row {
+  display: grid;
+  grid-template-columns: 36px 1.8fr 0.9fr 0.9fr 0.9fr 70px;
+  align-items: center;
+  padding: 12px 16px;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.row:last-child { border-bottom: 0; }
+.row.head { background: var(--bg-elev-2); padding: 10px 16px; }
+.row.head span { font: var(--t-eyebrow); letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-3); }
+.avatar { width: 28px; height: 28px; border-radius: 6px; background: var(--v4-red-500); color: #fff; display: flex; align-items: center; justify-content: center; font: 700 11px/1 var(--font-display); }
+.avatar.g2 { background: #1f6f4a; }
+.avatar.g3 { background: #2b3450; }
+.name { font: var(--t-body-strong); }
+.sub  { font: var(--t-caption); color: var(--fg-3); }
+.num  { font-variant-numeric: tabular-nums; font: var(--t-body-strong); }
+.badge { display: inline-flex; align-items:center; gap:6px; font: var(--t-caption); padding: 2px 10px; border-radius: 999px; }
+.badge.h  { background: rgba(82,204,90,.14); color: #7fdf83; }
+.badge.r  { background: rgba(255,192,42,.16); color: #ffd05b; }
+.badge.c  { background: rgba(229,9,20,.18); color: #ff5560; }
+.row.alert { background: linear-gradient(90deg, rgba(229,9,20,0.06), transparent 60%); border-left: 2px solid var(--accent); padding-left: 14px; }
+</style></head><body><div class="card">
+  <div class="eyebrow" style="margin-bottom: 10px;">Linha de cliente · table row</div>
+  <div class="tbl">
+    <div class="row head"><span></span><span>Cliente</span><span>Fee</span><span>Invest.</span><span>ROAS</span><span>Health</span></div>
+    <div class="row">
+      <div class="avatar">SO</div>
+      <div><div class="name">Solar Bras</div><div class="sub">Squad Aurora · 6 meses</div></div>
+      <div class="num">R$ 18.500</div>
+      <div class="num">R$ 42.000</div>
+      <div class="num">5,2×</div>
+      <div><span class="badge h">82</span></div>
+    </div>
+    <div class="row alert">
+      <div class="avatar g2">FZ</div>
+      <div><div class="name">Fazenda Zumbi</div><div class="sub">Squad Volta · 11 meses</div></div>
+      <div class="num">R$ 9.800</div>
+      <div class="num">R$ 12.500</div>
+      <div class="num" style="color: var(--v4-red-500);">1,8×</div>
+      <div><span class="badge c">34</span></div>
+    </div>
+    <div class="row">
+      <div class="avatar g3">MV</div>
+      <div><div class="name">Móveis Vargas</div><div class="sub">Squad Norte · 3 meses</div></div>
+      <div class="num">R$ 7.200</div>
+      <div class="num">R$ 18.000</div>
+      <div class="num">3,4×</div>
+      <div><span class="badge r">61</span></div>
+    </div>
+  </div>
+</div></body></html>

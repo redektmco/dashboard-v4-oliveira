@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<!-- @dsCard group="UI Kit — Bi Desktop" name="BI Desktop · App" subtitle="Unit BI Dashboard — interactive prototype" viewport="1440x900" -->
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>BI · Oliveira & Co · V4 Company</title>
+  <link rel="icon" href="../../assets/v4-simbolo.webp">
+  <link rel="stylesheet" href="styles.css">
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script src="../../_ds_bundle.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useReducer } = React;
+
+    const App = () => {
+      const [route, setRoute] = useState("overview");
+      const [client, setClient] = useState(null);
+      const [query, setQuery] = useState("");
+      const [identity, setIdentity] = useState(V4Store.identity);
+      const [_, force] = useReducer(x => x + 1, 0);
+
+      useEffect(() => V4Store.subscribe(() => force()), []);
+
+      const goClient = (c) => { setClient(c); setRoute("client-detail"); };
+      const goBack   = () => { setClient(null); setRoute("clients"); };
+
+      const crumbs = client
+        ? ["Oliveira & Co", "Carteira", client.name]
+        : route === "overview"  ? ["Oliveira & Co", "Visão geral"]
+        : route === "clients"   ? ["Oliveira & Co", "Carteira"]
+        : ["Oliveira & Co", route];
+
+      return (
+        <>
+          <IdentityGate onReady={setIdentity}/>
+          <div className="app">
+            <Sidebar current={client ? "clients" : route} onNavigate={(id) => { setClient(null); setRoute(id); }}/>
+            <main className="main">
+              <Topbar crumbs={crumbs} query={query} onSearch={setQuery}/>
+              {route === "overview"      && <Overview onOpenClient={goClient}/>}
+              {route === "clients"       && (
+                <div className="page" data-screen-label="Clientes">
+                  <div className="page-head">
+                    <div><h1>Carteira de clientes</h1><div className="sub">42 clientes ativos · 5 squads</div></div>
+                    <div className="page-actions">
+                      <button className="btn secondary"><Icon name="download" size={14}/>Exportar</button>
+                      <button className="btn primary"><Icon name="plus" size={14}/>Novo cliente</button>
+                    </div>
+                  </div>
+                  <ClientTable onOpen={goClient} fullPage/>
+                </div>
+              )}
+              {route === "client-detail" && client && <ClientDetail client={client} onBack={goBack}/>}
+              {!["overview","clients","client-detail"].includes(route) && (
+                <div className="page">
+                  <div className="page-head">
+                    <div>
+                      <h1 style={{ textTransform: "capitalize" }}>{route}</h1>
+                      <div className="sub">Esta seção é apenas um esqueleto no UI kit — adicione conforme necessário.</div>
+                    </div>
+                  </div>
+                  <Card>
+                    <div style={{ padding: 40, textAlign: "center", color: "var(--fg-3)" }}>
+                      Placeholder · use os componentes em <code>components.jsx</code> para montar esta visão.
+                    </div>
+                  </Card>
+                </div>
+              )}
+            </main>
+          </div>
+        </>
+      );
+    };
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<Boot/>);
+
+    function Boot() {
+      const [ready, setReady] = useState(!!window.V4Data);
+      useEffect(() => {
+        if (window.V4Data) return;
+        const on = () => setReady(true);
+        window.addEventListener("v4-data-ready", on, { once: true });
+        return () => window.removeEventListener("v4-data-ready", on);
+      }, []);
+      if (!ready) {
+        return (
+          <div style={{
+            position: "fixed", inset: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            flexDirection: "column", gap: 16, background: "var(--bg)",
+          }}>
+            <img src="../../assets/v4-simbolo.webp" alt="" style={{ height: 44, opacity: 0.9, animation: "v4-pulse 1.4s ease-in-out infinite" }}/>
+            <div style={{ font: "var(--t-caption)", color: "var(--fg-3)", letterSpacing: "0.14em", textTransform: "uppercase" }}>
+              Carregando dados da unidade…
+            </div>
+            <style>{`@keyframes v4-pulse { 0%,100% { opacity:.6 } 50% { opacity: 1 } }`}</style>
+          </div>
+        );
+      }
+      return <App/>;
+    }
+  </script>
+</body>
+</html>

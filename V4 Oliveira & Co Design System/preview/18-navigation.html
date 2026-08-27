@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Components" name="Sidebar nav" subtitle="Rail with active state + counts" viewport="700x340" --><html lang="pt-BR"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css"><style>
+.card { display: grid; grid-template-columns: 240px 1fr; gap: 18px; }
+.rail {
+  background: var(--bg-elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 10px;
+}
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 14px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
+.brand img { height: 24px; }
+.brand .u { font: var(--t-caption); color: var(--fg-3); letter-spacing: 0.06em; text-transform: uppercase; }
+.item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px;
+  border-radius: var(--radius-md);
+  font: var(--t-body-strong);
+  color: var(--fg-2);
+  position: relative;
+  cursor: pointer;
+}
+.item:hover { background: var(--bg-elev-2); color: var(--fg); }
+.item.active { color: var(--fg); background: rgba(229,9,20,0.10); }
+.item.active::before {
+  content: ""; position: absolute; left: -10px; top: 8px; bottom: 8px; width: 2px;
+  background: var(--accent); border-radius: 2px;
+}
+.item .count { margin-left: auto; font: var(--t-mono-sm); color: var(--fg-3); }
+svg.ic { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.notes { padding-top: 4px; }
+.notes p { font: var(--t-body-sm); color: var(--fg-2); margin: 0 0 10px; }
+.notes b { color: var(--fg); }
+</style></head><body><div class="card">
+  <nav class="rail">
+    <div class="brand">
+      <img src="../assets/v4-simbolo.webp" alt="">
+      <div><div style="font: var(--t-body-strong); line-height: 1.1;">Oliveira & Co</div>
+           <div class="u">Unidade · mai 2026</div></div>
+    </div>
+    <div class="item active"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg> Visão geral</div>
+    <div class="item"><svg class="ic" viewBox="0 0 24 24"><path d="M3 21h18"/><rect x="5" y="10" width="3" height="9"/><rect x="11" y="6" width="3" height="13"/><rect x="17" y="13" width="3" height="6"/></svg> Clientes <span class="count">42</span></div>
+    <div class="item"><svg class="ic" viewBox="0 0 24 24"><circle cx="9" cy="7" r="4"/><path d="M3 21a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="3"/><path d="M14 21a4 4 0 0 1 8 0"/></svg> Squads</div>
+    <div class="item"><svg class="ic" viewBox="0 0 24 24"><path d="M3 12h4l3-9 4 18 3-9h4"/></svg> Campanhas</div>
+    <div class="item"><svg class="ic" viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6"/></svg> Financeiro</div>
+  </nav>
+  <div class="notes">
+    <div class="eyebrow" style="margin-bottom: 10px;">Sidebar — comportamento</div>
+    <p><b>Hover:</b> background sobe 1 elevation (elev-1 → elev-2).</p>
+    <p><b>Active:</b> tint vermelho 10% + barra lateral 2px <code style="color:var(--accent)">#e50914</code>.</p>
+    <p><b>Counts</b> em mono à direita; ícones a 16px com stroke currentColor.</p>
+  </div>
+</div></body></html>

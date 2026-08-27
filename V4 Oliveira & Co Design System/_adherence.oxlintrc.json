@@ -1,0 +1,315 @@
+{
+  "plugins": [
+    "react",
+    "import"
+  ],
+  "rules": {
+    "react/forbid-elements": [
+      "warn",
+      {
+        "forbid": []
+      }
+    ],
+    "no-restricted-imports": [
+      "warn",
+      {
+        "patterns": [
+          {
+            "group": [
+              "slides/**",
+              "ui_kits/bi-desktop/**",
+              "ui_kits/bi-mobile/**"
+            ],
+            "message": "Import design-system components from 'index.js', not component internals."
+          }
+        ]
+      }
+    ],
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "Literal[value=/#[0-9a-fA-F]{3,8}\\b/]",
+        "message": "Raw hex color — use a design-system color token via var()."
+      },
+      {
+        "selector": "Literal[value=/\\b\\d+px\\b/]",
+        "message": "Raw px value — use a design-system spacing token via var()."
+      },
+      {
+        "selector": "Literal[value=/font-family\\s*:\\s*(?!['\\\"]?(?:Montserrat|Inter|JetBrains Mono))/i]",
+        "message": "Font not provided by the design system. Available: Montserrat, Inter, JetBrains Mono."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ClientDetail'] > JSXAttribute > JSXIdentifier[name!=/^(?:client|onBack|key|ref|className|style|children)$/]",
+        "message": "<ClientDetail> doesn't accept that prop. Declared props: client, onBack."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ClientDossie'] > JSXAttribute > JSXIdentifier[name!=/^(?:client|key|ref|className|style|children)$/]",
+        "message": "<ClientDossie> doesn't accept that prop. Declared props: client."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ClientMeetings'] > JSXAttribute > JSXIdentifier[name!=/^(?:client|key|ref|className|style|children)$/]",
+        "message": "<ClientMeetings> doesn't accept that prop. Declared props: client."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='ClientTable'] > JSXAttribute > JSXIdentifier[name!=/^(?:onOpen|fullPage|key|ref|className|style|children)$/]",
+        "message": "<ClientTable> doesn't accept that prop. Declared props: onOpen, fullPage."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Identity'] > JSXAttribute > JSXIdentifier[name!=/^(?:onReady|key|ref|className|style|children)$/]",
+        "message": "<Identity> doesn't accept that prop. Declared props: onReady."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Overview'] > JSXAttribute > JSXIdentifier[name!=/^(?:onOpenClient|key|ref|className|style|children)$/]",
+        "message": "<Overview> doesn't accept that prop. Declared props: onOpenClient."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Sidebar'] > JSXAttribute > JSXIdentifier[name!=/^(?:current|onNavigate|counts|key|ref|className|style|children)$/]",
+        "message": "<Sidebar> doesn't accept that prop. Declared props: current, onNavigate, counts."
+      },
+      {
+        "selector": "JSXOpeningElement[name.name='Topbar'] > JSXAttribute > JSXIdentifier[name!=/^(?:crumbs|period|onSearch|query|key|ref|className|style|children)$/]",
+        "message": "<Topbar> doesn't accept that prop. Declared props: crumbs, period, onSearch, query."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/index.js"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ],
+  "x-omelette": {
+    "components": {
+      "App": {
+        "replaces": []
+      },
+      "ClientDetail": {
+        "replaces": []
+      },
+      "ClientDossie": {
+        "replaces": []
+      },
+      "ClientMeetings": {
+        "replaces": []
+      },
+      "ClientTable": {
+        "replaces": []
+      },
+      "Identity": {
+        "replaces": []
+      },
+      "Overview": {
+        "replaces": []
+      },
+      "Sidebar": {
+        "replaces": []
+      },
+      "SquadPerformance": {
+        "replaces": []
+      },
+      "Topbar": {
+        "replaces": []
+      }
+    },
+    "tokens": [
+      "--accent",
+      "--accent-hover",
+      "--accent-press",
+      "--bg",
+      "--bg-elev-1",
+      "--bg-elev-2",
+      "--bg-elev-3",
+      "--bg-inset",
+      "--border",
+      "--border-focus",
+      "--border-strong",
+      "--dur-base",
+      "--dur-fast",
+      "--dur-slow",
+      "--ease-in-out",
+      "--ease-out",
+      "--fg",
+      "--fg-2",
+      "--fg-3",
+      "--fg-4",
+      "--font-body",
+      "--font-display",
+      "--font-mono",
+      "--on-accent",
+      "--radius-lg",
+      "--radius-md",
+      "--radius-pill",
+      "--radius-sm",
+      "--radius-xl",
+      "--shadow-1",
+      "--shadow-2",
+      "--shadow-3",
+      "--shadow-red-glow",
+      "--space-1",
+      "--space-10",
+      "--space-12",
+      "--space-16",
+      "--space-2",
+      "--space-20",
+      "--space-3",
+      "--space-4",
+      "--space-5",
+      "--space-6",
+      "--space-8",
+      "--status-critical",
+      "--status-healthy",
+      "--status-neutral",
+      "--status-warning",
+      "--t-body",
+      "--t-body-sm",
+      "--t-body-strong",
+      "--t-caption",
+      "--t-display-1",
+      "--t-display-2",
+      "--t-display-3",
+      "--t-display-4",
+      "--t-eyebrow",
+      "--t-h1",
+      "--t-h2",
+      "--t-h3",
+      "--t-h4",
+      "--t-metric-lg",
+      "--t-metric-md",
+      "--t-metric-sm",
+      "--t-metric-xl",
+      "--t-mono",
+      "--t-mono-sm",
+      "--v4-black",
+      "--v4-gray-100",
+      "--v4-gray-200",
+      "--v4-gray-300",
+      "--v4-gray-400",
+      "--v4-gray-50",
+      "--v4-gray-500",
+      "--v4-gray-600",
+      "--v4-gray-700",
+      "--v4-gray-800",
+      "--v4-gray-850",
+      "--v4-gray-900",
+      "--v4-gray-950",
+      "--v4-green",
+      "--v4-red-500",
+      "--v4-red-600",
+      "--v4-red-700",
+      "--v4-red-900",
+      "--v4-white",
+      "--v4-yellow",
+      "--viz-1",
+      "--viz-2",
+      "--viz-3",
+      "--viz-4",
+      "--viz-5",
+      "--viz-6"
+    ],
+    "tokenKinds": {
+      "--v4-red-500": "color",
+      "--v4-red-600": "color",
+      "--v4-red-700": "color",
+      "--v4-red-900": "color",
+      "--v4-white": "color",
+      "--v4-gray-100": "color",
+      "--v4-gray-200": "color",
+      "--v4-gray-300": "color",
+      "--v4-gray-700": "color",
+      "--v4-gray-800": "color",
+      "--v4-gray-900": "color",
+      "--v4-black": "color",
+      "--v4-gray-50": "color",
+      "--v4-gray-400": "color",
+      "--v4-gray-500": "color",
+      "--v4-gray-600": "color",
+      "--v4-gray-850": "color",
+      "--v4-gray-950": "color",
+      "--v4-green": "color",
+      "--v4-yellow": "color",
+      "--bg": "color",
+      "--bg-elev-1": "shadow",
+      "--bg-elev-2": "shadow",
+      "--bg-elev-3": "shadow",
+      "--bg-inset": "color",
+      "--border": "color",
+      "--border-strong": "color",
+      "--border-focus": "color",
+      "--fg": "color",
+      "--fg-2": "color",
+      "--fg-3": "color",
+      "--fg-4": "color",
+      "--accent": "color",
+      "--accent-hover": "color",
+      "--accent-press": "color",
+      "--on-accent": "color",
+      "--status-healthy": "color",
+      "--status-warning": "color",
+      "--status-critical": "color",
+      "--status-neutral": "color",
+      "--font-display": "font",
+      "--font-body": "font",
+      "--font-mono": "font",
+      "--t-display-1": "color",
+      "--t-display-2": "color",
+      "--t-display-3": "color",
+      "--t-display-4": "color",
+      "--t-h1": "color",
+      "--t-h2": "color",
+      "--t-h3": "color",
+      "--t-h4": "color",
+      "--t-body": "color",
+      "--t-body-strong": "color",
+      "--t-body-sm": "color",
+      "--t-caption": "color",
+      "--t-metric-xl": "color",
+      "--t-metric-lg": "color",
+      "--t-metric-md": "color",
+      "--t-metric-sm": "color",
+      "--t-mono": "color",
+      "--t-mono-sm": "color",
+      "--t-eyebrow": "color",
+      "--space-1": "spacing",
+      "--space-2": "spacing",
+      "--space-3": "spacing",
+      "--space-4": "spacing",
+      "--space-5": "spacing",
+      "--space-6": "spacing",
+      "--space-8": "spacing",
+      "--space-10": "spacing",
+      "--space-12": "spacing",
+      "--space-16": "spacing",
+      "--space-20": "spacing",
+      "--radius-sm": "radius",
+      "--radius-md": "radius",
+      "--radius-lg": "radius",
+      "--radius-xl": "radius",
+      "--radius-pill": "radius",
+      "--shadow-1": "shadow",
+      "--shadow-2": "shadow",
+      "--shadow-3": "shadow",
+      "--shadow-red-glow": "shadow",
+      "--ease-out": "other",
+      "--ease-in-out": "other",
+      "--dur-fast": "other",
+      "--dur-base": "other",
+      "--dur-slow": "other",
+      "--viz-1": "color",
+      "--viz-2": "color",
+      "--viz-3": "color",
+      "--viz-4": "color",
+      "--viz-5": "color",
+      "--viz-6": "color"
+    },
+    "fontFamilies": [
+      "Inter",
+      "JetBrains Mono",
+      "Montserrat"
+    ]
+  }
+}

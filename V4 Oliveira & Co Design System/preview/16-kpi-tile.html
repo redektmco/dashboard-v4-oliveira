@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Components" name="KPI tiles" subtitle="Brand-accented + neutral, with sparkline" viewport="700x180" --><html lang="pt-BR"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css"><style>
+.card { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.kpi {
+  background: var(--bg-elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 20px 18px;
+  position: relative;
+  overflow: hidden;
+}
+.kpi .ey { font: var(--t-eyebrow); letter-spacing:.08em; text-transform:uppercase; color: var(--fg-3); margin-bottom: 14px; }
+.kpi .v  { font: var(--t-metric-xl); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; margin-bottom: 8px; }
+.kpi .d  { display: flex; align-items: center; gap: 6px; font: var(--t-body-sm); color: var(--fg-2); }
+.kpi .d .delta { font: var(--t-body-strong); color: var(--v4-green); }
+.kpi .d .delta.bad { color: var(--v4-red-500); }
+.kpi.brand { background: linear-gradient(180deg, #1a1a1a 0%, #0d0d0d 100%); border-color: rgba(229,9,20,0.3); }
+.kpi.brand::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--accent);
+}
+.spark { position: absolute; right: 16px; bottom: 14px; opacity: .6; }
+</style></head><body><div class="card">
+  <div class="kpi brand">
+    <div class="ey">Health score · média</div>
+    <div class="v">78<span style="font-size:24px; color: var(--fg-3);">/100</span></div>
+    <div class="d"><span class="delta">+4 pts</span><span>vs. mês anterior</span></div>
+    <svg class="spark" width="80" height="28" viewBox="0 0 80 28" fill="none"><polyline points="0,22 12,18 22,20 32,12 42,14 54,8 66,10 80,4" stroke="#e50914" stroke-width="2" fill="none"/></svg>
+  </div>
+  <div class="kpi">
+    <div class="ey">Fee recorrente</div>
+    <div class="v">R$ 482k</div>
+    <div class="d"><span class="delta">+12,4%</span><span>R$ 53k vs. abr</span></div>
+    <svg class="spark" width="80" height="28" viewBox="0 0 80 28" fill="none"><polyline points="0,18 12,16 22,14 32,12 42,10 54,8 66,6 80,2" stroke="#52cc5a" stroke-width="2" fill="none"/></svg>
+  </div>
+</div></body></html>

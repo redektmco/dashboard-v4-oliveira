@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Brand" name="Do / Don't" subtitle="Brand principles for product UI" viewport="700x340" --><html lang="pt-BR"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css"><style>
+.card { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.note {
+  background: var(--bg-elev-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+}
+.k { font: var(--t-eyebrow); letter-spacing:.08em; text-transform: uppercase; color: var(--fg-3); margin-bottom: 8px; }
+.note p { font: var(--t-body-sm); color: var(--fg-2); margin: 4px 0; }
+.tag {
+  display: inline-block; padding: 1px 8px;
+  background: var(--bg-elev-3); border-radius: 4px;
+  font: var(--t-mono-sm); color: var(--fg-2);
+}
+.do  { border-left: 2px solid var(--v4-green); padding-left: 12px; }
+.dont{ border-left: 2px solid var(--v4-red-500); padding-left: 12px; }
+.do .h, .dont .h { font: var(--t-body-strong); margin-bottom: 4px; }
+.do .h::before  { content: "✓ "; color: var(--v4-green); }
+.dont .h::before{ content: "✕ "; color: var(--v4-red-500); }
+</style></head><body><div class="card">
+  <div class="note">
+    <div class="k">Princípios da marca · do</div>
+    <div class="do"><div class="h">Vermelho como acento</div><p>CTAs, foco, status crítico — nunca como BG de painel inteiro.</p></div>
+    <div class="do" style="margin-top:12px;"><div class="h">Superfícies sólidas</div><p>Preto e cinzas planos. <span class="tag">--bg-elev-1</span> · <span class="tag">--bg-elev-2</span></p></div>
+    <div class="do" style="margin-top:12px;"><div class="h">Números primeiro</div><p>Tabular-nums, mono em IDs, R$ no padrão BR.</p></div>
+  </div>
+  <div class="note">
+    <div class="k">Não · evite</div>
+    <div class="dont"><div class="h">Gradientes</div><p>Brand book proíbe gradiente na logo — aplicar ao sistema também.</p></div>
+    <div class="dont" style="margin-top:12px;"><div class="h">Emoji em UI de produto</div><p>BI é operacional. Use cor + palavra.</p></div>
+    <div class="dont" style="margin-top:12px;"><div class="h">Logo vermelho em fundo escuro</div><p>Use o símbolo branco ou a moldura com BG claro.</p></div>
+  </div>
+</div></body></html>

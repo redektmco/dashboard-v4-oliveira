@@ -1,0 +1,30 @@
+/* Shared base for all DS preview cards.
+   Each card targets 700×<auto> and shows ONE concept clearly. */
+@import url("../colors_and_type.css");
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: var(--t-body);
+  -webkit-font-smoothing: antialiased;
+}
+.card {
+  padding: 28px;
+  min-height: 100%;
+}
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.col { display: flex; flex-direction: column; gap: 12px; }
+.eyebrow {
+  font: var(--t-eyebrow);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+.tag {
+  display: inline-flex; align-items: center;
+  font: var(--t-mono-sm);
+  color: var(--fg-3);
+}

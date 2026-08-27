@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Type" name="Metric numerics" subtitle="Hero KPI com sparkline + escala tabular-nums (xl→sm)" viewport="700x360" --><html lang="pt-BR"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css"><style>
+.card {
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 0;
+  min-height: 360px;
+}
+
+/* ============ LEFT: hero number ============ */
+.hero {
+  position: relative;
+  padding: 32px 36px 28px;
+  background:
+    radial-gradient(160% 80% at 0% 100%, rgba(229,9,20,0.18) 0%, transparent 55%),
+    var(--v4-black);
+  overflow: hidden;
+  display: flex; flex-direction: column;
+  justify-content: space-between;
+}
+.hero::after {
+  content: "";
+  position: absolute; right: -40px; top: -40px;
+  width: 240px; height: 240px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(229,9,20,0.12), transparent 65%);
+  pointer-events: none;
+}
+
+.hero .top {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 12px;
+  position: relative; z-index: 1;
+}
+.hero .ey {
+  font: 600 10px/1.3 var(--font-display);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.hero .ey i {
+  display: inline-block; width: 5px; height: 5px;
+  background: var(--accent); border-radius: 50%;
+  box-shadow: 0 0 0 3px rgba(229,9,20,0.18);
+}
+.hero .period {
+  font: var(--t-mono-sm);
+  color: var(--fg-4);
+  letter-spacing: 0.04em;
+}
+
+.hero .value {
+  position: relative; z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 18px 0 14px;
+}
+.hero .value .cur {
+  font: 500 26px/1 var(--font-display);
+  color: var(--fg-3);
+  letter-spacing: 0;
+  margin-right: 2px;
+}
+.hero .value .big {
+  font: 800 92px/0.85 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+  color: var(--fg);
+  background: linear-gradient(180deg, #ffffff 30%, #b3b3b3 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.hero .value .unit {
+  font: 800 36px/1 var(--font-display);
+  color: var(--fg-2);
+  letter-spacing: -0.02em;
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
+.hero .delta {
+  position: relative; z-index: 1;
+  display: inline-flex; align-items: center; gap: 8px;
+  font: 600 13px/1 var(--font-body);
+  color: var(--v4-green);
+}
+.hero .delta .pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(82,204,90,0.14);
+  border: 1px solid rgba(82,204,90,0.28);
+  color: var(--v4-green);
+  padding: 5px 9px;
+  border-radius: 999px;
+  font: 700 12px/1 var(--font-mono);
+  letter-spacing: -0.01em;
+}
+.hero .delta .sub {
+  color: var(--fg-3);
+  font: var(--t-body-sm);
+}
+
+.hero .spark {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 60px;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+/* ============ RIGHT: scale stack ============ */
+.scale {
+  background: var(--bg-elev-1);
+  padding: 22px 28px;
+  display: flex; flex-direction: column;
+  justify-content: space-between;
+  border-left: 1px solid var(--border);
+}
+.scale .lbl {
+  font: 600 10px/1.3 var(--font-display);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fg-4);
+  margin-bottom: 14px;
+}
+
+.s-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.s-row:last-of-type { border-bottom: 0; }
+.s-row .n {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+}
+.s-row.xl .n { font: 800 34px/1 var(--font-display); }
+.s-row.lg .n { font: 700 26px/1 var(--font-display); }
+.s-row.md .n { font: 700 19px/1 var(--font-display); color: var(--fg-2); }
+.s-row.sm .n { font: 600 14px/1 var(--font-display); color: var(--fg-3); }
+.s-row .tk {
+  font: var(--t-mono-sm);
+  color: var(--fg-4);
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.s-row .tk b {
+  color: var(--fg-2);
+  font-weight: 500;
+}
+</style></head><body><div class="card">
+
+  <!-- Left: hero KPI -->
+  <div class="hero">
+    <div class="top">
+      <span class="ey"><i></i>Faturamento da unidade</span>
+      <span class="period">mai · 2026</span>
+    </div>
+
+    <div class="value">
+      <span class="cur">R$</span>
+      <span class="big">482</span>
+      <span class="unit">k</span>
+    </div>
+
+    <div class="delta">
+      <span class="pill">↑ 12,4%</span>
+      <span class="sub">+ R$ 53k vs. abr · 95% da meta</span>
+    </div>
+
+    <svg class="spark" viewBox="0 0 400 60" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="g" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#e50914" stop-opacity="0.35"/>
+          <stop offset="100%" stop-color="#e50914" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <path d="M0,46 L33,42 L66,44 L100,32 L133,36 L166,28 L200,30 L233,22 L266,26 L300,18 L333,22 L366,12 L400,4 L400,60 L0,60 Z"
+        fill="url(#g)"/>
+      <polyline points="0,46 33,42 66,44 100,32 133,36 166,28 200,30 233,22 266,26 300,18 333,22 366,12 400,4"
+        stroke="#e50914" stroke-width="1.5" fill="none"
+        stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+
+  <!-- Right: scale stack -->
+  <div class="scale">
+    <div class="lbl">Escala de números · tabular-nums</div>
+
+    <div class="s-row xl">
+      <span class="n">R$ 482k</span>
+      <span class="tk"><b>xl</b> · 34/800</span>
+    </div>
+    <div class="s-row lg">
+      <span class="n">R$ 89,2k</span>
+      <span class="tk"><b>lg</b> · 26/700</span>
+    </div>
+    <div class="s-row md">
+      <span class="n">4,8×</span>
+      <span class="tk"><b>md</b> · 19/700</span>
+    </div>
+    <div class="s-row sm">
+      <span class="n">72 / 100</span>
+      <span class="tk"><b>sm</b> · 14/600</span>
+    </div>
+  </div>
+
+</div></body></html>

@@ -1,0 +1,202 @@
+/* =============================================================
+   V4 OLIVEIRA & CO — Design Tokens
+   Foundation colors + typography for the Unit BI Dashboard
+   Source: brand.v4company.com (official V4 Company brand book)
+   ============================================================= */
+
+/* ----- Font face (official brand: Montserrat) ---------------- */
+/* Montserrat is the official V4 Company brand book typeface and
+   is loaded from Google Fonts in <head>. Proxima Nova is also
+   referenced in the brand book for H1–H4 but is a commercial
+   font — we substitute Inter as the closest free analogue for
+   running UI/data text. Flag in README. */
+
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap");
+
+:root {
+
+  /* ============ BRAND COLORS — Vermelho (Red) ================= */
+  /* Pulled exactly from brand.v4company.com. The red is the V4
+     identity — use sparingly as accent, never as page background
+     in dense BI views (per brand: "Não usar logo vermelho em
+     fundo escuro"). Reserve for KPIs, CTAs, focus rings. */
+  --v4-red-500: #e50914;   /* primary */
+  --v4-red-600: #b20710;
+  --v4-red-700: #80050b;
+  --v4-red-900: #400306;
+
+  /* ============ NEUTRALS — Tons claros / escuros ============== */
+  --v4-white:    #ffffff;
+  --v4-gray-100: #e5e5e5;
+  --v4-gray-200: #cccccc;
+  --v4-gray-300: #b3b3b3;
+
+  --v4-gray-700: #333333;
+  --v4-gray-800: #262626;
+  --v4-gray-900: #1a1a1a;
+  --v4-black:    #000000;
+
+  /* Bridging tones (not in brand book — added for BI surfaces
+     where 4 stops aren't enough. Derived by interpolating
+     official tons). */
+  --v4-gray-50:  #f5f5f5;
+  --v4-gray-400: #8a8a8a;
+  --v4-gray-500: #666666;
+  --v4-gray-600: #4a4a4a;
+  --v4-gray-850: #202020;
+  --v4-gray-950: #0d0d0d;
+
+  /* ============ SECONDARIES (status semantics) ================ */
+  --v4-green:  #52cc5a;     /* success / healthy / on-track */
+  --v4-yellow: #ffc02a;     /* warning / at risk / attention */
+  /* Critical uses --v4-red-500 (no separate token) */
+
+  /* ============ SEMANTIC SURFACES (dark BI default) =========== */
+  --bg:          var(--v4-gray-950);   /* page background */
+  --bg-elev-1:   var(--v4-gray-900);   /* panel / card */
+  --bg-elev-2:   var(--v4-gray-850);   /* nested card / hover */
+  --bg-elev-3:   var(--v4-gray-800);   /* popover / menu */
+  --bg-inset:    var(--v4-black);      /* inset wells, charts */
+
+  --border:           rgba(255,255,255,0.08);
+  --border-strong:    rgba(255,255,255,0.14);
+  --border-focus:     var(--v4-red-500);
+
+  --fg:        var(--v4-white);          /* primary text */
+  --fg-2:      var(--v4-gray-300);        /* secondary text */
+  --fg-3:      var(--v4-gray-400);        /* tertiary / meta */
+  --fg-4:      var(--v4-gray-500);        /* disabled / dim */
+
+  --accent:        var(--v4-red-500);     /* brand accent */
+  --accent-hover:  var(--v4-red-600);
+  --accent-press:  var(--v4-red-700);
+  --on-accent:     var(--v4-white);
+
+  --status-healthy:  var(--v4-green);
+  --status-warning:  var(--v4-yellow);
+  --status-critical: var(--v4-red-500);
+  --status-neutral:  var(--v4-gray-400);
+
+  /* ============ TYPE FAMILIES ================================= */
+  --font-display: "Montserrat", "Inter", system-ui, sans-serif;
+  --font-body:    "Inter", "Montserrat", system-ui, sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  /* tabular-nums is enforced via font-variant-numeric on data cells */
+
+  /* ============ TYPE SCALE ==================================== */
+  /* Brand book H1–H4 (Proxima Nova → Inter sub). Adapted to
+     screen-density BI sizes; brand sizes (72/60) reserved for
+     the slide deck template only. */
+
+  /* --- Display: slide titles, hero numbers --- */
+  --t-display-1: 800 72px/1.05 var(--font-display);  /* brand H1 */
+  --t-display-2: 700 60px/1.05 var(--font-display);  /* brand H2 */
+  --t-display-3: 800 44px/1.1  var(--font-display);
+  --t-display-4: 800 32px/1.15 var(--font-display);
+
+  /* --- Headings (BI app density) --- */
+  --t-h1: 700 28px/1.2  var(--font-display);
+  --t-h2: 700 22px/1.25 var(--font-display);
+  --t-h3: 600 17px/1.3  var(--font-display);
+  --t-h4: 600 14px/1.35 var(--font-display);
+
+  /* --- Body --- */
+  --t-body:        400 14px/1.5  var(--font-body);
+  --t-body-strong: 600 14px/1.5  var(--font-body);
+  --t-body-sm:     400 13px/1.45 var(--font-body);
+  --t-caption:     500 11px/1.4  var(--font-body);
+
+  /* --- Numerics (KPI tiles + tables) --- */
+  --t-metric-xl:  700 40px/1.0 var(--font-display);
+  --t-metric-lg:  700 28px/1.0 var(--font-display);
+  --t-metric-md:  600 20px/1.1 var(--font-display);
+  --t-metric-sm:  600 15px/1.1 var(--font-display);
+
+  /* --- Mono / code / IDs --- */
+  --t-mono:    500 13px/1.4 var(--font-mono);
+  --t-mono-sm: 500 11px/1.4 var(--font-mono);
+
+  /* --- Labels (uppercase, eyebrow) --- */
+  --t-eyebrow: 600 11px/1.3 var(--font-display);
+  /* paired with letter-spacing: 0.08em; text-transform: uppercase */
+
+  /* ============ SPACING (4pt base) ============================ */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+
+  /* ============ RADII ========================================= */
+  /* V4 logo lives in a rounded-square "moldura" — corner radii
+     in the system echo that. */
+  --radius-sm:   4px;   /* chips, badges */
+  --radius-md:   8px;   /* buttons, inputs */
+  --radius-lg:   12px;  /* cards, panels */
+  --radius-xl:   16px;  /* hero modules */
+  --radius-pill: 999px;
+
+  /* ============ SHADOWS / ELEVATION =========================== */
+  /* Dark-theme shadows are subtle — mostly inner-glow & 1px
+     border rather than drop-shadow. Drop shadows reserved for
+     menus / modals lifting off the canvas. */
+  --shadow-1: 0 1px 0 rgba(255,255,255,0.04) inset,
+              0 1px 2px rgba(0,0,0,0.4);
+  --shadow-2: 0 4px 12px rgba(0,0,0,0.45),
+              0 1px 0 rgba(255,255,255,0.04) inset;
+  --shadow-3: 0 12px 32px rgba(0,0,0,0.55),
+              0 1px 0 rgba(255,255,255,0.05) inset;
+  --shadow-red-glow: 0 0 0 1px rgba(229,9,20,0.4),
+                     0 8px 24px rgba(229,9,20,0.18);
+
+  /* ============ MOTION ======================================== */
+  --ease-out:  cubic-bezier(0.16, 1, 0.3, 1);    /* @kind other */
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1); /* @kind other */
+  --dur-fast:   120ms;  /* @kind other */
+  --dur-base:   200ms;  /* @kind other */
+  --dur-slow:   320ms;  /* @kind other */
+
+  /* ============ DATA-VIZ PALETTE ============================== */
+  /* Categorical series for charts. Anchored on V4 red, then
+     extended with brand-secondary green/yellow + tonal cool
+     grays so a single chart can hold up to 6 series without
+     clashing with red brand accents. */
+  --viz-1: #e50914;  /* V4 red */
+  --viz-2: #ffc02a;  /* brand yellow */
+  --viz-3: #52cc5a;  /* brand green */
+  --viz-4: #b3b3b3;  /* neutral light */
+  --viz-5: #80050b;  /* deep red */
+  --viz-6: #4a4a4a;  /* deep neutral */
+}
+
+/* ----- Semantic element defaults --------------------------- */
+html, body { background: var(--bg); color: var(--fg); font: var(--t-body); }
+h1 { font: var(--t-h1); margin: 0; }
+h2 { font: var(--t-h2); margin: 0; }
+h3 { font: var(--t-h3); margin: 0; }
+h4 { font: var(--t-h4); margin: 0; }
+p  { margin: 0; }
+code, .mono { font: var(--t-mono); }
+.eyebrow {
+  font: var(--t-eyebrow);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+.metric { font: var(--t-metric-lg); font-variant-numeric: tabular-nums; }
+
+/* ----- Selection ------------------------------------------- */
+::selection { background: var(--v4-red-700); color: var(--v4-white); }
+
+/* ----- Focus ring ------------------------------------------ */
+:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}

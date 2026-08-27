@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Slides" name="Slide · Método V4" subtitle="Pillar distribution donut + legenda" viewport="1920x1080" -->
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>10 Distribuição · Método V4</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    html, body { width: 1920px; height: 1080px; overflow: hidden; }
+    body { display: flex; }
+    body > .slide { flex: 1; }
+  </style>
+</head>
+<body>
+<div class="slide donut">
+      <div class="slide-eyebrow">Distribuição · esforço por pilar</div>
+      <h2>Onde nossa energia foi parar em maio.</h2>
+
+      <div class="donut-layout">
+        <div class="donut-wrap">
+          <svg width="460" height="460" viewBox="0 0 460 460">
+            <!-- track -->
+            <circle cx="230" cy="230" r="200" stroke="rgba(255,255,255,0.05)" stroke-width="44" fill="none"/>
+            <!-- pillars (start at top, rotate -90deg in transform) -->
+            <g transform="rotate(-90 230 230)">
+              <!-- Aquisição 36% -->
+              <circle cx="230" cy="230" r="200" stroke="#e50914" stroke-width="44" fill="none"
+                stroke-dasharray="452.4 1256.6" stroke-dashoffset="0"/>
+              <!-- Engajamento 22% (starts at 36%) -->
+              <circle cx="230" cy="230" r="200" stroke="#ffc02a" stroke-width="44" fill="none"
+                stroke-dasharray="276.5 1256.6" stroke-dashoffset="-452.4"/>
+              <!-- Monetização 28% (starts at 58%) -->
+              <circle cx="230" cy="230" r="200" stroke="#52cc5a" stroke-width="44" fill="none"
+                stroke-dasharray="351.9 1256.6" stroke-dashoffset="-728.9"/>
+              <!-- Retenção 14% (starts at 86%) -->
+              <circle cx="230" cy="230" r="200" stroke="#b3b3b3" stroke-width="44" fill="none"
+                stroke-dasharray="175.9 1256.6" stroke-dashoffset="-1080.8"/>
+            </g>
+          </svg>
+          <div class="donut-center-big">
+            <div class="lbl">Método</div>
+            <div class="v">V4</div>
+          </div>
+        </div>
+
+        <div class="donut-legend">
+          <div class="row">
+            <i style="background:#e50914;"></i>
+            <span class="nm">Aquisição</span>
+            <span class="pct">36%</span>
+            <span class="ct">15 clientes</span>
+          </div>
+          <div class="row">
+            <i style="background:#ffc02a;"></i>
+            <span class="nm">Engajamento</span>
+            <span class="pct">22%</span>
+            <span class="ct">9 clientes</span>
+          </div>
+          <div class="row">
+            <i style="background:#52cc5a;"></i>
+            <span class="nm">Monetização</span>
+            <span class="pct">28%</span>
+            <span class="ct">12 clientes</span>
+          </div>
+          <div class="row">
+            <i style="background:#b3b3b3;"></i>
+            <span class="nm">Retenção</span>
+            <span class="pct">14%</span>
+            <span class="ct">6 clientes</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-foot">
+        <div class="brand"><img src="../assets/v4-simbolo.webp" alt=""> Oliveira &amp; Co · V4 Company</div>
+        <div class="meta"><span>Review mai/26</span><span>10 / 13</span></div>
+      </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<!-- @dsCard group="Colors" name="Neutrals" subtitle="Tons claros + tons escuros" viewport="700x320" --><html lang="pt-BR"><head><meta charset="utf-8"><link rel="stylesheet" href="_base.css"><style>
+.swatches { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.sw {
+  border-radius: var(--radius-md);
+  padding: 12px;
+  height: 96px;
+  display: flex; flex-direction: column; justify-content: space-between;
+  border: 1px solid var(--border);
+}
+.sw .name { font: var(--t-h4); }
+.sw .hex { font: var(--t-mono-sm); opacity: 0.75; }
+.sw.dark { color: #fff; }
+.sw.light { color: #1a1a1a; }
+</style></head><body><div class="card">
+  <div class="eyebrow" style="margin-bottom:12px;">Neutros · Tons claros</div>
+  <div class="swatches" style="margin-bottom:14px;">
+    <div class="sw light" style="background:#fff;"><div class="name">white</div><div class="hex">#ffffff</div></div>
+    <div class="sw light" style="background:#e5e5e5;"><div class="name">100</div><div class="hex">#e5e5e5</div></div>
+    <div class="sw light" style="background:#cccccc;"><div class="name">200</div><div class="hex">#cccccc</div></div>
+    <div class="sw light" style="background:#b3b3b3;"><div class="name">300</div><div class="hex">#b3b3b3</div></div>
+    <div class="sw light" style="background:#8a8a8a; color:#fff;"><div class="name">400</div><div class="hex">#8a8a8a</div></div>
+  </div>
+  <div class="eyebrow" style="margin-bottom:12px;">Tons escuros</div>
+  <div class="swatches">
+    <div class="sw dark" style="background:#333;"><div class="name">700</div><div class="hex">#333333</div></div>
+    <div class="sw dark" style="background:#262626;"><div class="name">800</div><div class="hex">#262626</div></div>
+    <div class="sw dark" style="background:#1a1a1a;"><div class="name">900</div><div class="hex">#1a1a1a</div></div>
+    <div class="sw dark" style="background:#0d0d0d;"><div class="name">950</div><div class="hex">#0d0d0d</div></div>
+    <div class="sw dark" style="background:#000;"><div class="name">black</div><div class="hex">#000000</div></div>
+  </div>
+</div></body></html>
