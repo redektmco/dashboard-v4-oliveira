@@ -5,14 +5,21 @@
 import { migrate } from "../src/lib/db";
 import { recomputeAll, recomputeRange, today } from "../src/lib/repo";
 
-const arg = process.argv.find((a) => a.startsWith("--days="));
-const days = arg ? Number(arg.split("=")[1]) : 0;
+async function main() {
+  const arg = process.argv.find((a) => a.startsWith("--days="));
+  const days = arg ? Number(arg.split("=")[1]) : 0;
 
-await migrate();
-const r = days > 0 ? await recomputeRange(days) : await recomputeAll();
-console.log(
-  days > 0
-    ? `Backfill de ${days} dias: ${r.snapshots} snapshots de ${r.clients} clientes.`
-    : `Recompute ${r.day}: ${r.clients} clientes.`,
-);
-console.log(`Referência: ${today()}`);
+  await migrate();
+  const r = days > 0 ? await recomputeRange(days) : await recomputeAll();
+  console.log(
+    days > 0
+      ? `Backfill de ${days} dias: ${r.snapshots} snapshots de ${r.clients} clientes.`
+      : `Recompute ${r.day}: ${r.clients} clientes.`,
+  );
+  console.log(`Referência: ${today()}`);
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
