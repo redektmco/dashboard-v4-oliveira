@@ -1,0 +1,10 @@
+# Normaliza fim de linha no repo: LF no git, nativo no working tree.
+* text=auto
+
+# Binarios
+*.webp binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
