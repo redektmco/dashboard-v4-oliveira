@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Referência do design system (kit React standalone, não faz parte do build).
+    "V4 Oliveira & Co Design System/**",
   ]),
 ]);
 

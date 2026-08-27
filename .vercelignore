@@ -1,0 +1,9 @@
+node_modules
+.next
+data
+*.db
+*.db-wal
+*.db-shm
+# Kit de referência do design system: os tokens já estão em globals.css e os
+# logos em public/brand. Fora do build, não precisa subir.
+V4 Oliveira & Co Design System
