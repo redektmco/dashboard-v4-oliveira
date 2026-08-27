@@ -7,10 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "tsx scripts/seed.ts",
-    "recompute": "tsx scripts/recompute.ts",
+    "seed": "dotenv -e .env.local -- tsx scripts/seed.ts",
+    "recompute": "dotenv -e .env.local -- tsx scripts/recompute.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test scripts/test.ts"
+    "test": "tsx --test scripts/test.ts",
+    "check": "dotenv -e .env.local -- tsx scripts/check.ts",
+    "migrate:sqlite": "dotenv -e .env.local -- tsx scripts/migrate-sqlite.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
@@ -23,6 +25,7 @@
     "@types/node": "^26.4.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv-cli": "^11.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
     "tailwindcss": "^4",
