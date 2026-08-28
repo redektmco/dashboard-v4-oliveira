@@ -3,10 +3,12 @@ import { lastCheckinByClient, portfolio, today } from "@/lib/repo";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
 import { daysBetween } from "@/lib/model/scoring";
 import { BandChip, Panel, Stat, dateBR } from "@/components/ui";
+import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountPage() {
+  await requireUser();
   const at = today();
   const [carteira, lastChk] = await Promise.all([portfolio(at), lastCheckinByClient()]);
   const lastBy = new Map(lastChk.map((s) => [s.client_id, s]));

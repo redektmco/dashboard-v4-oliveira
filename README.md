@@ -60,9 +60,42 @@ Fora da Vercel, agende `npm run recompute` no cron do host. Para proteger a rota
 | `/clientes/[id]` | todos | — | decomposição, histórico, planos |
 | `/modelo` | todos | — | pesos, réguas e justificativas, abertos |
 | `/config` | coordenação | — | clientes, metas, calibração, time |
+| `/usuarios` | admin | — | quem entra no painel, senha e permissão |
 
 Cada um preenche só o que controla. O GT não avalia relacionamento; o Account não estima métrica de
 mídia.
+
+---
+
+## Acesso
+
+Uso fechado da unidade: **não existe cadastro aberto**. Quem entra é criado por um administrador em
+`/usuarios`. Felipe e Michelle nascem administradores — `ensureAdmins()` roda no boot
+(`src/instrumentation.ts`), então um banco novo já sobe com acesso, sem passo manual.
+
+Todo usuário criado nasce com a senha padrão da unidade, `Oliveira@2026`, que o admin pode
+redefinir a qualquer momento pelo painel.
+
+| Peça | Onde | O que faz |
+|---|---|---|
+| `src/proxy.ts` | proxy do Next 16 (ex-middleware) | checagem otimista: sem cookie, manda para `/login` |
+| `src/lib/auth.ts` | servidor | senha em `scrypt`, sessão no banco, `requireUser` / `requireAdmin` |
+| `src/actions/auth.ts` | server actions | entrar, sair e administrar usuários |
+| `/usuarios` | página | criar acesso, resetar senha, promover a admin, desativar |
+
+**O proxy nunca é a única trava.** Server Actions chegam como POST na própria rota e podem escapar
+do matcher, então toda página e toda mutação chamam `requireUser()` no servidor — `getSessionUser`
+é embrulhado em `cache()`, então isso custa um round-trip por requisição, não um por chamada.
+
+A sessão vive na tabela `sessions` em vez de num cookie assinado: desativar alguém ou trocar a
+senha derruba o acesso na hora, e não há segredo novo para gerenciar em variável de ambiente.
+
+Recuperação, se ninguém conseguir entrar:
+
+```bash
+npm run usuarios                  # lista quem tem acesso
+npm run usuarios -- reset felipe  # volta a senha padrão
+```
 
 ---
 
@@ -125,10 +158,12 @@ cego. Um 82 com confiança baixa é um "não sei", não um "está tudo bem".
 
 ```
 src/
-  instrumentation.ts   cria o schema no boot (idempotente)
+  instrumentation.ts   cria o schema e garante os admins no boot (idempotente)
+  proxy.ts             trava de acesso otimista (Next 16: ex-middleware)
   lib/
     db/index.ts        conexão Neon + DDL + helpers (única fronteira com o banco)
     repo.ts            todo acesso a dados + recompute, sempre em lote
+    auth.ts            senha, sessão e guardas de rota
     seed.ts            carteira de demonstração
     model/
       types.ts         tipos de domínio
@@ -137,9 +172,10 @@ src/
       form.ts          formulário → snapshot  (puro, testado)
     week.ts            dia fixo do ritual do GT
   actions/index.ts     server actions
+  actions/auth.ts      login, logout e administração de usuários
   app/                 páginas
   components/          UI sobre o design system
-scripts/               seed · recompute (cron) · test · check · migrate-sqlite
+scripts/               seed · recompute (cron) · test · check · usuarios · migrate-sqlite
 ```
 
 **Princípio de arquitetura: snapshot datado, nunca sobrescrever.** Salvar performance ou check-in
@@ -154,8 +190,8 @@ e a recalibração pode reescrever 90 dias de série sem efeito colateral.
 **Neon Postgres**, driver HTTP serverless (`@neondatabase/serverless`), provisionado pelo
 Marketplace da Vercel — as env vars são injetadas no projeto automaticamente.
 
-Tabelas: `users`, `clients`, `client_targets`, `performance_snapshots`, `checkin_snapshots`,
-`score_snapshots`, `action_plans`, `settings`. Os snapshots guardam o preenchimento em `JSONB`, o
+Tabelas: `users`, `sessions`, `clients`, `client_targets`, `performance_snapshots`,
+`checkin_snapshots`, `score_snapshots`, `action_plans`, `settings`. Os snapshots guardam o preenchimento em `JSONB`, o
 que permite mudar o catálogo de campos sem migração de schema. Datas são `DATE`/`TIMESTAMPTZ` e
 voltam como texto (`::text` nas queries), porque o cálculo compara strings `YYYY-MM-DD`.
 

@@ -9,10 +9,12 @@ import { FieldBlock } from "@/components/form-fields";
 import { FillerSelect } from "@/components/filler-select";
 import { Panel, dateBR } from "@/components/ui";
 import { Icon } from "@/components/icon";
+import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function GtFormPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireUser();
   const { id } = await params;
   const client = await getClient(Number(id));
   if (!client) notFound();

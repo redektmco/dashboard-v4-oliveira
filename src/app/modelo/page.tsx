@@ -2,12 +2,14 @@ import { DIMENSIONS, SCALE_ANCHORS, fieldsFor } from "@/lib/model/catalog";
 import { getConfig, getWeights } from "@/lib/repo";
 import { ACCOUNT_TYPE_LABEL, type AccountType } from "@/lib/model/types";
 import { Panel } from "@/components/ui";
+import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 const TYPES: AccountType[] = ["lead_gen", "ecommerce", "branding"];
 
 export default async function ModeloPage() {
+  await requireUser();
   const [weights, cfg] = await Promise.all([getWeights(), getConfig()]);
   const total = DIMENSIONS.reduce((a, d) => a + (weights[d.key] ?? d.defaultWeight), 0);
 

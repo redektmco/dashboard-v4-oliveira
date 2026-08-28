@@ -26,6 +26,7 @@ import {
   dateBR,
 } from "@/components/ui";
 import { Icon } from "@/components/icon";
+import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,7 @@ export default async function ClientePage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ salvo?: string }>;
 }) {
+  await requireUser();
   const { id } = await params;
   const { salvo } = await searchParams;
   const clientId = Number(id);

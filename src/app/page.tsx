@@ -5,10 +5,12 @@ import { PortfolioTable, type Row } from "@/components/portfolio-table";
 import { BandChip, ClientLink, ConfidenceTag, Delta, Panel, Stat, brl, dateBR } from "@/components/ui";
 import { daysBetween } from "@/lib/model/scoring";
 import { Icon } from "@/components/icon";
+import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function CarteiraPage() {
+  await requireUser();
   const at = today();
   const [rows, plans] = await Promise.all([portfolio(at), listOpenPlans()]);
   const summary = portfolioSummary(rows);

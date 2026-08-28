@@ -5,10 +5,12 @@ import { currentRitualDate, RITUAL_LABEL, weekLabel } from "@/lib/week";
 import { BandChip, Panel, Stat, dateBR } from "@/components/ui";
 import { Icon } from "@/components/icon";
 import { daysBetween } from "@/lib/model/scoring";
+import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function GtPage() {
+  await requireUser();
   const ref = currentRitualDate();
   const at = today();
   // Em lote: uma query para a carteira, uma para o último preenchimento de

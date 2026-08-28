@@ -3,18 +3,26 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { signOut } from "@/actions/auth";
 import { Icon, type IconName } from "./icon";
 
-const LINKS: { href: string; label: string; hint: string; icon: IconName }[] = [
+const LINKS: { href: string; label: string; hint: string; icon: IconName; admin?: boolean }[] = [
   { href: "/", label: "Carteira", hint: "Coordenação", icon: "grid" },
   { href: "/gt", label: "Performance", hint: "GT · semanal", icon: "chart" },
   { href: "/account", label: "Check-in", hint: "Account · por contato", icon: "users" },
   { href: "/modelo", label: "Modelo", hint: "Pesos e réguas", icon: "target" },
   { href: "/config", label: "Configuração", hint: "Clientes, metas, calibração", icon: "settings" },
+  { href: "/usuarios", label: "Usuários", hint: "Acesso do time", icon: "shield", admin: true },
 ];
 
 /** Rail lateral persistente — padrão do BI da unidade. */
-export function Sidebar({ counts }: { counts?: Record<string, number> }) {
+export function Sidebar({
+  counts,
+  isAdmin = false,
+}: {
+  counts?: Record<string, number>;
+  isAdmin?: boolean;
+}) {
   const path = usePathname();
   return (
     <aside className="sticky top-0 flex h-screen w-[228px] shrink-0 flex-col border-r border-[var(--border-hair)] bg-black px-3.5 py-4">
@@ -29,7 +37,7 @@ export function Sidebar({ counts }: { counts?: Record<string, number> }) {
       </Link>
 
       <nav className="flex flex-col gap-0.5">
-        {LINKS.map((l) => {
+        {LINKS.filter((l) => !l.admin || isAdmin).map((l) => {
           const active = l.href === "/" ? path === "/" : path.startsWith(l.href);
           const count = counts?.[l.href];
           return (
@@ -68,8 +76,8 @@ export function Sidebar({ counts }: { counts?: Record<string, number> }) {
   );
 }
 
-/** Topbar fixa: onde estou + ação rápida. */
-export function Topbar() {
+/** Topbar fixa: onde estou + quem sou + ação rápida. */
+export function Topbar({ user }: { user?: { name: string; isAdmin: boolean } }) {
   const path = usePathname();
   const here =
     LINKS.find((l) => (l.href === "/" ? path === "/" : path.startsWith(l.href)))?.label ??
@@ -90,6 +98,20 @@ export function Topbar() {
           <Icon name="plus" size={14} />
           Check-in
         </Link>
+        {user && (
+          <div className="ml-2 flex items-center gap-2 border-l border-[var(--border-hair)] pl-3">
+            <span className="flex items-center gap-1.5 text-[13px] text-ink-300" title={user.isAdmin ? "Administrador" : undefined}>
+              {user.isAdmin && <Icon name="shield" size={13} className="text-v4-red" />}
+              {user.name}
+            </span>
+            <form action={signOut}>
+              <button className="btn btn-sm" title="Sair">
+                <Icon name="logout" size={14} />
+                Sair
+              </button>
+            </form>
+          </div>
+        )}
       </div>
     </div>
   );

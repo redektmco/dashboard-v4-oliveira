@@ -21,7 +21,7 @@ import { parseCheckinForm, parsePerformanceForm } from "@/lib/model/form";
 import { DEFAULT_CONFIG } from "@/lib/model/scoring";
 import type { AccountType, DimensionKey } from "@/lib/model/types";
 import { DIMENSIONS } from "@/lib/model/catalog";
-import { run } from "@/lib/db";
+import { requireUser } from "@/lib/auth";
 
 const str = (f: FormData, k: string) => (f.get(k) as string | null)?.trim() ?? "";
 const numOrNull = (f: FormData, k: string) => {
@@ -40,6 +40,7 @@ async function refresh(clientId: number) {
 /* ---------------------- input do GT (semanal) ---------------------- */
 
 export async function savePerformance(formData: FormData) {
+  await requireUser();
   const clientId = Number(str(formData, "client_id"));
   const accountType = str(formData, "account_type") as AccountType;
   const refDate = str(formData, "ref_date") || today();
@@ -67,6 +68,7 @@ export async function savePerformance(formData: FormData) {
 /* ------------------- input do Account (check-in) ------------------- */
 
 export async function saveCheckin(formData: FormData) {
+  await requireUser();
   const clientId = Number(str(formData, "client_id"));
   const refDate = str(formData, "ref_date") || today();
   const filledBy = Number(str(formData, "filled_by")) || null;
@@ -88,6 +90,7 @@ export async function saveCheckin(formData: FormData) {
 /* -------------------------- cadastro ------------------------------- */
 
 export async function upsertClient(formData: FormData) {
+  await requireUser();
   const id = Number(str(formData, "id")) || 0;
   const payload = {
     name: str(formData, "name"),
@@ -114,6 +117,7 @@ export async function upsertClient(formData: FormData) {
 }
 
 export async function toggleClientActive(formData: FormData) {
+  await requireUser();
   const id = Number(str(formData, "id"));
   const active = str(formData, "active") === "1" ? 0 : 1;
   await updateClient(id, { active });
@@ -121,16 +125,10 @@ export async function toggleClientActive(formData: FormData) {
   revalidatePath("/");
 }
 
-export async function createUser(formData: FormData) {
-  const name = str(formData, "name");
-  const role = str(formData, "role");
-  if (name) await run("INSERT INTO users (name, role) VALUES (?, ?)", [name, role]);
-  revalidatePath("/config");
-}
-
 /* ------------------------- calibração ------------------------------ */
 
 export async function saveWeights(formData: FormData) {
+  await requireUser();
   const weights: Partial<Record<DimensionKey, number>> = {};
   for (const d of DIMENSIONS) {
     const v = numOrNull(formData, `w_${d.key}`);
@@ -154,6 +152,7 @@ export async function saveWeights(formData: FormData) {
 }
 
 export async function resetWeights() {
+  await requireUser();
   await setSetting("weights", {});
   await setSetting("config", {});
   await recomputeRange(90);
@@ -162,6 +161,7 @@ export async function resetWeights() {
 }
 
 export async function runRecompute() {
+  await requireUser();
   await recomputeAll();
   revalidatePath("/");
 }
@@ -169,6 +169,7 @@ export async function runRecompute() {
 /* --------------------------- planos -------------------------------- */
 
 export async function addPlan(formData: FormData) {
+  await requireUser();
   const clientId = Number(str(formData, "client_id"));
   await createPlan({
     client_id: clientId,
@@ -182,6 +183,7 @@ export async function addPlan(formData: FormData) {
 }
 
 export async function setPlanStatus(formData: FormData) {
+  await requireUser();
   const id = Number(str(formData, "id"));
   const clientId = Number(str(formData, "client_id"));
   await updatePlanStatus(id, str(formData, "status") as never);

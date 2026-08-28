@@ -67,6 +67,25 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL CHECK (role IN ('gt','account','coord'))
 );
 
+-- Acesso: uso fechado da unidade. Quem preenche continua vivendo em users --
+-- as colunas abaixo dizem quem, alem disso, consegue entrar no painel.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS login TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin SMALLINT NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS active SMALLINT NOT NULL DEFAULT 1;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_login ON users (login);
+
+-- Sessao no banco, nao cookie assinado: permite revogar acesso na hora
+-- em que o admin desativa alguem, sem depender de segredo em env.
+CREATE TABLE IF NOT EXISTS sessions (
+  token TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id);
+
 CREATE TABLE IF NOT EXISTS clients (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,

@@ -2,11 +2,12 @@ import Link from "next/link";
 import { DIMENSIONS } from "@/lib/model/catalog";
 import { getAllTargets, getConfig, getWeights, listClients, listUsers } from "@/lib/repo";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
-import { resetWeights, runRecompute, saveWeights, toggleClientActive, createUser } from "@/actions";
+import { resetWeights, runRecompute, saveWeights, toggleClientActive } from "@/actions";
 import { ClientForm } from "@/components/client-form";
 import { Panel, brl, dateBR } from "@/components/ui";
 import { Icon } from "@/components/icon";
 import { RITUAL_LABEL } from "@/lib/week";
+import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,8 @@ export default async function ConfigPage({
 }: {
   searchParams: Promise<{ editar?: string; salvo?: string }>;
 }) {
+  const me = await requireUser();
+  const isAdmin = Boolean(me.is_admin);
   const { editar, salvo } = await searchParams;
   const [clients, users, weights, cfg, targetsBy] = await Promise.all([
     listClients(false),
@@ -167,7 +170,7 @@ export default async function ConfigPage({
         </Panel>
 
         <div className="space-y-4">
-          <Panel title="Time" subtitle="Quem preenche o quê. Sem login — a identificação fica no snapshot.">
+          <Panel title="Time" subtitle="Quem preenche o quê. O acesso ao painel se gerencia em Usuários.">
             <table className="data-table">
               <thead>
                 <tr>
@@ -193,21 +196,17 @@ export default async function ConfigPage({
                 ))}
               </tbody>
             </table>
-            <form action={createUser} className="flex flex-wrap items-end gap-2 px-4 py-3">
-              <label className="flex-1">
-                <span className="label">Nome</span>
-                <input name="name" required className="field mt-1" placeholder="Novo integrante" />
-              </label>
-              <label>
-                <span className="label">Papel</span>
-                <select name="role" className="field mt-1 w-auto">
-                  <option value="gt">GT</option>
-                  <option value="account">Account</option>
-                  <option value="coord">Coordenador</option>
-                </select>
-              </label>
-              <button className="btn">Adicionar</button>
-            </form>
+            {isAdmin && (
+              <div className="flex items-center justify-between gap-3 px-4 py-3">
+                <p className="text-[13px] text-ink-400">
+                  Criar acesso, resetar senha e desativar alguém fica no painel de usuários.
+                </p>
+                <Link href="/usuarios" className="btn shrink-0">
+                  <Icon name="shield" size={14} />
+                  Gerenciar usuários
+                </Link>
+              </div>
+            )}
           </Panel>
 
           <Panel title="Operação" subtitle="O único job é o recompute diário.">

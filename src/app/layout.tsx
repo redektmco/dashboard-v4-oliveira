@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono, Montserrat } from "next/font/google";
 import "./globals.css";
 import { Sidebar, Topbar } from "@/components/nav";
+import { getSessionUser } from "@/lib/auth";
 
 /* Montserrat = tipo oficial da marca (display).
    Inter = substituição livre para Proxima Nova no corpo/UI.
@@ -28,18 +29,27 @@ export const metadata: Metadata = {
     "Saúde da carteira da unidade a partir do input manual de GT e Account. Nosso negócio é vender o seu.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Sem sessão a única rota alcançável é /login, que não usa a moldura do app.
+  const user = await getSessionUser();
+
   return (
     <html
       lang="pt-BR"
       className={`${montserrat.variable} ${inter.variable} ${jetbrains.variable}`}
     >
       <body className="flex min-h-screen">
-        <Sidebar />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <Topbar />
-          <main className="mx-auto w-full max-w-[1480px] px-7 pb-16 pt-6">{children}</main>
-        </div>
+        {user ? (
+          <>
+            <Sidebar isAdmin={Boolean(user.is_admin)} />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <Topbar user={{ name: user.name, isAdmin: Boolean(user.is_admin) }} />
+              <main className="mx-auto w-full max-w-[1480px] px-7 pb-16 pt-6">{children}</main>
+            </div>
+          </>
+        ) : (
+          children
+        )}
       </body>
     </html>
   );

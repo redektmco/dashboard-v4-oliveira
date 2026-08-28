@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test scripts/test.ts",
     "check": "dotenv -e .env.local -- tsx scripts/check.ts",
-    "migrate:sqlite": "dotenv -e .env.local -- tsx scripts/migrate-sqlite.ts"
+    "migrate:sqlite": "dotenv -e .env.local -- tsx scripts/migrate-sqlite.ts",
+    "usuarios": "dotenv -e .env.local -- tsx scripts/usuarios.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
