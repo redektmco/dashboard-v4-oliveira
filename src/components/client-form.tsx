@@ -5,6 +5,7 @@ import Link from "next/link";
 import { targetKeysFor } from "@/lib/model/catalog";
 import { ACCOUNT_TYPE_LABEL, type AccountType, type Client, type User } from "@/lib/model/types";
 import { upsertClient } from "@/actions";
+import { NumberField } from "./number-field";
 import { Panel } from "./ui";
 
 export function ClientForm({
@@ -58,13 +59,9 @@ export function ClientForm({
           </label>
           <label className="block">
             <span className="label">MRR (R$)</span>
-            <input
-              name="mrr"
-              type="number"
-              step="0.01"
-              defaultValue={client?.mrr ?? ""}
-              className="field tnum mt-1"
-            />
+            <span className="mt-1 block">
+              <NumberField name="mrr" step="0.01" defaultValue={client?.mrr ?? ""} placeholder="0,00" />
+            </span>
           </label>
         </div>
 
@@ -115,15 +112,14 @@ export function ClientForm({
           </p>
           <div className="mt-2 space-y-2">
             {targetKeysFor(type).map((t) => (
-              <label key={t.key} className="grid grid-cols-[1fr_120px] items-center gap-2">
+              <label key={t.key} className="grid grid-cols-[1fr_136px] items-center gap-2">
                 <span className="text-xs text-ink-300">{t.label}</span>
-                <input
+                <NumberField
                   name={t.key}
-                  type="number"
                   step={t.decimals ? "0.01" : "1"}
                   defaultValue={targets[t.key] ?? ""}
-                  className="field tnum text-right"
                   placeholder="—"
+                  align="right"
                 />
               </label>
             ))}

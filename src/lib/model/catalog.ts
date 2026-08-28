@@ -380,32 +380,62 @@ const GT_COMMON: FieldDef[] = [
 /* Campos do Account — aba de Check-in (briefing 4)                    */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Âncoras genéricas da régua C5 — valem para qualquer pergunta de 1 a 5.
+ * Cada pergunta do check-in traz as suas próprias em `input.anchors`; estas
+ * são o fallback e o que a aba Modelo documenta.
+ */
 export const SCALE_ANCHORS: Record<number, string> = {
-  5: "Cliente demonstrou entusiasmo / elogiou espontaneamente",
-  4: "Positivo, tranquilo, sem ressalvas",
+  5: "Muito positivo — cliente elogia espontaneamente",
+  4: "Positivo — sem ressalvas",
   3: "Neutro — nem elogio nem queixa",
-  2: "Ressalva explícita, desconforto, cobrança",
-  1: "Insatisfação clara, tensão, ameaça velada",
+  2: "Ressalva explícita — desconforto ou cobrança",
+  1: "Negativo — insatisfação clara ou tensão",
 };
 
+/**
+ * Check-in do Account (briefing 4).
+ *
+ * As seis notas de 1 a 5 são PERGUNTAS FEITAS AO CLIENTE, ao vivo, na call —
+ * não a impressão que o Account escreve depois. O texto em `question` é para
+ * ser lido em voz alta; a nota registrada é a resposta do cliente. Isso muda
+ * a natureza do dado: sai de percepção de terceiro e vira declaração da
+ * fonte, que é o que sustenta comparar dois Accounts na mesma régua.
+ */
 const ACCOUNT_FIELDS: FieldDef[] = [
   {
     key: "q1_satisfaction",
-    label: "Satisfação percebida com resultado",
-    definition: "O que o cliente demonstrou sobre o resultado entregue, pela âncora da escala.",
+    label: "Satisfação com o resultado",
+    question:
+      "De 1 a 5, quanto você está satisfeito com o resultado que entregamos neste período?",
+    definition:
+      "Pergunte e registre a nota que o cliente der. Se ele responder por cima, peça o número: “me dá uma nota de 1 a 5”.",
     dimension: "relationship",
     source: "account",
     weight: 28,
     weightRationale: "É a leitura mais próxima da decisão de renovar. Maior peso da dimensão.",
     rule: "C5",
     accountTypes: "all",
-    input: { kind: "scale5", key: "q1_satisfaction", label: "Satisfação percebida com resultado" },
+    input: {
+      kind: "scale5",
+      key: "q1_satisfaction",
+      label: "Satisfação com o resultado",
+      anchors: {
+        5: "Muito satisfeito — superou o que esperava",
+        4: "Satisfeito — está entregando o combinado",
+        3: "Neutro — nem bom nem ruim",
+        2: "Pouco satisfeito — esperava mais",
+        1: "Insatisfeito — o resultado não está aceitável",
+      },
+    },
   },
   {
     key: "q3_trust",
-    label: "Confiança / intenção de continuidade",
+    label: "Intenção de continuidade",
+    question:
+      "De 1 a 5, qual a chance de você seguir com a gente no próximo ciclo do contrato?",
     definition:
-      "Sinais sobre continuar (fala de próximos passos, planeja, projeta) vs sinais de saída.",
+      "Pergunta direta de continuidade. Fazer sempre, mesmo com o cliente satisfeito — é o único jeito de ouvir a saída antes dela acontecer.",
     dimension: "relationship",
     source: "account",
     weight: 24,
@@ -413,25 +443,52 @@ const ACCOUNT_FIELDS: FieldDef[] = [
       "Proxy mais direto de churn declarado; só não é o maior porque o cliente costuma esconder.",
     rule: "C5",
     accountTypes: "all",
-    input: { kind: "scale5", key: "q3_trust", label: "Confiança / intenção de continuidade" },
+    input: {
+      kind: "scale5",
+      key: "q3_trust",
+      label: "Intenção de continuidade",
+      anchors: {
+        5: "Já conta com a gente — fala de próximos passos",
+        4: "Pretende seguir, sem ressalva relevante",
+        3: "Vai avaliar quando chegar a hora",
+        2: "Em dúvida — condicionou a continuidade a algo",
+        1: "Avaliando sair — já olhou alternativa",
+      },
+    },
   },
   {
     key: "q2_climate",
-    label: "Clima da relação (parceria vs tensão)",
-    definition: "Tom da conversa: parceria colaborativa de um lado, cobrança/tensão do outro.",
+    label: "Relacionamento e comunicação",
+    question:
+      "De 1 a 5, como você avalia o nosso relacionamento e a comunicação do time no dia a dia?",
+    definition:
+      "Separa resultado de relação: dá para entregar meta e ter a relação corroendo — e o cliente sai assim mesmo.",
     dimension: "relationship",
     source: "account",
     weight: 18,
     weightRationale: "Clima deteriora antes do discurso; peso médio-alto por ser antecipatório.",
     rule: "C5",
     accountTypes: "all",
-    input: { kind: "scale5", key: "q2_climate", label: "Clima da relação (parceria vs tensão)" },
+    input: {
+      kind: "scale5",
+      key: "q2_climate",
+      label: "Relacionamento e comunicação",
+      anchors: {
+        5: "Parceria — trata o time como extensão da casa",
+        4: "Boa relação, comunicação flui",
+        3: "Correto — sem proximidade nem atrito",
+        2: "Desgaste ou cobrança recorrente",
+        1: "Relação tensa — clima de conflito",
+      },
+    },
   },
   {
     key: "q5_engagement",
-    label: "Engajamento operacional",
+    label: "Ritmo do time do cliente",
+    question:
+      "De 1 a 5, quanto a sua equipe tem conseguido acompanhar o ritmo do projeto — aprovações, materiais e presença nas calls?",
     definition:
-      "Aprova criativo, responde, participa das calls, entrega insumo. Comportamento, não fala.",
+      "Pergunta que devolve a responsabilidade ao cliente sem acusar. Resposta baixa é um combinado a fazer, não uma queixa.",
     dimension: "relationship",
     source: "account",
     weight: 14,
@@ -442,13 +499,23 @@ const ACCOUNT_FIELDS: FieldDef[] = [
     input: {
       kind: "scale5",
       key: "q5_engagement",
-      label: "Engajamento operacional (aprova, responde, participa)",
+      label: "Ritmo do time do cliente",
+      anchors: {
+        5: "Responde rápido, aprova e traz insumo sem cobrança",
+        4: "Acompanha bem — atrasos pontuais",
+        3: "Acompanha quando cobrado",
+        2: "Trava aprovações e materiais com frequência",
+        1: "Quase não responde — o projeto anda sozinho",
+      },
     },
   },
   {
     key: "q6_expectation",
     label: "Expectativa vs entrega",
-    definition: "O que o cliente espera está alinhado com o que foi contratado e é entregável?",
+    question:
+      "De 1 a 5, o que estamos entregando corresponde ao que você esperava quando fechou o contrato?",
+    definition:
+      "Diagnóstico de causa: nota baixa aqui com resultado bom significa problema de escopo/venda, não de operação.",
     dimension: "relationship",
     source: "account",
     weight: 8,
@@ -459,13 +526,21 @@ const ACCOUNT_FIELDS: FieldDef[] = [
     input: {
       kind: "scale5",
       key: "q6_expectation",
-      label: "Expectativa vs entrega (alinhada vs desalinhada)",
+      label: "Expectativa vs entrega",
+      anchors: {
+        5: "Entrega acima do que foi combinado",
+        4: "Corresponde ao combinado",
+        3: "Corresponde em parte — algumas frentes ficaram no meio",
+        2: "Esperava algo bem diferente do que recebe",
+        1: "Sente que comprou outra coisa",
+      },
     },
   },
   {
     key: "attendance",
     label: "Presença no check-in",
-    definition: "O cliente compareceu, remarcou ou faltou ao contato agendado.",
+    definition:
+      "Registro do Account, não pergunta ao cliente: ele compareceu, remarcou ou faltou ao contato agendado.",
     dimension: "relationship",
     source: "account",
     weight: 8,
@@ -483,8 +558,10 @@ const ACCOUNT_FIELDS: FieldDef[] = [
   {
     key: "q4_lead_quality",
     label: "Qualidade de lead na visão do cliente",
+    question:
+      "De 1 a 5, como o seu time comercial avalia a qualidade dos leads que estão chegando?",
     definition:
-      "5 = elogiou a qualidade; 1 = reclamou muito. É a leitura do comercial do cliente, não a sua.",
+      "É a nota do comercial do cliente, não a sua. Se ele não souber, o combinado é levar a pergunta e trazer a nota no próximo check-in.",
     dimension: "lead_quality",
     source: "account",
     weight: 40,
@@ -496,12 +573,20 @@ const ACCOUNT_FIELDS: FieldDef[] = [
       kind: "scale5",
       key: "q4_lead_quality",
       label: "Qualidade de lead na visão do cliente",
+      anchors: {
+        5: "Elogiou — lead qualificado, dentro do perfil",
+        4: "Boa qualidade, com ressalva pequena",
+        3: "Mediana — converte o esperado",
+        2: "Reclamou — muito lead fora do perfil",
+        1: "Inaproveitáveis na visão do comercial",
+      },
     },
   },
   {
     key: "payment_ok",
     label: "Adimplência",
-    definition: "Não há fatura vencida além do limite acordado na data do check-in.",
+    definition:
+      "Registro do Account: não há fatura vencida além do limite acordado na data do check-in.",
     dimension: "financial",
     source: "account",
     weight: 70,

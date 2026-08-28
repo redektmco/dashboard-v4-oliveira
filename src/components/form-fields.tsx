@@ -1,5 +1,6 @@
 import { SCALE_ANCHORS } from "@/lib/model/catalog";
 import type { FieldDef } from "@/lib/model/types";
+import { NumberField } from "./number-field";
 
 const RULE_HINT: Record<string, string> = {
   A: "Régua A · min(100, real ÷ meta × 100)",
@@ -16,10 +17,13 @@ export function FieldBlock({
   field,
   values,
   defaults = {},
+  index,
 }: {
   field: FieldDef;
   values: Record<string, unknown>;
   defaults?: Record<string, number | string | null>;
+  /** Numeração da pergunta no roteiro da call, quando houver. */
+  index?: number;
 }) {
   const i = field.input;
   const val = (k: string) => {
@@ -27,15 +31,39 @@ export function FieldBlock({
     return v === null || v === undefined ? "" : String(v);
   };
 
-  return (
-    <div className="border-b border-[var(--border-hair)] px-4 py-4 last:border-b-0">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-semibold text-ink-100">{field.label}</h3>
-        <span className="text-[11px] text-ink-600">{RULE_HINT[field.rule]}</span>
-      </div>
-      <p className="mt-1 max-w-3xl text-xs leading-relaxed text-ink-400">{field.definition}</p>
+  // Perguntas de escala ocupam a linha inteira: o enunciado no topo e as
+  // cinco respostas em colunas iguais. Sem isso o bloco encostava na
+  // esquerda do painel e sobrava um vazio à direita.
+  const isQuestion = i.kind === "scale5";
 
-      <div className="mt-3">
+  return (
+    <div className="border-b border-[var(--border-hair)] px-5 py-5 last:border-b-0">
+      {isQuestion ? (
+        <div className="flex items-start gap-3">
+          {index !== undefined && (
+            <span className="tnum mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-ink-800 font-mono text-[11px] font-bold text-ink-400">
+              {index}
+            </span>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="eyebrow">{field.label}</div>
+            <p className="mt-1.5 font-display text-[16px] font-semibold leading-snug text-ink-100">
+              &ldquo;{field.question ?? field.label}&rdquo;
+            </p>
+            <p className="mt-1.5 text-xs leading-relaxed text-ink-400">{field.definition}</p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="text-sm font-semibold text-ink-100">{field.label}</h3>
+          <span className="text-[11px] text-ink-600">{RULE_HINT[field.rule]}</span>
+        </div>
+      )}
+      {!isQuestion && (
+        <p className="mt-1 max-w-3xl text-xs leading-relaxed text-ink-400">{field.definition}</p>
+      )}
+
+      <div className="mt-3.5">
         {i.kind === "pair" && (
           <div className="grid max-w-2xl gap-3 sm:grid-cols-2">
             <NumberInput name={i.realKey} label={i.realLabel} value={val(i.realKey)} decimals={i.decimals} required />
@@ -79,7 +107,9 @@ export function FieldBlock({
           />
         )}
 
-        {i.kind === "scale5" && <Scale5 name={i.key} current={Number(values[i.key]) || 0} />}
+        {i.kind === "scale5" && (
+          <Scale5 name={i.key} current={Number(values[i.key]) || 0} anchors={i.anchors} />
+        )}
 
         {i.kind === "date" && (
           <div className="max-w-xs">
@@ -109,16 +139,14 @@ export function NumberInput({
   return (
     <label className="block">
       <span className="label">{label}</span>
-      <input
-        name={name}
-        defaultValue={value}
-        inputMode="decimal"
-        step={decimals ? `0.${"0".repeat(decimals - 1)}1` : "1"}
-        type="number"
-        required={required}
-        className="field mt-1 tnum"
-        placeholder="0"
-      />
+      <span className="mt-1 block">
+        <NumberField
+          name={name}
+          defaultValue={value}
+          step={decimals ? `0.${"0".repeat(decimals - 1)}1` : "1"}
+          required={required}
+        />
+      </span>
       {hint && <span className="mt-1 block text-[11px] text-ink-600">{hint}</span>}
     </label>
   );
@@ -153,11 +181,31 @@ function RadioRow({
   );
 }
 
-/** Escala 1–5 com âncora comportamental — o Account escolhe a descrição, não o número. */
-function Scale5({ name, current }: { name: string; current: number }) {
+/**
+ * Escala 1–5 com âncora comportamental, em cinco colunas de largura igual.
+ * O Account lê a pergunta, o cliente responde o número, o Account confere a
+ * âncora — é ela que mantém dois Accounts na mesma régua.
+ */
+function Scale5({
+  name,
+  current,
+  anchors,
+}: {
+  name: string;
+  current: number;
+  anchors?: Record<number, string>;
+}) {
+  const text = (n: number) => anchors?.[n] ?? SCALE_ANCHORS[n];
+  const tone: Record<number, string> = {
+    5: "peer-checked:border-verde peer-checked:bg-verde-dim peer-checked:text-verde-fg",
+    4: "peer-checked:border-verde peer-checked:bg-verde-dim peer-checked:text-verde-fg",
+    3: "peer-checked:border-ink-600 peer-checked:bg-ink-800 peer-checked:text-ink-100",
+    2: "peer-checked:border-amarelo peer-checked:bg-amarelo-dim peer-checked:text-amarelo-fg",
+    1: "peer-checked:border-v4-red peer-checked:bg-vermelho-dim peer-checked:text-vermelho-fg",
+  };
   return (
-    <div className="grid max-w-3xl gap-1.5">
-      {[5, 4, 3, 2, 1].map((n) => (
+    <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-5">
+      {[1, 2, 3, 4, 5].map((n) => (
         <label key={n} className="cursor-pointer">
           <input
             type="radio"
@@ -167,12 +215,13 @@ function Scale5({ name, current }: { name: string; current: number }) {
             required
             className="peer sr-only"
           />
-          <span className="flex items-center gap-3 rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 text-[13px] text-ink-300 transition-colors peer-checked:border-v4-red peer-checked:bg-[rgba(229,9,20,0.12)] peer-checked:text-ink-100 hover:border-ink-600">
-            <span className="tnum flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-ink-800 text-xs font-bold">
+          <span
+            className={`flex h-full flex-row items-center gap-3 rounded-lg border border-ink-700 bg-ink-850 px-3 py-2.5 text-[12px] leading-snug text-ink-400 transition-colors hover:border-ink-600 sm:flex-col sm:items-start sm:gap-2 ${tone[n]}`}
+          >
+            <span className="tnum flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-black/40 font-display text-[13px] font-bold text-current">
               {n}
             </span>
-            <span>{SCALE_ANCHORS[n]}</span>
-            <span className="tnum ml-auto text-[11px] text-ink-600">{((n - 1) / 4) * 100} pts</span>
+            <span className="min-w-0">{text(n)}</span>
           </span>
         </label>
       ))}

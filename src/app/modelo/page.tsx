@@ -179,7 +179,7 @@ export default async function ModeloPage() {
 
       <Panel
         title="Âncoras da escala 1–5"
-        subtitle="O Account escolhe a descrição que bate com a call, não um número no vácuo. É o que mantém dois Accounts na mesma régua."
+        subtitle="A nota é a resposta do cliente à pergunta feita ao vivo na call. A âncora é a conferência do Account — é o que mantém dois Accounts na mesma régua. Cada pergunta do check-in tem a sua própria versão destas descrições."
       >
         <table className="data-table">
           <thead>
@@ -220,7 +220,14 @@ export default async function ModeloPage() {
             <tbody>
               {fieldsFor(t).map((f) => (
                 <tr key={f.key + f.source}>
-                  <td className="font-medium text-ink-100">{f.label}</td>
+                  <td className="max-w-[280px] font-medium text-ink-100">
+                    {f.label}
+                    {f.question && (
+                      <div className="mt-1 text-[11px] font-normal italic leading-snug text-ink-500">
+                        &ldquo;{f.question}&rdquo;
+                      </div>
+                    )}
+                  </td>
                   <td className="text-ink-400">{f.source === "gt" ? "GT" : "Account"}</td>
                   <td className="text-ink-400">
                     {DIMENSIONS.find((d) => d.key === f.dimension)!.label}

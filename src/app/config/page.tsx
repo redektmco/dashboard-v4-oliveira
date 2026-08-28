@@ -4,6 +4,7 @@ import { getAllTargets, getConfig, getWeights, listClients, listUsers } from "@/
 import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
 import { resetWeights, runRecompute, saveWeights, toggleClientActive } from "@/actions";
 import { ClientForm } from "@/components/client-form";
+import { NumberField } from "@/components/number-field";
 import { Panel, brl, dateBR } from "@/components/ui";
 import { Icon } from "@/components/icon";
 import { RITUAL_LABEL } from "@/lib/week";
@@ -132,13 +133,12 @@ export default async function ConfigPage({
                       {d.source} · padrão {d.defaultWeight}%
                     </div>
                   </div>
-                  <input
-                    type="number"
+                  <NumberField
                     name={`w_${d.key}`}
                     defaultValue={weights[d.key]}
                     min={0}
                     max={100}
-                    className="field tnum text-right"
+                    align="right"
                   />
                 </div>
               ))}
@@ -240,7 +240,9 @@ function Num({ name, label, value }: { name: string; label: string; value: numbe
   return (
     <label className="block">
       <span className="label">{label}</span>
-      <input type="number" name={name} defaultValue={value} className="field tnum mt-1" />
+      <span className="mt-1 block">
+        <NumberField name={name} defaultValue={value} />
+      </span>
     </label>
   );
 }

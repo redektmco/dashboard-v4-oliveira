@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getClient, getTargets, listUsers, perfSnapshots } from "@/lib/repo";
+import { getClient, getTargets, listFillers, perfSnapshots } from "@/lib/repo";
 import { fieldsFor } from "@/lib/model/catalog";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
 import { currentRitualDate, weekLabel } from "@/lib/week";
@@ -23,7 +23,7 @@ export default async function GtFormPage({ params }: { params: Promise<{ id: str
   const [history, targets, gts] = await Promise.all([
     perfSnapshots(client.id, 6),
     getTargets(client.id),
-    listUsers("gt"),
+    listFillers("gt"),
   ]);
   const last = history[0] ?? null;
 

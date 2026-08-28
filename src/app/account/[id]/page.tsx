@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { checkinSnapshots, getClient, listUsers, today } from "@/lib/repo";
+import { checkinSnapshots, getClient, listFillers, today } from "@/lib/repo";
 import { fieldsFor } from "@/lib/model/catalog";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
 import { saveCheckin } from "@/actions";
@@ -29,7 +29,7 @@ export default async function CheckinFormPage({ params }: { params: Promise<{ id
 
   const [history, accounts] = await Promise.all([
     checkinSnapshots(client.id, 6),
-    listUsers("account"),
+    listFillers("account"),
   ]);
   const last = history[0] ?? null;
 
@@ -71,7 +71,7 @@ export default async function CheckinFormPage({ params }: { params: Promise<{ id
         <input type="hidden" name="client_id" value={client.id} />
 
         <Panel>
-          <div className="flex flex-wrap items-end gap-4 px-4 py-3">
+          <div className="flex flex-wrap items-end gap-4 px-5 py-3.5">
             <label className="block">
               <span className="label">Data do check-in</span>
               <input type="date" name="ref_date" defaultValue={today()} className="field mt-1 w-auto" />
@@ -81,18 +81,18 @@ export default async function CheckinFormPage({ params }: { params: Promise<{ id
         </Panel>
 
         <Panel
-          title="Leitura da conversa"
-          subtitle="Escolha a descrição que bate com a call. A âncora é o que mantém dois Accounts na mesma régua."
+          title="Roteiro do check-in"
+          subtitle="Seis perguntas para fazer ao cliente, ao vivo, na ordem. Leia o enunciado em voz alta e registre a nota que ele der — a âncora abaixo do número é só a conferência."
         >
-          {scales.map((f) => (
-            <FieldBlock key={f.key} field={f} values={values} />
+          {scales.map((f, n) => (
+            <FieldBlock key={f.key} field={f} values={values} index={n + 1} />
           ))}
         </Panel>
 
-        <Panel title="Fatos objetivos" subtitle="Não é percepção — é registro.">
+        <Panel title="Fatos objetivos" subtitle="Registro do Account depois da call — não se pergunta ao cliente.">
           <FieldBlock field={attendance} values={values} />
           <FieldBlock field={payment} values={values} />
-          <div className="border-b border-[var(--border-hair)] px-4 py-4">
+          <div className="border-b border-[var(--border-hair)] px-5 py-5">
             <h3 className="font-display text-[15px] font-semibold text-ink-100">{renewal.label}</h3>
             <p className="mt-1 text-xs text-ink-400">{renewal.definition}</p>
             <div className="mt-3 max-w-xs">
@@ -105,7 +105,7 @@ export default async function CheckinFormPage({ params }: { params: Promise<{ id
             </div>
           </div>
 
-          <div className="px-4 py-4">
+          <div className="px-5 py-5">
             <h3 className="text-sm font-semibold text-vermelho-fg">Flag de risco explícito</h3>
             <p className="mt-1 max-w-3xl text-xs text-ink-400">
               Mencionou concorrente, corte de verba ou insatisfação séria? Marcar sim força a banda

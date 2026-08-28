@@ -16,11 +16,17 @@ import { daysBetween } from "@/lib/model/scoring";
 import { addPlan, setPlanStatus } from "@/actions";
 import { ScoreChart } from "@/components/score-chart";
 import {
+  CheckinHeatmap,
+  DimensionBars,
+  FieldBars,
+  LossBreakdown,
+  bandOf,
+} from "@/components/charts";
+import {
   BandChip,
   ConfidenceTag,
   HealthRing,
   Panel,
-  ScoreBar,
   bandFg,
   brl,
   dateBR,
@@ -30,16 +36,15 @@ import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-const RULE_SHORT: Record<string, string> = {
-  A: "A ↑",
-  B: "B ↓",
-  C5: "C 1–5",
-  BOOL: "C sim/não",
-  TRI: "C 3 níveis",
-  RATE: "A taxa",
-  TREND: "tendência",
-  RENEWAL: "exposição",
-};
+/** Perguntas do check-in, na ordem do roteiro, com o rótulo curto do mapa. */
+const CHECKIN_ROWS = [
+  { key: "q1_satisfaction", short: "Satisfação" },
+  { key: "q2_climate", short: "Relacionamento" },
+  { key: "q3_trust", short: "Continuidade" },
+  { key: "q4_lead_quality", short: "Qualidade de lead" },
+  { key: "q5_engagement", short: "Ritmo do cliente" },
+  { key: "q6_expectation", short: "Expectativa" },
+];
 
 export default async function ClientePage({
   params,
@@ -69,6 +74,15 @@ export default async function ClientePage({
   const renewalIn = client.renewal_date ? daysBetween(at, client.renewal_date) : null;
 
   const openPlans = plans.filter((p) => p.status === "aberto" || p.status === "em_andamento");
+
+  // Variação da série: primeiro ponto com dado vs último.
+  const serie = hist.filter((h): h is { day: string; score: number } => h.score !== null);
+  const delta = serie.length > 1 ? serie[serie.length - 1].score - serie[0].score : null;
+
+  const heatRows = CHECKIN_ROWS.map((r) => ({
+    ...r,
+    label: fieldByKey(r.key)?.question ?? fieldByKey(r.key)?.label ?? r.short,
+  }));
 
   return (
     <div className="space-y-5">
@@ -108,10 +122,25 @@ export default async function ClientePage({
       <div className="grid gap-3 lg:grid-cols-[320px_1fr]">
         <div className="panel p-5">
           <div className="flex items-center gap-4">
-            <HealthRing score={s.score} band={s.band} />
+            <HealthRing score={s.score} band={s.band} size={116} stroke={9} />
             <div className="space-y-2">
               <div className="eyebrow">Health score</div>
               <BandChip band={s.band} />
+              {delta !== null && (
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-ink-400">
+                  <Icon
+                    name={delta >= 0 ? "arrowUp" : "arrowDown"}
+                    size={11}
+                    stroke={3}
+                    className={delta >= 0 ? "text-verde-fg" : "text-vermelho-fg"}
+                  />
+                  <span className={`tnum ${delta >= 0 ? "text-verde-fg" : "text-vermelho-fg"}`}>
+                    {delta >= 0 ? "+" : "−"}
+                    {Math.abs(delta).toFixed(1).replace(".", ",")}
+                  </span>
+                  <span>na série</span>
+                </div>
+              )}
             </div>
           </div>
           <div className="mt-3 flex items-center justify-between">
@@ -153,7 +182,10 @@ export default async function ClientePage({
           </dl>
         </div>
 
-        <Panel title="Curva do score" subtitle="Recompute diário sobre a série de snapshots.">
+        <Panel
+          title="Curva do score"
+          subtitle="Recompute diário sobre a série de snapshots. Passe o mouse para ler um dia."
+        >
           <div className="px-2 pb-2 pt-3">
             <ScoreChart points={hist} />
           </div>
@@ -179,84 +211,79 @@ export default async function ClientePage({
         </div>
       )}
 
-      {/* -------- decomposição -------- */}
-      <Panel
-        title="Decomposição do score"
-        subtitle="Dimensão → campo → valor cru e normalizado. Aja na causa, não no sintoma."
-      >
-        <div className="divide-y divide-[var(--border-hair)]">
+      {/* -------- panorama visual: onde está e onde dói -------- */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <Panel
+          title="Panorama das dimensões"
+          subtitle="Mesma escala 0–100 para as cinco. As duas divisas no trilho são os pisos do amarelo e do verde."
+        >
+          <DimensionBars dimensions={s.dimensions} />
+        </Panel>
+        <Panel
+          title="Onde o score se perde"
+          subtitle="Peso × distância de 100. A soma das barras é exatamente o que falta para o score cheio — comece pela maior."
+        >
+          <LossBreakdown dimensions={s.dimensions} score={s.score} />
+        </Panel>
+      </div>
+
+      {/* -------- decomposição: um container por dimensão -------- */}
+      <div>
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="font-display text-[20px] font-bold tracking-tight text-ink-100">
+              Decomposição do score
+            </h2>
+            <p className="mt-1 text-[13px] text-ink-400">
+              Um bloco por dimensão: os campos que a formam, o valor cru e o normalizado. Aja na
+              causa, não no sintoma.
+            </p>
+          </div>
+          <span className="text-[11px] text-ink-600">
+            {s.dimensions.filter((d) => d.score !== null).length} de {s.dimensions.length} dimensões
+            com dado
+          </span>
+        </div>
+
+        <div className="grid gap-3 xl:grid-cols-2">
           {s.dimensions.map((d) => {
             const def = DIMENSIONS.find((x) => x.key === (d.key as DimensionKey))!;
+            const b = d.score === null ? null : bandOf(d.score);
             return (
-              <div key={d.key} className="px-4 py-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="font-display text-[15px] font-semibold text-ink-100">{d.label}</h3>
-                    <p className="mt-0.5 text-xs text-ink-500">
-                      {def.source} · peso {d.weight}%
-                      {d.effectiveWeight !== d.weight && d.score !== null && (
-                        <> · peso efetivo {d.effectiveWeight}% (renormalizado)</>
-                      )}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-32">
-                      <ScoreBar value={d.score} />
-                    </div>
-                    <span
-                      className={`tnum w-12 text-right font-display text-xl font-bold ${
-                        d.score === null
-                          ? "text-ink-600"
-                          : bandFg(d.score >= 75 ? "verde" : d.score >= 55 ? "amarelo" : "vermelho")
-                      }`}
-                    >
+              <Panel
+                key={d.key}
+                critical={b === "vermelho"}
+                title={d.label}
+                subtitle={`${def.source} · peso ${d.weight}%${
+                  d.effectiveWeight !== d.weight && d.score !== null
+                    ? ` · efetivo ${d.effectiveWeight}% (renormalizado)`
+                    : ""
+                }`}
+                right={
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span className={`tnum font-display text-[26px] font-bold leading-none ${bandFg(b)}`}>
                       {d.score === null ? "—" : Math.round(d.score)}
                     </span>
+                    <BandChip band={b} />
                   </div>
-                </div>
-
-                <table className="data-table mt-3">
-                  <thead>
-                    <tr>
-                      <th>Campo</th>
-                      <th>Valor cru</th>
-                      <th>Régua</th>
-                      <th className="text-right">Normalizado</th>
-                      <th className="text-right">Peso no bloco</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {d.fields.map((f) => (
-                      <tr key={f.key}>
-                        <td>
-                          <span className="text-ink-100">{f.label}</span>
-                          <div className="text-[11px] text-ink-600">
-                            {f.source === "gt" ? "GT" : "Account"}
-                            {f.note && <span className="text-amarelo-fg"> · {f.note}</span>}
-                          </div>
-                        </td>
-                        <td className="tnum text-ink-300">{f.raw}</td>
-                        <td className="text-[11px] text-ink-500">{RULE_SHORT[f.rule]}</td>
-                        <td
-                          className={`tnum text-right font-semibold ${
-                            f.score === null
-                              ? "text-ink-600"
-                              : bandFg(f.score >= 75 ? "verde" : f.score >= 55 ? "amarelo" : "vermelho")
-                          }`}
-                        >
-                          {f.score === null ? "fora do cálculo" : Math.round(f.score)}
-                        </td>
-                        <td className="tnum text-right text-ink-400">
-                          {f.score === null ? "—" : `${f.effectiveWeight}%`}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                }
+              >
+                <FieldBars fields={d.fields} />
+                <p className="border-t border-[var(--border-hair)] px-5 py-3 text-[11px] leading-relaxed text-ink-500">
+                  {def.rationale}
+                </p>
+              </Panel>
             );
           })}
         </div>
+      </div>
+
+      {/* -------- mapa da relação -------- */}
+      <Panel
+        title="Mapa dos check-ins"
+        subtitle="As seis perguntas do roteiro ao longo do tempo, do mais antigo ao mais recente. A linha que escurece é a que vira churn."
+      >
+        <CheckinHeatmap rows={heatRows} snapshots={checkins} />
       </Panel>
 
       {/* -------- planos -------- */}
@@ -388,7 +415,7 @@ export default async function ClientePage({
             <thead>
               <tr>
                 <th>Data</th>
-                <th>Notas (1–6)</th>
+                <th>Notas (1–5)</th>
                 <th>Por</th>
               </tr>
             </thead>
@@ -398,19 +425,12 @@ export default async function ClientePage({
                   <td className="tnum whitespace-nowrap">{dateBR(c.ref_date)}</td>
                   <td>
                     <div className="flex gap-1">
-                      {[
-                        "q1_satisfaction",
-                        "q2_climate",
-                        "q3_trust",
-                        "q4_lead_quality",
-                        "q5_engagement",
-                        "q6_expectation",
-                      ].map((k) => {
-                        const n = Number(c.data[k]) || 0;
+                      {CHECKIN_ROWS.map(({ key }) => {
+                        const n = Number(c.data[key]) || 0;
                         return (
                           <span
-                            key={k}
-                            title={fieldByKey(k)?.label}
+                            key={key}
+                            title={fieldByKey(key)?.question ?? fieldByKey(key)?.label}
                             className={`tnum flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold ${
                               n >= 4
                                 ? "bg-verde-dim text-verde-fg"

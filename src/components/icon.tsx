@@ -104,6 +104,26 @@ const PATHS = {
       <path d="M10 17l-5-5 5-5M5 12h11" />
     </>
   ),
+  /* Rail lateral: retângulo da tela com a coluna do menu destacada. */
+  panelLeft: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M10 4v16" />
+    </>
+  ),
+  chevronLeft: <path d="M15 5l-7 7 7 7" />,
+  chevronRight: <path d="M9 5l7 7-7 7" />,
+  layers: (
+    <>
+      <path d="M12 3l9 5-9 5-9-5 9-5z" />
+      <path d="M3 13l9 5 9-5" />
+    </>
+  ),
+  message: (
+    <>
+      <path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-4.6A8 8 0 0 1 5 5.3 8 8 0 0 1 21 12z" />
+    </>
+  ),
 } as const;
 
 export type IconName = keyof typeof PATHS;
