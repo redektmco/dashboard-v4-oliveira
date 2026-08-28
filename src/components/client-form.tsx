@@ -41,7 +41,7 @@ export function ClientForm({
           <input name="name" required defaultValue={client?.name} className="field mt-1" />
         </label>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="label">Tipo de conta</span>
             <select
@@ -65,7 +65,7 @@ export function ClientForm({
           </label>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="label">GT</span>
             <select name="gt_user_id" defaultValue={client?.gt_user_id ?? ""} className="field mt-1">

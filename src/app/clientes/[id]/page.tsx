@@ -24,9 +24,15 @@ import {
 } from "@/components/charts";
 import {
   BandChip,
+  CardList,
+  CardMeta,
+  CardRow,
   ConfidenceTag,
+  Empty,
   HealthRing,
+  PageHeader,
   Panel,
+  TableScroll,
   bandFg,
   brl,
   dateBR,
@@ -93,34 +99,25 @@ export default async function ClientePage({
         </div>
       )}
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <Link
-            href="/"
-            className="inline-flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-100"
-          >
-            <Icon name="arrowLeft" size={12} />
-            Carteira
-          </Link>
-          <h1 className="mt-1.5 font-display text-[28px] font-bold leading-tight tracking-tight">{client.name}</h1>
-          <p className="mt-1 text-sm text-ink-400">
-            {ACCOUNT_TYPE_LABEL[client.account_type]} · GT {client.gt_name ?? "—"} · Account{" "}
-            {client.account_name ?? "—"} · {brl(client.mrr)}/mês
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Link href={`/gt/${clientId}`} className="btn">
-            Preencher performance
-          </Link>
-          <Link href={`/account/${clientId}`} className="btn">
-            Registrar check-in
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        back={{ href: "/", label: "Carteira" }}
+        title={client.name}
+        description={`${ACCOUNT_TYPE_LABEL[client.account_type]} · GT ${client.gt_name ?? "—"} · Account ${client.account_name ?? "—"} · ${brl(client.mrr)}/mês`}
+        actions={
+          <>
+            <Link href={`/gt/${clientId}`} className="btn shrink-0">
+              Preencher performance
+            </Link>
+            <Link href={`/account/${clientId}`} className="btn shrink-0">
+              Registrar check-in
+            </Link>
+          </>
+        }
+      />
 
       {/* -------- cabeçalho do score -------- */}
       <div className="grid gap-3 lg:grid-cols-[320px_1fr]">
-        <div className="panel p-5">
+        <div className="panel p-4 sm:p-5">
           <div className="flex items-center gap-4">
             <HealthRing score={s.score} band={s.band} size={116} stroke={9} />
             <div className="space-y-2">
@@ -293,8 +290,51 @@ export default async function ClientePage({
           subtitle="Para cada risco: plano, dono e prazo. O loop fecha na revisão semanal."
         >
           {plans.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-ink-400">Nenhum plano registrado.</div>
+            <Empty>Nenhum plano registrado.</Empty>
           ) : (
+            <>
+              <CardList>
+                {plans.map((p) => (
+                  <CardRow key={p.id}>
+                    <div className="font-semibold text-ink-100">{p.risk}</div>
+                    <p className="mt-1 text-[13px] leading-snug text-ink-400">{p.plan}</p>
+                    <CardMeta
+                      items={[
+                        { label: "Dono", value: p.owner },
+                        {
+                          label: "Prazo",
+                          value: dateBR(p.due_date),
+                          className:
+                            p.due_date && p.due_date < at ? "text-vermelho-fg" : undefined,
+                        },
+                      ]}
+                    />
+                    <form action={setPlanStatus} className="mt-3 flex items-center gap-2">
+                      <input type="hidden" name="id" value={p.id} />
+                      <input type="hidden" name="client_id" value={clientId} />
+                      <select name="status" defaultValue={p.status} className="field">
+                        <option value="aberto">aberto</option>
+                        <option value="em_andamento">em andamento</option>
+                        <option value="concluido">concluído</option>
+                        <option value="cancelado">cancelado</option>
+                      </select>
+                      <button className="btn shrink-0">Salvar</button>
+                    </form>
+                    <a
+                      className="mt-2.5 inline-flex items-center gap-1 text-[12px] font-semibold text-v4-red"
+                      href={clickupUrl(client.name, p.risk, p.plan, p.due_date)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Abrir tarefa no ClickUp
+                      <Icon name="external" size={11} />
+                    </a>
+                  </CardRow>
+                ))}
+              </CardList>
+
+              <div className="hidden lg:block">
+              <TableScroll>
             <table className="data-table">
               <thead>
                 <tr>
@@ -341,6 +381,9 @@ export default async function ClientePage({
                 ))}
               </tbody>
             </table>
+              </TableScroll>
+              </div>
+            </>
           )}
         </Panel>
 
@@ -360,7 +403,7 @@ export default async function ClientePage({
               <span className="label">Plano</span>
               <textarea name="plan" required rows={3} className="field mt-1" />
             </label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid gap-2 sm:grid-cols-2">
               <label className="block">
                 <span className="label">Dono</span>
                 <input
@@ -383,6 +426,7 @@ export default async function ClientePage({
       {/* -------- histórico dos dois inputs -------- */}
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="Snapshots de performance" subtitle="GT · semanal, nunca sobrescrito">
+          <TableScroll>
           <table className="data-table">
             <thead>
               <tr>
@@ -408,9 +452,11 @@ export default async function ClientePage({
               )}
             </tbody>
           </table>
+          </TableScroll>
         </Panel>
 
         <Panel title="Check-ins" subtitle="Account · a cada contato">
+          <TableScroll>
           <table className="data-table">
             <thead>
               <tr>
@@ -462,6 +508,7 @@ export default async function ClientePage({
               )}
             </tbody>
           </table>
+          </TableScroll>
         </Panel>
       </div>
 

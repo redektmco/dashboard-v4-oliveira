@@ -37,7 +37,7 @@ export function FieldBlock({
   const isQuestion = i.kind === "scale5";
 
   return (
-    <div className="border-b border-[var(--border-hair)] px-5 py-5 last:border-b-0">
+    <div className="border-b border-[var(--border-hair)] px-4 py-4 last:border-b-0 sm:px-5 sm:py-5">
       {isQuestion ? (
         <div className="flex items-start gap-3">
           {index !== undefined && (
@@ -162,7 +162,9 @@ function RadioRow({
   current: string;
 }) {
   return (
-    <div className="flex flex-wrap gap-2">
+    /* Dois ou três botões dividindo a linha: no dedo, alvo largo e alto
+       vale mais que a largura justa do texto que o `flex-wrap` dava. */
+    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
       {options.map((o) => (
         <label key={o.value} className="cursor-pointer">
           <input
@@ -172,7 +174,7 @@ function RadioRow({
             defaultChecked={current === o.value}
             className="peer sr-only"
           />
-          <span className="block rounded-lg border border-ink-700 bg-ink-850 px-3.5 py-1.5 text-[13px] font-medium text-ink-300 transition-colors peer-checked:border-v4-red peer-checked:bg-[rgba(229,9,20,0.12)] peer-checked:text-ink-100 hover:border-ink-600">
+          <span className="flex min-h-[44px] items-center justify-center rounded-lg border border-ink-700 bg-ink-850 px-3.5 py-1.5 text-center text-[13px] font-medium text-ink-300 transition-colors peer-checked:border-v4-red peer-checked:bg-[rgba(229,9,20,0.12)] peer-checked:text-ink-100 hover:border-ink-600 sm:min-h-0 sm:block">
             {o.label}
           </span>
         </label>

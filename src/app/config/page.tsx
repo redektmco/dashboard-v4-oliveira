@@ -5,7 +5,16 @@ import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
 import { resetWeights, runRecompute, saveWeights, toggleClientActive } from "@/actions";
 import { ClientForm } from "@/components/client-form";
 import { NumberField } from "@/components/number-field";
-import { Panel, brl, dateBR } from "@/components/ui";
+import {
+  CardList,
+  CardMeta,
+  CardRow,
+  PageHeader,
+  Panel,
+  TableScroll,
+  brl,
+  dateBR,
+} from "@/components/ui";
 import { Icon } from "@/components/icon";
 import { RITUAL_LABEL } from "@/lib/week";
 import { requireUser } from "@/lib/auth";
@@ -33,13 +42,10 @@ export default async function ConfigPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-[28px] font-bold leading-tight tracking-tight">Configuração</h1>
-        <p className="mt-1 max-w-3xl text-sm text-ink-400">
-          Clientes, metas e calibração. Sem meta cadastrada não há régua A nem B — é o ponto que trava
-          o modelo, então é o primeiro a resolver.
-        </p>
-      </div>
+      <PageHeader
+        title="Configuração"
+        description="Clientes, metas e calibração. Sem meta cadastrada não há régua A nem B — é o ponto que trava o modelo, então é o primeiro a resolver."
+      />
 
       {salvo && (
         <div className="flex items-center gap-2 rounded-lg bg-verde-dim px-4 py-2.5 text-sm font-semibold text-verde-fg">
@@ -53,7 +59,66 @@ export default async function ConfigPage({
           title="Carteira cadastrada"
           subtitle={`${clients.filter((c) => c.active).length} ativos de ${clients.length}`}
         >
-          <table className="data-table">
+          {/* Oito colunas não cabem em 375px nem rolando: no celular
+              cada cliente vira um cartão com as duas ações no pé. */}
+          <CardList>
+            {clients.map((c) => {
+              const t = targetsBy.get(c.id) ?? {};
+              const semMeta = Object.keys(t).length === 0;
+              return (
+                <CardRow key={c.id} critical={semMeta && Boolean(c.active)}>
+                  <div className={c.active ? "" : "opacity-50"}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <Link href={`/clientes/${c.id}`} className="font-semibold text-ink-100">
+                          {c.name}
+                        </Link>
+                        <div className="mt-0.5 text-[11px] text-ink-500">
+                          {ACCOUNT_TYPE_LABEL[c.account_type]}
+                          {!c.active && " · inativo"}
+                        </div>
+                      </div>
+                      {semMeta ? (
+                        <span className="shrink-0 text-[11px] font-semibold text-vermelho-fg">
+                          sem meta
+                        </span>
+                      ) : (
+                        <span className="tnum shrink-0 text-[11px] text-verde-fg">
+                          {Object.keys(t).length} metas
+                        </span>
+                      )}
+                    </div>
+
+                    <CardMeta
+                      items={[
+                        { label: "GT", value: c.gt_name ?? "—" },
+                        { label: "Account", value: c.account_name ?? "—" },
+                        { label: "MRR", value: <span className="tnum">{brl(c.mrr)}</span> },
+                        { label: "Renovação", value: dateBR(c.renewal_date) },
+                      ]}
+                    />
+
+                    <div className="mt-3 flex gap-2">
+                      <Link href={`/config?editar=${c.id}`} className="btn flex-1 justify-center">
+                        Editar
+                      </Link>
+                      <form action={toggleClientActive} className="flex-1">
+                        <input type="hidden" name="id" value={c.id} />
+                        <input type="hidden" name="active" value={c.active} />
+                        <button className="btn w-full justify-center">
+                          {c.active ? "Desativar" : "Ativar"}
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                </CardRow>
+              );
+            })}
+          </CardList>
+
+          <div className="hidden lg:block">
+          <TableScroll>
+<table className="data-table">
             <thead>
               <tr>
                 <th>Cliente</th>
@@ -108,6 +173,8 @@ export default async function ConfigPage({
               })}
             </tbody>
           </table>
+</TableScroll>
+          </div>
         </Panel>
 
         <ClientForm
@@ -171,7 +238,8 @@ export default async function ConfigPage({
 
         <div className="space-y-4">
           <Panel title="Time" subtitle="Quem preenche o quê. O acesso ao painel se gerencia em Usuários.">
-            <table className="data-table">
+            <TableScroll>
+<table className="data-table">
               <thead>
                 <tr>
                   <th>Nome</th>
@@ -196,6 +264,7 @@ export default async function ConfigPage({
                 ))}
               </tbody>
             </table>
+</TableScroll>
             {isAdmin && (
               <div className="flex items-center justify-between gap-3 px-4 py-3">
                 <p className="text-[13px] text-ink-400">

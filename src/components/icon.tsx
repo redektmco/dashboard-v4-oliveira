@@ -124,6 +124,23 @@ const PATHS = {
       <path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-4.6A8 8 0 0 1 5 5.3 8 8 0 0 1 21 12z" />
     </>
   ),
+  chevronDown: <path d="M5 9l7 7 7-7" />,
+  /* Reticências = "mais" da barra de abas do celular. */
+  dots: (
+    <>
+      <circle cx="5" cy="12" r="1.5" />
+      <circle cx="12" cy="12" r="1.5" />
+      <circle cx="19" cy="12" r="1.5" />
+    </>
+  ),
+  x: <path d="M18 6 6 18M6 6l12 12" />,
+  filter: <path d="M3 5h18l-7 8v6l-4 2v-8L3 5z" />,
+  sort: (
+    <>
+      <path d="M4 7h13M4 12h9M4 17h5" />
+      <path d="M17 13l3 3 3-3" />
+    </>
+  ),
 } as const;
 
 export type IconName = keyof typeof PATHS;

@@ -7,8 +7,7 @@ import { currentRitualDate, weekLabel } from "@/lib/week";
 import { savePerformance } from "@/actions";
 import { FieldBlock } from "@/components/form-fields";
 import { FillerSelect } from "@/components/filler-select";
-import { Panel, dateBR } from "@/components/ui";
-import { Icon } from "@/components/icon";
+import { PageHeader, Panel, TableScroll, dateBR } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -38,39 +37,30 @@ export default async function GtFormPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Link
-            href="/gt"
-            className="inline-flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-100"
-          >
-            <Icon name="arrowLeft" size={12} />
-            Performance
-          </Link>
-          <h1 className="mt-1.5 font-display text-[28px] font-bold leading-tight tracking-tight">{client.name}</h1>
-          <p className="mt-1 text-sm text-ink-400">
-            {ACCOUNT_TYPE_LABEL[client.account_type]} · semana {weekLabel(ref)} · GT{" "}
-            {client.gt_name ?? "—"}
-          </p>
-        </div>
-        {last && (
-          <div className="panel px-4 py-2.5 text-xs text-ink-400">
-            Último snapshot: <strong className="text-ink-200">{dateBR(last.ref_date)}</strong> por{" "}
-            {last.filler ?? "—"}
-            <div className="mt-0.5 text-ink-600">Salvar não sobrescreve — gera um novo registro datado.</div>
+      <PageHeader
+        back={{ href: "/gt", label: "Performance" }}
+        title={client.name}
+        description={`${ACCOUNT_TYPE_LABEL[client.account_type]} · semana ${weekLabel(ref)} · GT ${client.gt_name ?? "—"}`}
+      />
+      {last && (
+        <div className="panel px-4 py-2.5 text-xs text-ink-400">
+          Último snapshot: <strong className="text-ink-200">{dateBR(last.ref_date)}</strong> por{" "}
+          {last.filler ?? "—"}
+          <div className="mt-0.5 text-ink-600">
+            Salvar não sobrescreve — gera um novo registro datado.
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <form action={savePerformance} className="space-y-4">
         <input type="hidden" name="client_id" value={client.id} />
         <input type="hidden" name="account_type" value={client.account_type} />
 
         <Panel>
-          <div className="flex flex-wrap items-end gap-4 px-4 py-3">
+          <div className="grid gap-3 px-4 py-3 sm:flex sm:flex-wrap sm:items-end sm:gap-4">
             <label className="block">
               <span className="label">Semana de referência</span>
-              <input type="date" name="ref_date" defaultValue={ref} className="field mt-1 w-auto" />
+              <input type="date" name="ref_date" defaultValue={ref} className="field mt-1 sm:w-auto" />
             </label>
             <FillerSelect users={gts} role="gt" />
           </div>
@@ -113,22 +103,28 @@ export default async function GtFormPage({ params }: { params: Promise<{ id: str
           </div>
         </Panel>
 
-        <div className="flex items-center gap-3">
-          <button type="submit" className="btn btn-primary">
-            Salvar snapshot da semana
-          </button>
-          <Link href="/gt" className="btn">
-            Cancelar
-          </Link>
-          <span className="text-xs text-ink-600">
-            As metas informadas passam a valer como meta vigente do cliente.
-          </span>
+        {/* No celular o formulário tem uns três metros de rolagem: o
+            salvar gruda acima da barra de abas em vez de esperar lá
+            embaixo. No desktop volta a ser uma linha comum. */}
+        <div className="form-actions">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <button type="submit" className="btn btn-primary justify-center">
+              Salvar snapshot da semana
+            </button>
+            <Link href="/gt" className="btn justify-center">
+              Cancelar
+            </Link>
+            <span className="hidden text-xs text-ink-600 lg:inline">
+              As metas informadas passam a valer como meta vigente do cliente.
+            </span>
+          </div>
         </div>
       </form>
 
       {history.length > 0 && (
         <Panel title="Histórico de preenchimento" subtitle="Série datada — o ativo do modelo.">
-          <table className="data-table">
+          <TableScroll>
+<table className="data-table">
             <thead>
               <tr>
                 <th>Semana</th>
@@ -148,6 +144,7 @@ export default async function GtFormPage({ params }: { params: Promise<{ id: str
               ))}
             </tbody>
           </table>
+</TableScroll>
         </Panel>
       )}
     </div>

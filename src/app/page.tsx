@@ -2,7 +2,22 @@ import Link from "next/link";
 import { portfolio, portfolioSummary, listOpenPlans, today } from "@/lib/repo";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
 import { PortfolioTable, type Row } from "@/components/portfolio-table";
-import { BandChip, ClientLink, ConfidenceTag, Delta, Panel, Stat, brl, dateBR } from "@/components/ui";
+import {
+  BandChip,
+  CardList,
+  CardMeta,
+  CardRow,
+  ClientLink,
+  ConfidenceTag,
+  Delta,
+  Empty,
+  PageHeader,
+  Panel,
+  Stat,
+  TableScroll,
+  brl,
+  dateBR,
+} from "@/components/ui";
 import { daysBetween } from "@/lib/model/scoring";
 import { Icon } from "@/components/icon";
 import { requireUser } from "@/lib/auth";
@@ -53,25 +68,19 @@ export default async function CarteiraPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <span className="eyebrow">Unidade Oliveira &amp; Co</span>
-          <h1 className="mt-1 font-display text-[28px] font-bold leading-tight tracking-tight">
-            Saúde da carteira
-          </h1>
-          <p className="mt-1 text-sm text-ink-400">
-            Recompute de {dateBR(at)} · {rows.length} contas ativas · ordenado por risco
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/modelo" className="btn">
+      <PageHeader
+        eyebrow="Unidade Oliveira & Co"
+        title="Saúde da carteira"
+        description={`Recompute de ${dateBR(at)} · ${rows.length} contas ativas · ordenado por risco`}
+        actions={
+          <Link href="/modelo" className="btn shrink-0">
             <Icon name="target" size={14} />
             Como o score é calculado
           </Link>
-        </div>
-      </div>
+        }
+      />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-5">
         <Stat
           label="Vermelho"
           value={summary.byBand.vermelho}
@@ -110,7 +119,7 @@ export default async function CarteiraPage() {
         title="Triagem diária"
         subtitle="Por exceção — só o que mudou ou não pode esperar. ~5 minutos."
       >
-        <div className="grid gap-px bg-[var(--border-hair)] md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-px bg-[var(--border-hair)] sm:grid-cols-2 xl:grid-cols-4">
           <TriageBox
             title="Trocou de banda (48h)"
             empty="Nenhuma troca de banda."
@@ -187,35 +196,66 @@ export default async function CarteiraPage() {
           subtitle="Cada risco tem plano, dono e prazo. O loop fecha na revisão semanal."
         >
           {plans.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-ink-400">Nenhum plano em aberto.</div>
+            <Empty>Nenhum plano em aberto.</Empty>
           ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Cliente</th>
-                  <th>Risco</th>
-                  <th>Dono</th>
-                  <th>Prazo</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
+            <>
+              <CardList>
                 {plans.map((p) => {
                   const late = p.due_date && p.due_date < at;
                   return (
-                    <tr key={p.id}>
-                      <td>
-                        <ClientLink id={p.client_id} name={p.client_name} />
-                      </td>
-                      <td className="max-w-[300px] text-ink-300">{p.risk}</td>
-                      <td className="text-ink-300">{p.owner}</td>
-                      <td className={late ? "text-vermelho-fg" : "text-ink-300"}>{dateBR(p.due_date)}</td>
-                      <td className="text-ink-300">{p.status.replace("_", " ")}</td>
-                    </tr>
+                    <CardRow key={p.id}>
+                      <ClientLink id={p.client_id} name={p.client_name} />
+                      <p className="mt-1 text-[13px] leading-snug text-ink-300">{p.risk}</p>
+                      <CardMeta
+                        items={[
+                          { label: "Dono", value: p.owner },
+                          {
+                            label: "Prazo",
+                            value: dateBR(p.due_date),
+                            className: late ? "text-vermelho-fg" : undefined,
+                          },
+                          { label: "Status", value: p.status.replace("_", " ") },
+                        ]}
+                      />
+                    </CardRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </CardList>
+
+              <div className="hidden lg:block">
+                <TableScroll>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Cliente</th>
+                        <th>Risco</th>
+                        <th>Dono</th>
+                        <th>Prazo</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {plans.map((p) => {
+                        const late = p.due_date && p.due_date < at;
+                        return (
+                          <tr key={p.id}>
+                            <td>
+                              <ClientLink id={p.client_id} name={p.client_name} />
+                            </td>
+                            <td className="max-w-[300px] text-ink-300">{p.risk}</td>
+                            <td className="text-ink-300">{p.owner}</td>
+                            <td className={late ? "text-vermelho-fg" : "text-ink-300"}>
+                              {dateBR(p.due_date)}
+                            </td>
+                            <td className="text-ink-300">{p.status.replace("_", " ")}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </TableScroll>
+              </div>
+            </>
           )}
         </Panel>
 
@@ -224,42 +264,76 @@ export default async function CarteiraPage() {
           subtitle="Renovação x health — onde o problema custa o contrato."
         >
           {renewals.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-ink-400">
-              Nenhuma renovação na janela.
-            </div>
+            <Empty>Nenhuma renovação na janela.</Empty>
           ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Cliente</th>
-                  <th>Renova em</th>
-                  <th>Score</th>
-                  <th className="text-right">MRR</th>
-                </tr>
-              </thead>
-              <tbody>
+            <>
+              <CardList>
                 {renewals.map((r) => {
                   const d = daysBetween(at, r.client.renewal_date!);
                   return (
-                    <tr key={r.client.id}>
-                      <td>
-                        <ClientLink id={r.client.id} name={r.client.name} />
-                        <div className="text-xs text-ink-500">{dateBR(r.client.renewal_date)}</div>
-                      </td>
-                      <td className={`tnum ${d <= 30 ? "text-amarelo-fg" : "text-ink-300"}`}>
-                        {d < 0 ? `vencida (${-d}d)` : `${d} dias`}
-                      </td>
-                      <td>
+                    <CardRow key={r.client.id} critical={r.score.band === "vermelho"}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <ClientLink id={r.client.id} name={r.client.name} />
+                          <div className="mt-0.5 text-[11px] text-ink-500">
+                            {dateBR(r.client.renewal_date)} · {brl(r.client.mrr)}/mês
+                          </div>
+                        </div>
                         <BandChip band={r.score.band}>
                           {r.score.score === null ? "—" : Math.round(r.score.score)}
                         </BandChip>
-                      </td>
-                      <td className="tnum text-right text-ink-300">{brl(r.client.mrr)}</td>
-                    </tr>
+                      </div>
+                      <p
+                        className={`tnum mt-2 text-[13px] font-semibold ${
+                          d <= 30 ? "text-amarelo-fg" : "text-ink-300"
+                        }`}
+                      >
+                        {d < 0 ? `renovação vencida há ${-d}d` : `renova em ${d} dias`}
+                      </p>
+                    </CardRow>
                   );
                 })}
-              </tbody>
-            </table>
+              </CardList>
+
+              <div className="hidden lg:block">
+                <TableScroll>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Cliente</th>
+                        <th>Renova em</th>
+                        <th>Score</th>
+                        <th className="text-right">MRR</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {renewals.map((r) => {
+                        const d = daysBetween(at, r.client.renewal_date!);
+                        return (
+                          <tr key={r.client.id}>
+                            <td>
+                              <ClientLink id={r.client.id} name={r.client.name} />
+                              <div className="text-xs text-ink-500">
+                                {dateBR(r.client.renewal_date)}
+                              </div>
+                            </td>
+                            <td className={`tnum ${d <= 30 ? "text-amarelo-fg" : "text-ink-300"}`}>
+                              {d < 0 ? `vencida (${-d}d)` : `${d} dias`}
+                            </td>
+                            <td>
+                              <BandChip band={r.score.band}>
+                                {r.score.score === null ? "—" : Math.round(r.score.score)}
+                              </BandChip>
+                            </td>
+                            <td className="tnum text-right text-ink-300">{brl(r.client.mrr)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </TableScroll>
+              </div>
+            </>
           )}
         </Panel>
       </div>
@@ -277,17 +351,22 @@ function TriageBox({
   empty: string;
 }) {
   return (
-    <div className="bg-ink-900 px-4 py-3">
-      <div className="flex items-center justify-between">
-        <span className="label">{title}</span>
+    <div className={`bg-ink-900 px-4 ${items.length ? "py-3" : "py-2.5 sm:py-3"}`}>
+      <div className="flex items-center gap-2">
+        <span className="label shrink-0">{title}</span>
+        {/* Caixa vazia vira uma linha só no celular: quatro "nada a fazer"
+            empilhados empurram a carteira para fora da primeira dobra. */}
+        {items.length === 0 && (
+          <span className="min-w-0 truncate text-[11px] text-ink-600 sm:hidden">— {empty}</span>
+        )}
         <span
-          className={`tnum text-xs font-semibold ${items.length ? "text-ink-100" : "text-ink-600"}`}
+          className={`tnum ml-auto text-xs font-semibold ${items.length ? "text-ink-100" : "text-ink-600"}`}
         >
           {items.length}
         </span>
       </div>
       {items.length === 0 ? (
-        <p className="mt-2 text-xs text-ink-600">{empty}</p>
+        <p className="mt-2 hidden text-xs text-ink-600 sm:block">{empty}</p>
       ) : (
         <ul className="mt-2 space-y-2">
           {items.slice(0, 5).map((i) => (
