@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { requireSocial } from "@/lib/auth";
 import { listPlanned } from "@/lib/social/db";
-import { Panel } from "@/components/ui";
-import { Icon } from "@/components/icon";
+import { Panel, PageHeader } from "@/components/ui";
 import type { PublishStatus } from "@/lib/social/types";
 
 export const dynamic = "force-dynamic";
@@ -34,21 +33,11 @@ export default async function PlanejamentoPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-[28px] font-bold leading-tight tracking-tight">
-            Planejamento
-          </h1>
-          <p className="mt-1 max-w-3xl text-sm text-ink-400">
-            Criativos aprovados com horário marcado. No horário, o worker publica sozinho no
-            Instagram da conta configurada no projeto.
-          </p>
-        </div>
-        <Link href="/social" className="btn btn-sm">
-          <Icon name="arrowLeft" size={14} />
-          Social media
-        </Link>
-      </div>
+      <PageHeader
+        back={{ href: "/social", label: "Social media" }}
+        title="Planejamento"
+        description="Criativos aprovados com horário marcado. No horário, o worker publica sozinho no Instagram da conta configurada no projeto."
+      />
 
       {planned.length === 0 ? (
         <Panel title="Nada agendado">

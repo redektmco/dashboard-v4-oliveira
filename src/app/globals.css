@@ -146,6 +146,65 @@ h4 {
 .field::placeholder {
   color: var(--color-ink-500);
 }
+
+/* Spinner nativo do input[type=number] não existe no kit: o desenho, o
+   tamanho e o azul do sistema destoam de tudo. Escondido em todo o app —
+   o valor continua editável por digitação e pelas setas do teclado.
+   Onde o passo importa, usar o <NumberField>, que traz stepper próprio. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Stepper do design system: par de botões colado à direita do campo. */
+.stepper {
+  position: relative;
+  display: block;
+}
+.stepper > .field {
+  padding-right: 2.25rem;
+}
+.stepper-btns {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  right: 1px;
+  display: flex;
+  flex-direction: column;
+  width: 1.75rem;
+  border-left: 1px solid var(--border-hair);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  overflow: hidden;
+}
+.stepper-btns button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-ink-800);
+  color: var(--color-ink-400);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+.stepper-btns button:first-child {
+  border-bottom: 1px solid var(--border-hair);
+}
+.stepper-btns button:hover {
+  background: var(--color-ink-700);
+  color: var(--color-ink-100);
+}
+.stepper-btns button:active {
+  background: var(--color-v4-red-700);
+  color: #fff;
+}
 select.field {
   appearance: none;
   background-image: linear-gradient(45deg, transparent 50%, var(--color-ink-400) 50%),
@@ -256,4 +315,306 @@ table.data-table tbody tr:hover {
 }
 table.data-table tbody tr:last-child td {
   border-bottom: 0;
+}
+
+/* =============================================================
+   MOBILE
+   O painel nasceu desktop-first: rail de 228px sempre visível,
+   tabelas de nove colunas e alvos de 28px. Mas quem registra o
+   check-in logo depois da call faz isso no celular, e o GT
+   confere a carteira no caminho para o cliente. Daqui para
+   baixo é a camada que torna a mesma informação utilizável em
+   uma tela de 375px — sem duplicar componente, sem duplicar as
+   regras de banda e sem tocar no que já funciona no desktop.
+   ============================================================= */
+
+:root {
+  /* Barra de abas + faixa do gesto do iPhone. Tudo que não pode
+     nascer embaixo da barra soma estas duas. */
+  --tabbar-h: 58px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+}
+
+html {
+  /* Safari em landscape aumenta a fonte por conta própria. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  /* Sem o "puxa e balança" da página inteira: o app tem áreas
+     roláveis próprias (tabelas) e o efeito confunde as duas. */
+  overscroll-behavior-y: none;
+}
+
+/* Flash cinza do toque no Android — o :active do kit já dá o retorno. */
+a,
+button,
+label,
+select,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---------------- Alvos de toque ---------------- */
+/* `pointer: coarse` = dedo. Só aí os alvos crescem; no desktop o kit
+   segue compacto, que é o que a densidade do BI pede. */
+
+@media (pointer: coarse) {
+  .btn {
+    min-height: 44px;
+    padding: 0 16px;
+  }
+  .btn-sm {
+    min-height: 38px;
+    padding: 0 12px;
+  }
+  /* iOS dá zoom em qualquer campo com fonte < 16px ao focar — e não
+     volta sozinho. 16px aqui é regra de plataforma, não estética. */
+  .field {
+    font-size: 16px;
+    min-height: 44px;
+    padding: 0.625rem 0.75rem;
+  }
+  select.field {
+    background-position: calc(100% - 18px) 55%, calc(100% - 13px) 55%;
+  }
+  .stepper > .field {
+    padding-right: 2.75rem;
+  }
+  .stepper-btns {
+    width: 2.25rem;
+  }
+}
+
+/* ---------------- Tabelas roláveis ---------------- */
+/* Toda tabela vive dentro de um .table-scroll. Sem isso a linha mais
+   larga estica o <main> e a página inteira passa a rolar na horizontal
+   — o sintoma clássico de "quebrou no celular". */
+
+.table-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  /* Sombra na borda enquanto sobra conteúdo escondido: sem ela ninguém
+     descobre que a tabela rola. Some sozinha ao chegar na ponta. */
+  background:
+    linear-gradient(to right, var(--color-ink-900) 30%, rgba(26, 26, 26, 0)) left center / 24px 100%
+      no-repeat,
+    linear-gradient(to left, var(--color-ink-900) 30%, rgba(26, 26, 26, 0)) right center / 24px 100%
+      no-repeat,
+    linear-gradient(to right, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0)) left center / 14px 100% no-repeat,
+    linear-gradient(to left, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0)) right center / 14px 100% no-repeat;
+  background-attachment: local, local, scroll, scroll;
+}
+
+@media (max-width: 640px) {
+  table.data-table {
+    font-size: 12.5px;
+  }
+  table.data-table th,
+  table.data-table td {
+    padding: 0.6rem 0.7rem;
+  }
+}
+
+/* Hover de linha não existe no dedo — e fica grudado depois do toque. */
+@media (hover: none) {
+  table.data-table tbody tr:hover {
+    background: transparent;
+  }
+}
+
+/* ---------------- Moldura mobile ---------------- */
+
+.app-main {
+  /* Espaço para a barra de abas + gesto: o último elemento da página
+     nunca nasce embaixo dela. */
+  padding-bottom: calc(var(--tabbar-h) + var(--safe-b) + 1.5rem);
+}
+@media (min-width: 1024px) {
+  .app-main {
+    padding-bottom: 4rem;
+  }
+}
+
+/* A moldura mobile some no desktop aqui, e não com `lg:hidden`: estas
+   regras vivem fora das camadas do Tailwind e venceriam o utilitário. */
+@media (min-width: 1024px) {
+  .mobile-header,
+  .tabbar {
+    display: none;
+  }
+}
+
+.mobile-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  padding-top: var(--safe-t);
+  background: rgba(13, 13, 13, 0.82);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border-hair);
+}
+
+.tabbar {
+  position: fixed;
+  z-index: 40;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  padding-bottom: var(--safe-b);
+  background: rgba(10, 10, 10, 0.94);
+  backdrop-filter: blur(18px);
+  border-top: 1px solid var(--border-hair);
+}
+.tabbar a,
+.tabbar button {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: var(--tabbar-h);
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-ink-400);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.tabbar a[data-active],
+.tabbar button[data-active] {
+  color: var(--color-ink-100);
+}
+/* Traço vermelho no topo da aba ativa — mesmo sinal do rail lateral. */
+.tabbar a[data-active]::before,
+.tabbar button[data-active]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 26px;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: var(--color-v4-red);
+}
+
+/* Gaveta do "Mais": rotas secundárias, identidade e sair. */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.6);
+  animation: v4-fade-in var(--dur-base) var(--ease-out);
+}
+.drawer-sheet {
+  position: fixed;
+  z-index: 51;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 82vh;
+  overflow-y: auto;
+  padding-bottom: calc(var(--safe-b) + 0.5rem);
+  background: var(--color-ink-900);
+  border-top: 1px solid var(--border-strong);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.6);
+  animation: v4-sheet-up 260ms var(--ease-out);
+}
+.drawer-grip {
+  width: 36px;
+  height: 4px;
+  margin: 10px auto 2px;
+  border-radius: 999px;
+  background: var(--color-ink-700);
+}
+
+@keyframes v4-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes v4-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .drawer-sheet,
+  .drawer-backdrop {
+    animation: none;
+  }
+}
+
+/* ---------------- Lista em cartões ---------------- */
+/* Substitui a tabela abaixo de `lg`. Mesma informação, empilhada:
+   identidade em cima, métricas em pares rótulo/valor, ação de largura
+   cheia no pé. Não é a tabela encolhida — é a mesma linha reescrita
+   para uma coluna só. */
+
+.card-row {
+  display: block;
+  border-bottom: 1px solid var(--border-hair);
+  padding: 0.875rem 1rem;
+}
+.card-row:last-child {
+  border-bottom: 0;
+}
+/* Mesma barra vermelha do .panel-critico: conta em crise se anuncia
+   igual no cartão e na tabela. */
+.card-row-critico {
+  box-shadow: inset 3px 0 0 var(--color-v4-red);
+  background: rgba(229, 9, 20, 0.04);
+}
+.card-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.625rem;
+}
+.card-meta dt {
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-ink-500);
+}
+.card-meta dd {
+  margin-top: 1px;
+  font-size: 12.5px;
+  color: var(--color-ink-300);
+}
+
+/* Barra de ação fixa dos formulários longos: salvar sem rolar de volta
+   ao pé da página. Vira estática no desktop, onde o botão já está à
+   vista. */
+.form-actions {
+  position: sticky;
+  bottom: calc(var(--tabbar-h) + var(--safe-b));
+  z-index: 20;
+  margin: 0 -1rem;
+  padding: 0.75rem 1rem;
+  background: rgba(13, 13, 13, 0.92);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid var(--border-hair);
+}
+@media (min-width: 1024px) {
+  .form-actions {
+    position: static;
+    margin: 0;
+    padding: 0;
+    background: none;
+    backdrop-filter: none;
+    border-top: 0;
+  }
 }

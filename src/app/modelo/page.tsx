@@ -1,7 +1,7 @@
 import { DIMENSIONS, SCALE_ANCHORS, fieldsFor } from "@/lib/model/catalog";
 import { getConfig, getWeights } from "@/lib/repo";
 import { ACCOUNT_TYPE_LABEL, type AccountType } from "@/lib/model/types";
-import { Panel } from "@/components/ui";
+import { PageHeader, Panel, TableScroll } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -15,20 +15,17 @@ export default async function ModeloPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-[28px] font-bold leading-tight tracking-tight">O modelo, aberto</h1>
-        <p className="mt-1 max-w-3xl text-sm text-ink-400">
-          Nenhum peso é chute — cada um sai de duas perguntas objetivas: quão cedo a dimensão avisa o
-          churn, e quão confiável é o dado. Dado duro e antecipatório pesa mais; nota subjetiva pesa
-          menos porque tem ruído.
-        </p>
-      </div>
+      <PageHeader
+        title="O modelo, aberto"
+        description="Nenhum peso é chute — cada um sai de duas perguntas objetivas: quão cedo a dimensão avisa o churn, e quão confiável é o dado. Dado duro e antecipatório pesa mais; nota subjetiva pesa menos porque tem ruído."
+      />
 
       <Panel
         title="Pesos das dimensões"
         subtitle={`Somam ${total}%. São hipótese inicial defensável — a recalibração trimestral troca hipótese por evidência.`}
       >
-        <table className="data-table">
+        <TableScroll>
+<table className="data-table">
           <thead>
             <tr>
               <th>Dimensão</th>
@@ -56,6 +53,7 @@ export default async function ModeloPage() {
             })}
           </tbody>
         </table>
+</TableScroll>
       </Panel>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -108,7 +106,8 @@ export default async function ModeloPage() {
             title="Overrides"
             subtitle="Média ponderada esconde um sinal fatal atrás de quatro bons. Estes furam a média."
           >
-            <table className="data-table">
+            <TableScroll>
+<table className="data-table">
               <thead>
                 <tr>
                   <th>Gatilho</th>
@@ -141,10 +140,12 @@ export default async function ModeloPage() {
                 </tr>
               </tbody>
             </table>
+</TableScroll>
           </Panel>
 
           <Panel title="Confiança do dado" subtitle="Separada da nota, sempre visível ao lado dela.">
-            <table className="data-table">
+            <TableScroll>
+<table className="data-table">
               <thead>
                 <tr>
                   <th>Condição</th>
@@ -168,6 +169,7 @@ export default async function ModeloPage() {
                 </tr>
               </tbody>
             </table>
+</TableScroll>
             <p className="px-4 py-3 text-xs leading-relaxed text-ink-400">
               Confiança baixa não zera o score — avisa o coordenador para não agir cego sobre número
               podre. Um 82 com confiança baixa é um &ldquo;não sei&rdquo;, não um &ldquo;está tudo
@@ -179,9 +181,10 @@ export default async function ModeloPage() {
 
       <Panel
         title="Âncoras da escala 1–5"
-        subtitle="O Account escolhe a descrição que bate com a call, não um número no vácuo. É o que mantém dois Accounts na mesma régua."
+        subtitle="A nota é a resposta do cliente à pergunta feita ao vivo na call. A âncora é a conferência do Account — é o que mantém dois Accounts na mesma régua. Cada pergunta do check-in tem a sua própria versão destas descrições."
       >
-        <table className="data-table">
+        <TableScroll>
+<table className="data-table">
           <thead>
             <tr>
               <th className="w-16">Nota</th>
@@ -199,6 +202,7 @@ export default async function ModeloPage() {
             ))}
           </tbody>
         </table>
+</TableScroll>
       </Panel>
 
       {TYPES.map((t) => (
@@ -207,7 +211,8 @@ export default async function ModeloPage() {
           title={`Campos — ${ACCOUNT_TYPE_LABEL[t]}`}
           subtitle="Cada campo tem definição objetiva: o preenchedor reporta um fato, não interpreta."
         >
-          <table className="data-table">
+          <TableScroll>
+<table className="data-table">
             <thead>
               <tr>
                 <th>Campo</th>
@@ -220,7 +225,14 @@ export default async function ModeloPage() {
             <tbody>
               {fieldsFor(t).map((f) => (
                 <tr key={f.key + f.source}>
-                  <td className="font-medium text-ink-100">{f.label}</td>
+                  <td className="max-w-[280px] font-medium text-ink-100">
+                    {f.label}
+                    {f.question && (
+                      <div className="mt-1 text-[11px] font-normal italic leading-snug text-ink-500">
+                        &ldquo;{f.question}&rdquo;
+                      </div>
+                    )}
+                  </td>
                   <td className="text-ink-400">{f.source === "gt" ? "GT" : "Account"}</td>
                   <td className="text-ink-400">
                     {DIMENSIONS.find((d) => d.key === f.dimension)!.label}
@@ -236,6 +248,7 @@ export default async function ModeloPage() {
               ))}
             </tbody>
           </table>
+</TableScroll>
         </Panel>
       ))}
 

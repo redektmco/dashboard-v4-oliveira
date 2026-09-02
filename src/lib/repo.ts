@@ -55,6 +55,20 @@ export const listUsers = (role?: User["role"]) =>
     ? all<User>("SELECT * FROM users WHERE role = ? ORDER BY name", [role])
     : all<User>("SELECT * FROM users ORDER BY role, name");
 
+/**
+ * Quem pode aparecer no "Preenchido por" de um formulário.
+ *
+ * Primeiro quem tem o papel. Se não houver ninguém — é o caso da unidade que
+ * ainda não cadastrou os GTs, ou logo depois de limpar o time de exemplo —
+ * cai para quem tem acesso ao painel, porque é quem de fato está preenchendo.
+ * Sem esse fallback o `select` fica vazio e o formulário não envia.
+ */
+export async function listFillers(role: User["role"]): Promise<User[]> {
+  const byRole = await listUsers(role);
+  if (byRole.length) return byRole;
+  return all<User>("SELECT * FROM users WHERE login IS NOT NULL AND active = 1 ORDER BY name");
+}
+
 /* ----------------------------- clients ----------------------------- */
 
 export type ClientRow = Client & { gt_name: string | null; account_name: string | null };

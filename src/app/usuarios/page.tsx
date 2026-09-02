@@ -6,7 +6,7 @@ import {
   adminToggleAdmin,
 } from "@/actions/auth";
 import { listAuthUsers, requireAdmin, SENHA_PADRAO } from "@/lib/auth";
-import { Panel } from "@/components/ui";
+import { CardList, CardRow, PageHeader, Panel, TableScroll } from "@/components/ui";
 import { Icon } from "@/components/icon";
 
 export const dynamic = "force-dynamic";
@@ -32,14 +32,16 @@ export default async function UsuariosPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-[28px] font-bold leading-tight tracking-tight">Usuários</h1>
-        <p className="mt-1 max-w-3xl text-sm text-ink-400">
-          Uso fechado da unidade: ninguém se cadastra sozinho. Todo acesso criado aqui nasce com a
-          senha padrão{" "}
-          <code className="rounded bg-ink-850 px-1 py-0.5 font-mono text-xs">{SENHA_PADRAO}</code>.
-        </p>
-      </div>
+      <PageHeader
+        title="Usuários"
+        description={
+          <>
+            Uso fechado da unidade: ninguém se cadastra sozinho. Todo acesso criado aqui nasce com a
+            senha padrão{" "}
+            <code className="rounded bg-ink-850 px-1 py-0.5 font-mono text-xs">{SENHA_PADRAO}</code>.
+          </>
+        }
+      />
 
       {ok && (
         <div className="flex items-center gap-2 rounded-lg bg-verde-dim px-4 py-2.5 text-sm font-semibold text-verde-fg">
@@ -59,7 +61,66 @@ export default async function UsuariosPage({
           title="Quem tem acesso"
           subtitle={`${comAcesso.filter((u) => u.active).length} ativos de ${comAcesso.length}`}
         >
-          <table className="data-table">
+          <CardList>
+            {comAcesso.map((u) => (
+              <CardRow key={u.id}>
+                <div className={u.active ? "" : "opacity-50"}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <span className="font-semibold text-ink-100">{u.name}</span>
+                      {u.id === me.id && (
+                        <span className="ml-2 text-[11px] text-ink-500">você</span>
+                      )}
+                      <div className="mt-0.5 font-mono text-[11px] text-ink-400">
+                        {u.login} · {ROLE_LABEL[u.role]}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      {u.is_admin ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-v4-red">
+                          <Icon name="shield" size={12} />
+                          Admin
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-ink-500">Usuário</span>
+                      )}
+                      {!u.active && (
+                        <div className="text-[11px] font-semibold text-vermelho-fg">inativo</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <form action={adminResetPassword} className="col-span-2">
+                      <input type="hidden" name="id" value={u.id} />
+                      <button className="btn w-full justify-center">
+                        <Icon name="key" size={13} />
+                        Resetar senha
+                      </button>
+                    </form>
+                    <form action={adminToggleAdmin}>
+                      <input type="hidden" name="id" value={u.id} />
+                      <input type="hidden" name="is_admin" value={u.is_admin} />
+                      <button className="btn w-full justify-center" disabled={u.id === me.id}>
+                        {u.is_admin ? "Tirar admin" : "Tornar admin"}
+                      </button>
+                    </form>
+                    <form action={adminToggleActive}>
+                      <input type="hidden" name="id" value={u.id} />
+                      <input type="hidden" name="active" value={u.active} />
+                      <button className="btn w-full justify-center" disabled={u.id === me.id}>
+                        {u.active ? "Desativar" : "Ativar"}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              </CardRow>
+            ))}
+          </CardList>
+
+          <div className="hidden lg:block">
+          <TableScroll>
+<table className="data-table">
             <thead>
               <tr>
                 <th>Nome</th>
@@ -120,6 +181,8 @@ export default async function UsuariosPage({
               ))}
             </tbody>
           </table>
+</TableScroll>
+          </div>
         </Panel>
 
         <Panel title="Novo usuário" subtitle="Cria o acesso já com a senha padrão da unidade.">
@@ -173,7 +236,8 @@ export default async function UsuariosPage({
           title="Time sem acesso"
           subtitle="Integrantes que já aparecem nos formulários mas ainda não entram no painel."
         >
-          <table className="data-table">
+          <TableScroll>
+<table className="data-table">
             <thead>
               <tr>
                 <th>Nome</th>
@@ -209,6 +273,7 @@ export default async function UsuariosPage({
               ))}
             </tbody>
           </table>
+</TableScroll>
         </Panel>
       )}
     </div>

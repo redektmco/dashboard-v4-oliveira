@@ -224,10 +224,16 @@ export function Panel({
   return (
     <section className={`panel ${critical ? "panel-critico" : ""} ${className}`}>
       {(title || right) && (
-        <header className="flex items-start justify-between gap-4 border-b border-[var(--border-hair)] px-5 py-4">
-          <div>
-            {title && <h2 className="font-display text-[17px] font-semibold text-ink-100">{title}</h2>}
-            {subtitle && <p className="mt-1 text-[13px] text-ink-400">{subtitle}</p>}
+        /* No celular o slot `right` (busca, score, botão) desce para baixo
+           do título em vez de disputar a mesma linha com ele. */
+        <header className="flex flex-col gap-3 border-b border-[var(--border-hair)] px-4 py-3.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
+          <div className="min-w-0">
+            {title && (
+              <h2 className="font-display text-[16px] font-semibold text-ink-100 sm:text-[17px]">
+                {title}
+              </h2>
+            )}
+            {subtitle && <p className="mt-1 text-[12.5px] text-ink-400 sm:text-[13px]">{subtitle}</p>}
           </div>
           {right}
         </header>
@@ -259,17 +265,129 @@ export function Stat({
   };
   return (
     <div
-      className={`panel px-[18px] py-4 ${
+      className={`panel px-3.5 py-3 sm:px-[18px] sm:py-4 ${
         accent ? "border-[rgba(229,9,20,0.25)] bg-black" : ""
       }`}
     >
       <div className="eyebrow">{label}</div>
-      <div className={`tnum mt-2 font-display text-[28px] font-bold leading-none ${tones[tone]}`}>
+      <div
+        className={`tnum mt-1.5 font-display text-[22px] font-bold leading-none sm:mt-2 sm:text-[28px] ${tones[tone]}`}
+      >
         {value}
       </div>
-      {hint && <div className="mt-2 text-xs leading-snug text-ink-400">{hint}</div>}
+      {/* A dica é o "por quê" do número; no celular ela sobrevive menor,
+          porque some justo quando a tela é a única fonte de contexto. */}
+      {hint && (
+        <div className="mt-1.5 text-[11px] leading-snug text-ink-400 sm:mt-2 sm:text-xs">{hint}</div>
+      )}
     </div>
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Responsivo                                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Envelope obrigatório de toda `table.data-table`. Sem ele a linha mais
+ * larga estica o `<main>` e a página inteira passa a rolar na
+ * horizontal — o jeito mais rápido de quebrar um layout no celular.
+ */
+export function TableScroll({ children }: { children: React.ReactNode }) {
+  return <div className="table-scroll">{children}</div>;
+}
+
+/**
+ * Cabeçalho de página. No celular o título encolhe e as ações viram uma
+ * linha rolável de largura cheia, em vez de espremer três botões de
+ * 36px lado a lado.
+ */
+export function PageHeader({
+  eyebrow,
+  title,
+  description,
+  actions,
+  back,
+}: {
+  eyebrow?: string;
+  title: string;
+  description?: React.ReactNode;
+  actions?: React.ReactNode;
+  back?: { href: string; label: string };
+}) {
+  return (
+    <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
+      <div className="min-w-0">
+        {back && (
+          <Link
+            href={back.href}
+            className="inline-flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-100"
+          >
+            <Icon name="arrowLeft" size={12} />
+            {back.label}
+          </Link>
+        )}
+        {eyebrow && <span className="eyebrow block">{eyebrow}</span>}
+        <h1
+          className={`font-display text-[22px] font-bold leading-tight tracking-tight sm:text-[26px] lg:text-[28px] ${
+            back || eyebrow ? "mt-1.5" : ""
+          }`}
+        >
+          {title}
+        </h1>
+        {description && (
+          <p className="mt-1 max-w-3xl text-[13px] text-ink-400 sm:text-sm">{description}</p>
+        )}
+      </div>
+      {actions && (
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:overflow-visible lg:px-0 lg:pb-0">
+          {actions}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Lista em cartões — o que substitui a tabela abaixo de `lg`. Não é a
+ * tabela encolhida: é a mesma linha reescrita para uma coluna só, com a
+ * identidade no topo e a ação de largura cheia no pé.
+ */
+export function CardList({ children }: { children: React.ReactNode }) {
+  return <div className="lg:hidden">{children}</div>;
+}
+
+export function CardRow({
+  critical = false,
+  children,
+}: {
+  critical?: boolean;
+  children: React.ReactNode;
+}) {
+  return <div className={`card-row ${critical ? "card-row-critico" : ""}`}>{children}</div>;
+}
+
+/** Pares rótulo/valor em duas colunas — as colunas da tabela, empilhadas. */
+export function CardMeta({
+  items,
+}: {
+  items: { label: string; value: React.ReactNode; className?: string }[];
+}) {
+  return (
+    <dl className="card-meta">
+      {items.map((i) => (
+        <div key={i.label}>
+          <dt>{i.label}</dt>
+          <dd className={i.className}>{i.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** Estado vazio compartilhado por tabela e lista de cartões. */
+export function Empty({ children }: { children: React.ReactNode }) {
+  return <div className="px-4 py-8 text-center text-sm text-ink-400">{children}</div>;
 }
 
 export function ClientLink({ id, name }: { id: number; name: string }) {

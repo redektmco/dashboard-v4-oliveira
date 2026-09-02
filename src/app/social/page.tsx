@@ -2,7 +2,7 @@ import Link from "next/link";
 import { canManageSocial, requireUser } from "@/lib/auth";
 import { listClients } from "@/lib/repo";
 import { listClientOrganic, listProjectSummaries } from "@/lib/social/db";
-import { Panel, Stat, ClientLink, dateBR } from "@/components/ui";
+import { Panel, Stat, ClientLink, dateBR, PageHeader, TableScroll } from "@/components/ui";
 import { Icon } from "@/components/icon";
 import { NewProjectForm } from "@/components/social/new-project-form";
 
@@ -35,23 +35,16 @@ export default async function SocialPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-[28px] font-bold leading-tight tracking-tight">
-            Social media
-          </h1>
-          <p className="mt-1 max-w-3xl text-sm text-ink-400">
-            Aprovação de criativos por swipe, planejamento e publicação automática no
-            Instagram. Orgânico por cliente da carteira.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link href="/social/planejamento" className="btn btn-sm">
+      <PageHeader
+        title="Social media"
+        description="Aprovação de criativos por swipe, planejamento e publicação automática no Instagram. Orgânico por cliente da carteira."
+        actions={
+          <Link href="/social/planejamento" className="btn btn-sm shrink-0">
             <Icon name="calendar" size={14} />
             Planejamento
           </Link>
-        </div>
-      </div>
+        }
+      />
 
       {ok && (
         <div className="flex items-center gap-2 rounded-lg bg-verde-dim px-4 py-2.5 text-sm font-semibold text-verde-fg">
@@ -84,40 +77,42 @@ export default async function SocialPage({
             Nenhum projeto ainda. {canManage ? "Crie o primeiro acima." : ""}
           </p>
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Cliente</th>
-                <th className="text-right">Projetos</th>
-                <th className="text-right">Criativos</th>
-                <th className="text-right">Aprovados</th>
-                <th className="text-right">Reprovados</th>
-                <th className="text-right">Pendentes</th>
-                <th className="text-right">Agendados</th>
-                <th className="text-right">Publicados</th>
-              </tr>
-            </thead>
-            <tbody>
-              {organic.map((c) => (
-                <tr key={`${c.clientId ?? "x"}-${c.clientName}`}>
-                  <td className="font-medium">
-                    {c.clientId ? (
-                      <ClientLink id={c.clientId} name={c.clientName} />
-                    ) : (
-                      c.clientName
-                    )}
-                  </td>
-                  <td className="tnum text-right text-ink-300">{c.projects}</td>
-                  <td className="tnum text-right text-ink-300">{c.total}</td>
-                  <td className="tnum text-right text-verde-fg">{c.approved}</td>
-                  <td className="tnum text-right text-vermelho-fg">{c.rejected}</td>
-                  <td className="tnum text-right text-ink-400">{c.pending}</td>
-                  <td className="tnum text-right text-amarelo-fg">{c.scheduled}</td>
-                  <td className="tnum text-right text-verde-fg">{c.published}</td>
+          <TableScroll>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th className="text-right">Projetos</th>
+                  <th className="text-right">Criativos</th>
+                  <th className="text-right">Aprovados</th>
+                  <th className="text-right">Reprovados</th>
+                  <th className="text-right">Pendentes</th>
+                  <th className="text-right">Agendados</th>
+                  <th className="text-right">Publicados</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {organic.map((c) => (
+                  <tr key={`${c.clientId ?? "x"}-${c.clientName}`}>
+                    <td className="font-medium">
+                      {c.clientId ? (
+                        <ClientLink id={c.clientId} name={c.clientName} />
+                      ) : (
+                        c.clientName
+                      )}
+                    </td>
+                    <td className="tnum text-right text-ink-300">{c.projects}</td>
+                    <td className="tnum text-right text-ink-300">{c.total}</td>
+                    <td className="tnum text-right text-verde-fg">{c.approved}</td>
+                    <td className="tnum text-right text-vermelho-fg">{c.rejected}</td>
+                    <td className="tnum text-right text-ink-400">{c.pending}</td>
+                    <td className="tnum text-right text-amarelo-fg">{c.scheduled}</td>
+                    <td className="tnum text-right text-verde-fg">{c.published}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
         )}
       </Panel>
 

@@ -20,12 +20,14 @@ export function FillerSelect({ users, role }: { users: User[]; role: "gt" | "acc
   }, [storageKey, users]);
 
   return (
-    <label className="flex items-center gap-2">
+    /* No celular vira campo empilhado de largura cheia, como os outros;
+       na barra do desktop continua sendo rótulo + select na mesma linha. */
+    <label className="block sm:flex sm:items-center sm:gap-2">
       <span className="label">Preenchido por</span>
       <select
         ref={ref}
         name="filled_by"
-        className="field w-auto py-1.5 text-xs"
+        className="field mt-1 sm:mt-0 sm:w-auto sm:py-1.5 sm:text-xs"
         defaultValue={users[0]?.id ?? ""}
         required
         onChange={(e) => localStorage.setItem(storageKey, e.target.value)}

@@ -44,7 +44,13 @@ export type InputSpec =
       decimals?: number;
     }
   | { kind: "number"; key: string; label: string; unit?: string; decimals?: number }
-  | { kind: "scale5"; key: string; label: string }
+  | {
+      kind: "scale5";
+      key: string;
+      label: string;
+      /** Âncoras 1–5 desta pergunta. Sem isto, caem nas genéricas. */
+      anchors?: Record<number, string>;
+    }
   | { kind: "bool"; key: string; label: string; trueLabel: string; falseLabel: string }
   | {
       kind: "tri";
@@ -58,6 +64,12 @@ export type InputSpec =
 export type FieldDef = {
   key: string;
   label: string;
+  /**
+   * Pergunta literal, na primeira pessoa, para o Account ler em voz alta na
+   * call. O critério do check-in é o que o cliente responde — não o que o
+   * Account deduz depois. Campos de fato objetivo não têm pergunta.
+   */
+  question?: string;
   /** Definição objetiva — o preenchedor reporta um fato, não interpreta. */
   definition: string;
   dimension: DimensionKey;
