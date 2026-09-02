@@ -54,6 +54,13 @@ const PATHS = {
   ),
   flag: <path d="M5 21V4h13l-2 5 2 5H5" />,
   plus: <path d="M5 12h14M12 5v14" />,
+  image: (
+    <>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <path d="M21 15l-5-5L5 21" />
+    </>
+  ),
   search: (
     <>
       <circle cx="11" cy="11" r="7" />

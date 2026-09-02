@@ -140,6 +140,18 @@ export async function requireAdmin(): Promise<AuthUser> {
   return u;
 }
 
+/** Quem opera Social media: o time de social (role) e os admins. */
+export function canManageSocial(u: Pick<AuthUser, "role" | "is_admin">): boolean {
+  return Boolean(u.is_admin) || u.role === "social";
+}
+
+/** Trava de servidor para as mutacoes de Social media. */
+export async function requireSocial(): Promise<AuthUser> {
+  const u = await requireUser();
+  if (!canManageSocial(u)) redirect("/social?erro=sem-permissao");
+  return u;
+}
+
 /* --------------------------- administração -------------------------- */
 
 export const listAuthUsers = () =>

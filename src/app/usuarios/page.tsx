@@ -11,7 +11,12 @@ import { Icon } from "@/components/icon";
 
 export const dynamic = "force-dynamic";
 
-const ROLE_LABEL = { gt: "GT", account: "Account Manager", coord: "Coordenação" } as const;
+const ROLE_LABEL = {
+  gt: "GT",
+  account: "Account Manager",
+  coord: "Coordenação",
+  social: "Social Media",
+} as const;
 
 export default async function UsuariosPage({
   searchParams,
@@ -140,6 +145,7 @@ export default async function UsuariosPage({
                 <option value="gt">GT</option>
                 <option value="account">Account Manager</option>
                 <option value="coord">Coordenação</option>
+                <option value="social">Social Media</option>
               </select>
             </label>
             <label className="block">

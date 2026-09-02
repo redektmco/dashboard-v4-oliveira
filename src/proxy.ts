@@ -27,7 +27,11 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Fora da trava: estáticos, favicon, a marca em /public e o job de recompute
-  // (autenticado pelo header x-recompute-token).
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|brand/|api/recompute).*)"],
+  // Fora da trava: estáticos, favicon, a marca em /public, o recompute e o
+  // worker de publicação (ambos por token), além das rotas públicas do
+  // cliente de Social media — o link de aprovação `/a/<token>` e sua API
+  // de decisão `/api/g/...`, protegidos pelo token do projeto na URL.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|brand/|api/recompute|api/social/publish|a/|api/g/).*)",
+  ],
 };

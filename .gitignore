@@ -47,3 +47,11 @@ data/
 
 # Symlinks com caminho absoluto desta maquina, gerados a partir de .agents/skills
 .claude/skills/
+
+.env*
+
+# Prototipo de origem do modulo Social media — ja integrado em src/
+aprovação-v4/
+
+# Exports soltos de planejamento
+*.csv

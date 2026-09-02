@@ -22,7 +22,7 @@ const str = (f: FormData, k: string) => (f.get(k) as string | null)?.trim() ?? "
 const bool = (f: FormData, k: string) => f.get(k) === "on" || f.get(k) === "1";
 const role = (f: FormData, k: string) => {
   const v = str(f, k);
-  return (["gt", "account", "coord"].includes(v) ? v : "gt") as User["role"];
+  return (["gt", "account", "coord", "social"].includes(v) ? v : "gt") as User["role"];
 };
 
 /* -------------------------- entrar e sair -------------------------- */

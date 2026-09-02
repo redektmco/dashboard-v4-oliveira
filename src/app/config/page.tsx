@@ -184,7 +184,13 @@ export default async function ConfigPage({
                   <tr key={u.id}>
                     <td className="font-medium">{u.name}</td>
                     <td className="text-ink-400">
-                      {u.role === "gt" ? "GT" : u.role === "account" ? "Account Manager" : "Coordenador"}
+                      {u.role === "gt"
+                        ? "GT"
+                        : u.role === "account"
+                          ? "Account Manager"
+                          : u.role === "social"
+                            ? "Social Media"
+                            : "Coordenador"}
                     </td>
                     <td className="tnum text-right text-ink-400">
                       {

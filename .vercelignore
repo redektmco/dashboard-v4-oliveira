@@ -7,3 +7,6 @@ data
 # Kit de referência do design system: os tokens já estão em globals.css e os
 # logos em public/brand. Fora do build, não precisa subir.
 V4 Oliveira & Co Design System
+
+# Protótipo de origem do módulo de Social media — já integrado em src/.
+aprovação-v4

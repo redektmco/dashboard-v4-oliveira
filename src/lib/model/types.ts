@@ -92,7 +92,7 @@ export type Client = {
   created_at: string;
 };
 
-export type User = { id: number; name: string; role: "gt" | "account" | "coord" };
+export type User = { id: number; name: string; role: "gt" | "account" | "coord" | "social" };
 
 export type Snapshot = {
   id: number;

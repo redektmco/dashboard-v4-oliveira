@@ -64,8 +64,14 @@ const DDL = `
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('gt','account','coord'))
+  role TEXT NOT NULL CHECK (role IN ('gt','account','coord','social'))
 );
+
+-- Abre o papel 'social' num banco que ja nasceu antes dele existir. O CHECK
+-- do CREATE acima so vale na criacao; em base existente re-cria a restricao.
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check
+  CHECK (role IN ('gt','account','coord','social'));
 
 -- Acesso: uso fechado da unidade. Quem preenche continua vivendo em users --
 -- as colunas abaixo dizem quem, alem disso, consegue entrar no painel.
@@ -172,6 +178,51 @@ CREATE TABLE IF NOT EXISTS settings (
   value JSONB NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- =====================================================================
+-- Social media — aprovacao de criativos + planejamento + publicacao IG.
+-- Ids sao texto (prj_/pst_) para casar com o app; um projeto e um board
+-- de aprovacao ligado (opcionalmente) a um cliente da carteira.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS sm_projects (
+  id TEXT PRIMARY KEY,
+  client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  client_name TEXT NOT NULL,
+  ig_handle TEXT NOT NULL,
+  guest_token TEXT NOT NULL UNIQUE,
+  archived SMALLINT NOT NULL DEFAULT 0,
+  -- Credenciais da conta Instagram Business, por projeto (ready-to-wire).
+  ig_user_id TEXT,
+  ig_access_token TEXT,
+  created_by INTEGER REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_sm_projects_client ON sm_projects (client_id);
+
+CREATE TABLE IF NOT EXISTS sm_posts (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES sm_projects(id) ON DELETE CASCADE,
+  ord INTEGER NOT NULL,
+  caption TEXT NOT NULL DEFAULT '',
+  assets JSONB NOT NULL DEFAULT '[]'::jsonb,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','approved','rejected')),
+  decided_at TIMESTAMPTZ,
+  feedback TEXT,
+  history JSONB NOT NULL DEFAULT '[]'::jsonb,
+  -- Planejamento e publicacao automatica no Instagram.
+  scheduled_at TIMESTAMPTZ,
+  publish_status TEXT NOT NULL DEFAULT 'draft'
+    CHECK (publish_status IN ('draft','scheduled','publishing','published','failed')),
+  published_at TIMESTAMPTZ,
+  ig_media_id TEXT,
+  publish_error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_sm_posts_project ON sm_posts (project_id, ord);
+CREATE INDEX IF NOT EXISTS idx_sm_posts_due
+  ON sm_posts (publish_status, scheduled_at);
 `;
 
 let migrated = false;

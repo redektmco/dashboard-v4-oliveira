@@ -13,10 +13,12 @@
     "test": "tsx --test scripts/test.ts",
     "check": "dotenv -e .env.local -- tsx scripts/check.ts",
     "migrate:sqlite": "dotenv -e .env.local -- tsx scripts/migrate-sqlite.ts",
-    "usuarios": "dotenv -e .env.local -- tsx scripts/usuarios.ts"
+    "usuarios": "dotenv -e .env.local -- tsx scripts/usuarios.ts",
+    "migrate:social": "dotenv -e .env.local -- tsx scripts/migrate-social.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
+    "@vercel/blob": "^2.8.0",
     "next": "16.3.3",
     "react": "19.2.8",
     "react-dom": "19.2.8"
