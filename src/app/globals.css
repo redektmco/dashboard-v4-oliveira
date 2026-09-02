@@ -440,11 +440,14 @@ select,
 }
 
 /* A moldura mobile some no desktop aqui, e não com `lg:hidden`: estas
-   regras vivem fora das camadas do Tailwind e venceriam o utilitário. */
+   regras vivem fora das camadas do Tailwind e venceriam o utilitário.
+   `!important` porque a base `.tabbar { display: flex }` vem depois no
+   arquivo e, sem especificidade extra, venceria por ordem no desktop —
+   fazendo a barra de abas vazar na tela grande. */
 @media (min-width: 1024px) {
   .mobile-header,
   .tabbar {
-    display: none;
+    display: none !important;
   }
 }
 
