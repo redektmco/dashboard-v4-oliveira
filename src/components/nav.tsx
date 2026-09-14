@@ -12,6 +12,7 @@ const LINKS: { href: string; label: string; hint: string; icon: IconName; admin?
   { href: "/gt", label: "Performance", hint: "GT · semanal", icon: "chart" },
   { href: "/account", label: "Check-in", hint: "Account · por contato", icon: "users" },
   { href: "/social", label: "Social media", hint: "Aprovação e planejamento", icon: "image" },
+  { href: "/onboarding", label: "Onboarding", hint: "Portal de aprendizagem do time", icon: "book" },
   { href: "/modelo", label: "Modelo", hint: "Pesos e réguas", icon: "target" },
   { href: "/config", label: "Configuração", hint: "Clientes, metas, calibração", icon: "settings" },
   { href: "/usuarios", label: "Usuários", hint: "Acesso do time", icon: "shield", admin: true },

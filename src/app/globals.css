@@ -621,3 +621,177 @@ select,
     border-top: 0;
   }
 }
+
+/* =============================================================
+   ONBOARDING / LMS interno
+   Portal de aprendizagem do novo funcionário. Reaproveita os
+   tokens da marca; só o necessário para a "cara de EAD" e para
+   o corpo Markdown das aulas vive aqui.
+   ============================================================= */
+
+/* Corpo Markdown renderizado (saída de lib/onboarding/markdown).
+   Segue o design system: títulos em display, links no vermelho V4. */
+.ob-prose {
+  color: var(--color-ink-200);
+  font-size: 15px;
+  line-height: 1.7;
+  max-width: 72ch;
+}
+.ob-prose > * + * {
+  margin-top: 1rem;
+}
+.ob-prose h1,
+.ob-prose h2,
+.ob-prose h3,
+.ob-prose h4 {
+  font-family: var(--font-display);
+  color: var(--color-ink-100);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  margin-top: 1.75rem;
+}
+.ob-prose h1 { font-size: 1.6rem; }
+.ob-prose h2 { font-size: 1.3rem; }
+.ob-prose h3 { font-size: 1.1rem; }
+.ob-prose h4 { font-size: 1rem; }
+.ob-prose a {
+  color: var(--color-vermelho-fg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ob-prose a:hover { color: var(--color-v4-red); }
+.ob-prose strong { color: var(--color-ink-100); font-weight: 700; }
+.ob-prose ul,
+.ob-prose ol { padding-left: 1.4rem; }
+.ob-prose ul { list-style: disc; }
+.ob-prose ol { list-style: decimal; }
+.ob-prose li + li { margin-top: 0.35rem; }
+.ob-prose blockquote {
+  border-left: 3px solid var(--color-v4-red);
+  padding: 0.25rem 0 0.25rem 1rem;
+  color: var(--color-ink-300);
+  font-style: italic;
+}
+.ob-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--color-ink-850);
+  border: 1px solid var(--border-hair);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.35em;
+}
+.ob-prose pre {
+  background: var(--color-ink-950);
+  border: 1px solid var(--border-hair);
+  border-radius: var(--radius-md);
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+}
+.ob-prose pre code { background: none; border: 0; padding: 0; font-size: 0.85rem; }
+.ob-prose img {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-hair);
+}
+.ob-prose hr { border: 0; border-top: 1px solid var(--border-hair); }
+.ob-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  display: block;
+  overflow-x: auto;
+}
+.ob-prose th,
+.ob-prose td {
+  border: 1px solid var(--border-hair);
+  padding: 0.5rem 0.7rem;
+  text-align: left;
+}
+.ob-prose th {
+  background: var(--color-ink-850);
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+/* Banner de categoria: proporção fixa, cobre sem distorcer, com um
+   fallback em gradiente quando ainda não há arte enviada. */
+.ob-banner {
+  position: relative;
+  aspect-ratio: 16 / 6;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--color-ink-800), var(--color-ink-950));
+}
+.ob-banner img { width: 100%; height: 100%; object-fit: cover; }
+.ob-banner-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-ink-700);
+}
+/* Véu para o texto sobreposto ao banner permanecer legível sobre qualquer arte. */
+.ob-banner-veil {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.35) 55%, transparent 100%);
+}
+
+/* Facade do player de vídeo: só a capa até o clique — o iframe pesado
+   entra sob demanda (lazy), preservando o LCP da página da aula. */
+.ob-video {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-hair);
+  background: #000;
+}
+.ob-video iframe { width: 100%; height: 100%; border: 0; }
+.ob-video-cover { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
+.ob-video-cover img { width: 100%; height: 100%; object-fit: cover; opacity: 0.7; }
+.ob-play {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 68px;
+  height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--color-v4-red);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  transition: transform var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+.ob-video-cover:hover .ob-play { transform: scale(1.06); background: var(--color-v4-red-600); }
+
+/* Item da navegação de aulas (sidebar da categoria). */
+.ob-lesson-link {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--color-ink-300);
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.ob-lesson-link:hover { background: var(--color-ink-850); color: var(--color-ink-100); }
+.ob-lesson-link[aria-current="page"] {
+  background: rgba(229, 9, 20, 0.1);
+  color: var(--color-ink-100);
+  font-weight: 600;
+}
+
+/* Linha arrastável no CMS. */
+.ob-drag {
+  cursor: grab;
+  touch-action: none;
+}
+.ob-drag:active { cursor: grabbing; }
+.ob-dragging { opacity: 0.5; }
+.ob-drop-target { box-shadow: inset 0 2px 0 var(--color-v4-red); }
