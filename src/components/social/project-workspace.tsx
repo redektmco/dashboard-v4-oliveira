@@ -1,44 +1,29 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import type { Post, Project, PublishStatus } from "@/lib/social/types";
+import type { Post, PostStatus, Project } from "@/lib/social/types";
 import InstagramPreview from "@/components/social/instagram-preview";
-import { matchCaptionsToFiles, parseBatchCaptions } from "@/lib/social/batch";
+import { Composer } from "@/components/social/composer";
+import { MediaView } from "@/components/social/media";
+import { StoryViewer } from "@/components/social/story-viewer";
+import { FormatTag } from "@/components/social/vertical-preview";
+import { ActionMenu, type MenuItem } from "@/components/action-menu";
+import { ConfirmDialog, ImpactList, Modal } from "@/components/modal";
+import { Segmented } from "@/components/form-controls";
+import { toast } from "@/components/toast";
+import { Icon } from "@/components/icon";
+import { PageHeader } from "@/components/ui";
+import { formatBadge, isVertical } from "@/lib/social/media";
 
-type Mode = "single" | "batch";
+type ClientOpt = { id: number; name: string };
+type Filter = "all" | PostStatus;
 
-const STATUS_LABEL: Record<Post["status"], string> = {
-  pending: "Pendente",
-  approved: "Aprovado",
-  rejected: "Reprovado",
+const STATUS: Record<PostStatus, { label: string; cls: string; dot: string }> = {
+  pending: { label: "Aguardando cliente", cls: "bg-ink-800 text-ink-300", dot: "bg-ink-400" },
+  approved: { label: "Aprovado", cls: "bg-verde-dim text-verde-fg", dot: "bg-verde" },
+  rejected: { label: "Reprovado", cls: "bg-vermelho-dim text-vermelho-fg", dot: "bg-vermelho" },
 };
-
-const PUB_LABEL: Record<PublishStatus, string> = {
-  draft: "",
-  scheduled: "Agendado",
-  publishing: "Publicando…",
-  published: "Publicado",
-  failed: "Falhou",
-};
-
-const PUB_BADGE: Record<PublishStatus, string> = {
-  draft: "",
-  scheduled: "scheduled",
-  publishing: "scheduled",
-  published: "published",
-  failed: "rejected",
-};
-
-const BATCH_PLACEHOLDER = `[arte-01.jpg]
-Legenda do primeiro post.
-Pode ter várias linhas e #hashtags.
-
----
-
-[arte-02.png]
-Legenda do segundo post.`;
 
 /** ISO -> valor de <input type="datetime-local"> na hora local do navegador. */
 function toLocalInput(iso: string | null): string {
@@ -49,41 +34,62 @@ function toLocalInput(iso: string | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-function fmtWhen(iso: string | null): string {
-  if (!iso) return "";
-  return new Date(iso).toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
+const fmtWhen = (iso: string | null) =>
+  iso
+    ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+    : "";
+
+const noopSubscribe = () => () => {};
+
+async function api<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, {
+    ...init,
+    headers: init?.body ? { "Content-Type": "application/json" } : undefined,
   });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as { error?: string }).error || `Erro ${res.status}.`);
+  return data as T;
 }
 
 export default function ProjectWorkspace({
-  project,
+  project: initialProject,
   initialPosts,
+  clients,
 }: {
   project: Project;
   initialPosts: Post[];
+  clients: ClientOpt[];
 }) {
   const router = useRouter();
+  const [project, setProject] = useState(initialProject);
   const [posts, setPosts] = useState<Post[]>(initialPosts);
-  const [mode, setMode] = useState<Mode>("single");
-  const [guestUrl, setGuestUrl] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    setGuestUrl(`${window.location.origin}/a/${project.guestToken}`);
-  }, [project.guestToken]);
+  // Diálogos
+  const [viewing, setViewing] = useState<Post | null>(null);
+  const [editing, setEditing] = useState<Post | null>(null);
+  const [scheduling, setScheduling] = useState<Post | null>(null);
+  const [deleting, setDeleting] = useState<Post | null>(null);
+  const [projectDialog, setProjectDialog] = useState<null | "edit" | "archive" | "delete">(null);
 
-  const reload = async () => {
-    const res = await fetch(`/api/social/projects/${project.id}`);
-    if (res.ok) {
-      const data = await res.json();
-      setPosts(data.posts);
-    }
-    router.refresh();
-  };
+  // A origem só existe no navegador; no servidor o link sai vazio e o React
+  // troca no hydrate, sem efeito nem render em cascata.
+  const origin = useSyncExternalStore(noopSubscribe, () => window.location.origin, () => "");
+  const guestUrl = origin ? `${origin}/a/${project.guestToken}` : "";
+
+  const handle = "@" + project.igHandle;
+  const sorted = useMemo(() => [...posts].sort((a, b) => a.order - b.order), [posts]);
+  const counts = useMemo(
+    () => ({
+      all: posts.length,
+      pending: posts.filter((p) => p.status === "pending").length,
+      approved: posts.filter((p) => p.status === "approved").length,
+      rejected: posts.filter((p) => p.status === "rejected").length,
+    }),
+    [posts],
+  );
+  const visible = filter === "all" ? sorted : sorted.filter((p) => p.status === filter);
 
   const copyLink = async () => {
     try {
@@ -91,473 +97,549 @@ export default function ProjectWorkspace({
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
-      /* ignore */
+      toast("Não foi possível copiar. Selecione o link e copie manualmente.", { tone: "error" });
     }
   };
 
-  const patchPost = async (id: string, body: Record<string, unknown>) => {
-    const res = await fetch(`/api/social/posts/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (res.ok) {
-      const { post } = await res.json();
-      setPosts((prev) => prev.map((p) => (p.id === id ? post : p)));
+  const whatsapp = `https://wa.me/?text=${encodeURIComponent(
+    `Oi! Separei os criativos de "${project.title}" para você aprovar. É rápido, só arrastar pro lado 👇\n\n${guestUrl}`,
+  )}`;
+
+  /** PATCH no criativo: aplica a versão devolvida pelo servidor; em erro, devolve a mensagem. */
+  const patchPost = async (post: Post, body: Record<string, unknown>, okMsg?: string) => {
+    try {
+      const { post: updated } = await api<{ post: Post }>(`/api/social/posts/${post.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      setPosts((prev) => prev.map((p) => (p.id === post.id ? updated : p)));
+      if (okMsg) toast(okMsg);
+      return null;
+    } catch (e) {
+      return (e as Error).message;
     }
-    router.refresh();
   };
 
-  const removePost = async (id: string) => {
-    setPosts((prev) => prev.filter((p) => p.id !== id));
-    await fetch(`/api/social/posts/${id}`, { method: "DELETE" });
-    router.refresh();
+  const postMenu = (p: Post): MenuItem[] => {
+    const items: MenuItem[] = [
+      { label: "Visualizar", icon: "image", onSelect: () => setViewing(p) },
+      { label: p.format === "story" ? "Editar observação" : "Editar legenda", icon: "message", onSelect: () => setEditing(p) },
+    ];
+    if (p.status === "approved") {
+      items.push({
+        label: p.scheduledAt ? "Alterar data no calendário" : "Definir data no calendário",
+        icon: "calendar",
+        onSelect: () => setScheduling(p),
+      });
+      items.push(
+        p.publishStatus === "published"
+          ? { label: "Desmarcar publicado", icon: "refresh", onSelect: () => void patchPost(p, { published: false }, "Voltou para o planejamento.").then((e) => e && toast(e, { tone: "error" })) }
+          : { label: "Marcar como publicado", icon: "check", onSelect: () => void patchPost(p, { published: true }, "Marcado como publicado.").then((e) => e && toast(e, { tone: "error" })) },
+      );
+    }
+    if (p.status !== "pending") {
+      items.push({
+        label: "Voltar para pendente",
+        icon: "refresh",
+        hint: "O cliente avalia de novo",
+        onSelect: () => void patchPost(p, { status: "pending" }, "Criativo voltou para avaliação.").then((e) => e && toast(e, { tone: "error" })),
+      });
+    }
+    items.push("separator", { label: "Excluir criativo", icon: "x", danger: true, onSelect: () => setDeleting(p) });
+    return items;
   };
 
-  const approved = posts.filter((p) => p.status === "approved").length;
-  const rejected = posts.filter((p) => p.status === "rejected").length;
-
-  const sorted = useMemo(() => [...posts].sort((a, b) => a.order - b.order), [posts]);
+  const projectMenu: MenuItem[] = [
+    { label: "Editar projeto", icon: "settings", onSelect: () => setProjectDialog("edit") },
+    { label: "Abrir link do cliente", icon: "external", href: guestUrl || "#", external: true },
+    { label: "Enviar por WhatsApp", icon: "message", href: whatsapp, external: true },
+    "separator",
+    { label: "Arquivar projeto", icon: "lock", hint: "Some das listas e o link para de abrir", onSelect: () => setProjectDialog("archive") },
+    { label: "Excluir projeto", icon: "x", danger: true, onSelect: () => setProjectDialog("delete") },
+  ];
 
   return (
-    <div className="app-shell app-shell--wide">
-      <header className="topbar">
-        <Link href="/social" className="btn ghost sm" aria-label="Voltar">
-          <svg className="icon" viewBox="0 0 24 24">
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
-        </Link>
-        <div className="grow">
-          <div className="topbar__title">{project.title}</div>
-          <div className="topbar__sub">
-            {project.clientName} · @{project.igHandle}
-          </div>
-        </div>
-      </header>
-
-      <div className="pad stack" style={{ gap: 18 }}>
-        {/* Link do cliente */}
-        <div className="card pad">
-          <div className="eyebrow" style={{ marginBottom: 8 }}>
-            Link do cliente (sem login)
-          </div>
-          <div className="row" style={{ gap: 8 }}>
-            <input className="input grow" readOnly value={guestUrl} onFocus={(e) => e.currentTarget.select()} />
-            <button className="btn secondary" onClick={copyLink}>
-              {copied ? "Copiado!" : "Copiar"}
-            </button>
-            <a className="btn ghost" href={guestUrl} target="_blank" rel="noreferrer">
-              Abrir
+    <div className="space-y-5">
+      <PageHeader
+        back={{ href: "/social", label: "Social media" }}
+        title={project.title}
+        description={`${project.clientName} · ${handle}`}
+        actions={
+          <>
+            <a className="btn shrink-0" href={whatsapp} target="_blank" rel="noreferrer">
+              <Icon name="message" size={14} />
+              WhatsApp
             </a>
-          </div>
-          <p className="hint" style={{ marginTop: 8 }}>
-            Envie este link para o cliente aprovar por swipe. {posts.length} post
-            {posts.length === 1 ? "" : "s"} · {approved} aprov. · {rejected} reprov.
-          </p>
+            <ActionMenu items={projectMenu} label="Ações do projeto" />
+          </>
+        }
+      />
+
+      {/* Link do cliente: a única coisa que o time precisa daqui é copiar e mandar. */}
+      <section className="panel flex flex-col gap-3 px-4 py-3.5 sm:px-5 lg:flex-row lg:items-center">
+        <div className="min-w-0 lg:w-[220px] lg:shrink-0">
+          <div className="text-[13px] font-semibold text-ink-100">Link de aprovação do cliente</div>
+          <div className="text-[12px] text-ink-500">Sem login · o cliente aprova pelo celular</div>
         </div>
-
-        {/* Composer */}
-        <div className="card pad">
-          <div className="row between" style={{ marginBottom: 14 }}>
-            <h3>Subir artes</h3>
-            <div className="segmented" style={{ width: 220 }}>
-              <button className={mode === "single" ? "on" : ""} onClick={() => setMode("single")}>
-                Post único
-              </button>
-              <button className={mode === "batch" ? "on" : ""} onClick={() => setMode("batch")}>
-                Em lote
-              </button>
-            </div>
-          </div>
-
-          {mode === "single" ? (
-            <SingleComposer projectId={project.id} handle={"@" + project.igHandle} onDone={reload} />
-          ) : (
-            <BatchComposer projectId={project.id} onDone={reload} placeholder={BATCH_PLACEHOLDER} />
-          )}
+        <div className="flex min-w-0 flex-1 gap-2">
+          <input
+            className="field min-w-0 flex-1 font-mono text-[12px]"
+            readOnly
+            value={guestUrl}
+            onFocus={(e) => e.currentTarget.select()}
+            aria-label="Link de aprovação"
+          />
+          <button type="button" className={`btn shrink-0 ${copied ? "" : "btn-primary"}`} onClick={copyLink}>
+            <Icon name={copied ? "check" : "layers"} size={14} />
+            {copied ? "Copiado" : "Copiar"}
+          </button>
         </div>
+        <div className="flex shrink-0 items-center gap-3 text-[12px] text-ink-400">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-ink-400" />
+            <b className="tnum text-ink-100">{counts.pending}</b> aguardando
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-verde" />
+            <b className="tnum text-ink-100">{counts.approved}</b> aprovados
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-vermelho" />
+            <b className="tnum text-ink-100">{counts.rejected}</b> reprovados
+          </span>
+        </div>
+      </section>
 
-        {/* Gestão de posts */}
-        <div className="stack" style={{ gap: 8 }}>
-          <div className="eyebrow">Posts no projeto ({posts.length})</div>
-          {posts.length === 0 && (
-            <div className="card pad">
-              <p className="muted">Nenhuma arte ainda. Suba acima.</p>
-            </div>
+      <Composer projectId={project.id} handle={handle} onCreated={setPosts} />
+
+      <section className="panel">
+        <header className="flex flex-col gap-3 border-b border-[var(--border-hair)] px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <h2 className="font-display text-[16px] font-semibold text-ink-100">Criativos no projeto</h2>
+          {posts.length > 0 && (
+            <Segmented
+              size="sm"
+              label="Filtrar por status"
+              value={filter}
+              onChange={setFilter}
+              options={[
+                { value: "all", label: `Todos · ${counts.all}` },
+                { value: "pending", label: `Aguardando · ${counts.pending}` },
+                { value: "approved", label: `Aprovados · ${counts.approved}` },
+                { value: "rejected", label: `Reprovados · ${counts.rejected}` },
+              ]}
+            />
           )}
-          {sorted.map((p) => (
-            <div key={p.id} className="card pad stack" style={{ gap: 10 }}>
-              <div className="row" style={{ gap: 12 }}>
-                <div className="list-thumb">
-                  {p.assets[0] && <img src={p.assets[0].url} alt="" />}
-                </div>
-                <div className="list-body">
-                  <div className="cap">
-                    {p.caption ? p.caption.replace(/\n/g, " ") : "— sem legenda —"}
-                  </div>
-                  <div className="meta">
-                    #{p.order + 1} · {p.assets.length} arte{p.assets.length > 1 ? "s" : ""}
-                    {p.feedback ? ` · 💬 "${p.feedback}"` : ""}
-                  </div>
-                </div>
-                <div className="row" style={{ gap: 6 }}>
-                  <span className={`badge ${p.status}`}>
-                    <i />
-                    {STATUS_LABEL[p.status]}
-                  </span>
-                  {p.publishStatus !== "draft" && (
-                    <span className={`badge ${PUB_BADGE[p.publishStatus]}`}>
-                      <i />
-                      {PUB_LABEL[p.publishStatus]}
-                    </span>
-                  )}
-                </div>
-                <div className="row" style={{ gap: 4 }}>
-                  {p.status !== "pending" && (
-                    <button
-                      className="btn ghost sm"
-                      onClick={() => patchPost(p.id, { status: "pending" })}
-                    >
-                      Resetar
-                    </button>
-                  )}
-                  <button className="btn ghost sm" onClick={() => removePost(p.id)} aria-label="Remover">
-                    <svg className="icon" viewBox="0 0 24 24" style={{ stroke: "var(--fg-3)" }}>
-                      <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" />
-                    </svg>
+        </header>
+
+        {posts.length === 0 ? (
+          <div className="px-5 py-10 text-center">
+            <Icon name="image" size={28} className="mx-auto text-ink-600" />
+            <p className="mt-2 text-sm font-semibold text-ink-200">Nenhum criativo ainda</p>
+            <p className="mt-1 text-[13px] text-ink-500">Envie o primeiro acima — ele aparece no link do cliente na hora.</p>
+          </div>
+        ) : visible.length === 0 ? (
+          <p className="px-5 py-8 text-center text-[13px] text-ink-500">Nenhum criativo com esse status.</p>
+        ) : (
+          <ul className="divide-y divide-[var(--border-hair)]">
+            {visible.map((p) => {
+              const st = STATUS[p.status];
+              const vertical = isVertical(p);
+              return (
+                <li key={p.id} className="flex items-start gap-3 px-4 py-3 sm:px-5">
+                  <button
+                    type="button"
+                    onClick={() => setViewing(p)}
+                    className={`relative shrink-0 overflow-hidden rounded-md bg-black ring-1 ring-[var(--border-hair)] transition hover:ring-ink-500 ${
+                      vertical ? "h-[80px] w-[45px]" : "h-[60px] w-[60px]"
+                    }`}
+                    aria-label="Visualizar criativo"
+                  >
+                    {p.assets[0] && <MediaView asset={p.assets[0]} sizes="80px" />}
+                    {p.assets.length > 1 && (
+                      <span className="absolute bottom-0.5 right-0.5 rounded bg-black/70 px-1 font-mono text-[9px] text-white">
+                        {p.assets.length}
+                      </span>
+                    )}
                   </button>
-                </div>
-              </div>
 
-              {/* Agendamento — só criativos aprovados entram no planejamento */}
-              {p.status === "approved" && p.publishStatus !== "published" && (
-                <Scheduler post={p} onSchedule={patchPost} />
-              )}
-              {p.publishStatus === "published" && (
-                <p className="hint" style={{ color: "var(--v4-green)" }}>
-                  Publicado no Instagram {p.publishedAt ? `em ${fmtWhen(p.publishedAt)}` : ""}.
-                </p>
-              )}
-              {p.publishStatus === "failed" && p.publishError && (
-                <p className="hint" style={{ color: "#ff5560" }}>
-                  Falha: {p.publishError}
-                </p>
-              )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <FormatTag badge={formatBadge(p)} />
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.cls}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />
+                        {st.label}
+                      </span>
+                      {p.status === "approved" && (
+                        <button
+                          type="button"
+                          onClick={() => setScheduling(p)}
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                            p.publishStatus === "published"
+                              ? "bg-verde-dim text-verde-fg"
+                              : p.scheduledAt
+                                ? "bg-amarelo-dim text-amarelo-fg"
+                                : "bg-ink-850 text-ink-400 hover:text-ink-100"
+                          }`}
+                        >
+                          <Icon name="calendar" size={11} />
+                          {p.publishStatus === "published"
+                            ? `Publicado ${fmtWhen(p.publishedAt)}`
+                            : p.scheduledAt
+                              ? fmtWhen(p.scheduledAt)
+                              : "Sem data"}
+                        </button>
+                      )}
+                    </div>
+                    <p className="mt-1 line-clamp-1 text-[13px] text-ink-300">
+                      {p.caption ? p.caption.replace(/\n/g, " ") : <span className="text-ink-600">— sem legenda —</span>}
+                    </p>
+                    {p.feedback && (
+                      <p className="mt-1.5 flex items-start gap-1.5 rounded-md bg-ink-950 px-2.5 py-1.5 text-[12.5px] text-ink-200">
+                        <Icon name="message" size={12} className="mt-0.5 shrink-0 text-ink-400" />
+                        <span>
+                          <span className="font-semibold text-ink-400">Cliente: </span>
+                          {p.feedback}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+
+                  <ActionMenu items={postMenu(p)} label="Ações do criativo" />
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      {/* ---------- diálogos ---------- */}
+      {viewing && isVertical(viewing) && (
+        <StoryViewer
+          items={[{ id: viewing.id, format: viewing.format, assets: viewing.assets, caption: viewing.caption || undefined, status: viewing.status }]}
+          handle={handle}
+          onClose={() => setViewing(null)}
+        />
+      )}
+      <Modal
+        open={Boolean(viewing && !isVertical(viewing))}
+        onClose={() => setViewing(null)}
+        title="Como o cliente vê"
+        size="sm"
+      >
+        {viewing && (
+          <div className="mx-auto max-w-[360px]">
+            <div className="sm-scope">
+              <InstagramPreview handle={handle} assets={viewing.assets} caption={viewing.caption} />
             </div>
-          ))}
-        </div>
+          </div>
+        )}
+      </Modal>
 
-        {/* Conta Instagram (publicação automática) */}
-        <IgCredentials project={project} />
-      </div>
+      <CaptionDialog
+        post={editing}
+        onClose={() => setEditing(null)}
+        onSave={(p, caption) => patchPost(p, { caption }, "Legenda atualizada.")}
+      />
+      <ScheduleDialog
+        post={scheduling}
+        onClose={() => setScheduling(null)}
+        onSave={(p, when) => patchPost(p, { scheduledAt: when }, when ? "Data marcada no calendário." : "Data removida do calendário.")}
+      />
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onClose={() => setDeleting(null)}
+        title="Excluir este criativo?"
+        confirmLabel="Excluir criativo"
+        pendingLabel="Excluindo…"
+        successMessage="Criativo excluído."
+        onConfirm={async () => {
+          if (!deleting) return;
+          try {
+            await api(`/api/social/posts/${deleting.id}`, { method: "DELETE" });
+            setPosts((prev) => prev.filter((x) => x.id !== deleting.id));
+          } catch (e) {
+            return (e as Error).message;
+          }
+        }}
+      >
+        <p>O criativo some do link do cliente e as mídias são apagadas do armazenamento. Não dá para desfazer.</p>
+        {deleting?.feedback && <ImpactList items={[{ label: "comentário do cliente será perdido" }]} />}
+      </ConfirmDialog>
+
+      <ProjectDialog
+        open={projectDialog === "edit"}
+        project={project}
+        clients={clients}
+        onClose={() => setProjectDialog(null)}
+        onSaved={(p) => {
+          setProject(p);
+          router.refresh();
+        }}
+      />
+      <ConfirmDialog
+        open={projectDialog === "archive"}
+        onClose={() => setProjectDialog(null)}
+        title="Arquivar este projeto?"
+        confirmLabel="Arquivar"
+        tone="default"
+        pendingLabel="Arquivando…"
+        onConfirm={async () => {
+          try {
+            await api(`/api/social/projects/${project.id}`, { method: "PATCH", body: JSON.stringify({ archived: true }) });
+            toast("Projeto arquivado. Você pode restaurá-lo em Social media › Arquivados.");
+            router.push("/social");
+          } catch (e) {
+            return (e as Error).message;
+          }
+        }}
+      >
+        <p>
+          O projeto sai das listas e do calendário, e o link do cliente para de abrir. Nada é apagado — dá para
+          restaurar depois.
+        </p>
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={projectDialog === "delete"}
+        onClose={() => setProjectDialog(null)}
+        title="Excluir o projeto definitivamente?"
+        confirmLabel="Excluir projeto"
+        pendingLabel="Excluindo…"
+        requireText={project.title}
+        onConfirm={async () => {
+          try {
+            await api(`/api/social/projects/${project.id}`, { method: "DELETE" });
+            toast("Projeto excluído.");
+            router.push("/social");
+          } catch (e) {
+            return (e as Error).message;
+          }
+        }}
+      >
+        <p>Apaga o projeto, todos os criativos e as mídias no armazenamento. O link do cliente deixa de existir.</p>
+        <ImpactList
+          items={[
+            { label: "criativo(s) e suas decisões", count: counts.all },
+            { label: "aprovado(s) — inclusive os já no calendário", count: counts.approved },
+          ]}
+        />
+        <p className="text-[12.5px] text-ink-500">Se a ideia é só tirar da frente, prefira arquivar.</p>
+      </ConfirmDialog>
     </div>
   );
 }
 
-/* ---------------- Agendamento ---------------- */
-function Scheduler({
+/* ---------------- Editar legenda ---------------- */
+function CaptionDialog({
   post,
-  onSchedule,
+  onClose,
+  onSave,
+}: {
+  post: Post | null;
+  onClose: () => void;
+  onSave: (p: Post, caption: string) => Promise<string | null>;
+}) {
+  return (
+    <Modal
+      open={Boolean(post)}
+      onClose={onClose}
+      title={post?.format === "story" ? "Editar observação" : "Editar legenda"}
+      description={post && post.status !== "pending" ? "O criativo já foi avaliado — a decisão do cliente continua valendo." : undefined}
+    >
+      {post && <CaptionForm key={post.id} post={post} onClose={onClose} onSave={onSave} />}
+    </Modal>
+  );
+}
+
+function CaptionForm({
+  post,
+  onClose,
+  onSave,
 }: {
   post: Post;
-  onSchedule: (id: string, body: Record<string, unknown>) => Promise<void>;
+  onClose: () => void;
+  onSave: (p: Post, caption: string) => Promise<string | null>;
 }) {
-  const [when, setWhen] = useState(toLocalInput(post.scheduledAt));
-  const [busy, setBusy] = useState(false);
-
-  const save = async () => {
-    setBusy(true);
-    await onSchedule(post.id, { scheduledAt: when ? when : null });
-    setBusy(false);
-  };
-  const clear = async () => {
-    setBusy(true);
-    setWhen("");
-    await onSchedule(post.id, { scheduledAt: null });
-    setBusy(false);
-  };
-
-  return (
-    <div className="row" style={{ gap: 8, flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-      <span className="eyebrow" style={{ minWidth: 0 }}>
-        Publicar em
-      </span>
-      <input
-        type="datetime-local"
-        className="input"
-        style={{ width: 210 }}
-        value={when}
-        onChange={(e) => setWhen(e.target.value)}
-      />
-      <button className="btn primary sm" onClick={save} disabled={busy || !when}>
-        {post.publishStatus === "scheduled" ? "Reagendar" : "Agendar"}
-      </button>
-      {post.publishStatus === "scheduled" && (
-        <button className="btn ghost sm" onClick={clear} disabled={busy}>
-          Cancelar agendamento
-        </button>
-      )}
-      {post.scheduledAt && post.publishStatus === "scheduled" && (
-        <span className="hint">agendado p/ {fmtWhen(post.scheduledAt)}</span>
-      )}
-    </div>
-  );
-}
-
-/* ---------------- Conta Instagram ---------------- */
-function IgCredentials({ project }: { project: Project }) {
-  const router = useRouter();
-  const [igUserId, setIgUserId] = useState(project.igUserId ?? "");
-  const [token, setToken] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-
-  const save = async () => {
-    setBusy(true);
-    setMsg(null);
-    const body: Record<string, unknown> = { igUserId };
-    if (token.trim()) body.igAccessToken = token.trim();
-    const res = await fetch(`/api/social/projects/${project.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    setBusy(false);
-    if (res.ok) {
-      setToken("");
-      setMsg("Credenciais salvas.");
-      router.refresh();
-    } else {
-      setMsg("Erro ao salvar.");
-    }
-  };
-
-  return (
-    <div className="card pad stack" style={{ gap: 10 }}>
-      <div className="eyebrow">Conta Instagram · publicação automática</div>
-      <p className="hint">
-        Para publicar sozinho no horário agendado, informe o ID da conta Instagram
-        Business e um token de longa duração da Graph API.{" "}
-        {project.hasIgToken ? "Token salvo ✓" : "Token ainda não configurado."}
-      </p>
-      <div className="field" style={{ margin: 0 }}>
-        <label>IG Business Account ID</label>
-        <input
-          className="input"
-          value={igUserId}
-          onChange={(e) => setIgUserId(e.target.value)}
-          placeholder="ex.: 17841400000000000"
-        />
-      </div>
-      <div className="field" style={{ margin: 0 }}>
-        <label>Access token de longa duração</label>
-        <input
-          className="input"
-          type="password"
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          placeholder={project.hasIgToken ? "•••••••• (deixe em branco p/ manter)" : "cole o token"}
-        />
-      </div>
-      <div className="row" style={{ gap: 8 }}>
-        <button className="btn primary sm" onClick={save} disabled={busy}>
-          {busy ? "Salvando…" : "Salvar credenciais"}
-        </button>
-        {msg && <span className="hint">{msg}</span>}
-      </div>
-    </div>
-  );
-}
-
-/* ---------------- Single composer ---------------- */
-function SingleComposer({
-  projectId,
-  handle,
-  onDone,
-}: {
-  projectId: string;
-  handle: string;
-  onDone: () => void;
-}) {
-  const [files, setFiles] = useState<File[]>([]);
-  const [caption, setCaption] = useState("");
+  const [value, setValue] = useState(post.caption);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const previews = useMemo(
-    () => files.map((f, i) => ({ id: `local-${i}`, url: URL.createObjectURL(f), name: f.name })),
-    [files],
-  );
-  useEffect(() => {
-    return () => previews.forEach((p) => URL.revokeObjectURL(p.url));
-  }, [previews]);
-
-  const submit = async () => {
-    if (files.length === 0) {
-      setError("Selecione ao menos uma arte.");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    const fd = new FormData();
-    fd.append("mode", "single");
-    fd.append("caption", caption);
-    files.forEach((f) => fd.append("files", f));
-    const res = await fetch(`/api/social/projects/${projectId}/posts`, { method: "POST", body: fd });
-    setBusy(false);
-    if (res.ok) {
-      setFiles([]);
-      setCaption("");
-      if (inputRef.current) inputRef.current.value = "";
-      onDone();
-    } else {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error || "Erro ao subir.");
-    }
-  };
-
   return (
-    <div className="row" style={{ gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
-      <div className="grow" style={{ minWidth: 260 }}>
-        <div className="field">
-          <label>Artes (1 = post simples · várias = carrossel)</label>
-          <input
-            ref={inputRef}
-            className="input"
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-          />
-        </div>
-        <div className="field">
-          <label>Legenda</label>
-          <textarea
-            className="textarea"
-            placeholder="Escreva a legenda do post…"
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
-          />
-        </div>
-        {error && <p style={{ color: "var(--accent)", font: "var(--t-body-sm)", marginBottom: 12 }}>{error}</p>}
-        <button className="btn primary" onClick={submit} disabled={busy}>
-          {busy ? "Subindo…" : "Adicionar post"}
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        const err = await onSave(post, value);
+        setBusy(false);
+        if (err) setError(err);
+        else onClose();
+      }}
+    >
+      <textarea className="field min-h-[160px]" value={value} maxLength={2200} onChange={(e) => setValue(e.target.value)} autoFocus />
+      <div className="mt-1 flex justify-between text-[11px] text-ink-500">
+        <span>{error && <span className="font-semibold text-vermelho-fg">{error}</span>}</span>
+        <span className="tnum">{value.length}/2200</span>
+      </div>
+      <div className="modal-actions">
+        <button type="button" className="btn" onClick={onClose} disabled={busy}>
+          Cancelar
+        </button>
+        <button type="submit" className="btn btn-primary" disabled={busy || value === post.caption} aria-busy={busy}>
+          {busy && <span className="spinner" aria-hidden />}
+          {busy ? "Salvando…" : "Salvar"}
         </button>
       </div>
-
-      <div style={{ width: 260 }}>
-        <div className="eyebrow" style={{ marginBottom: 8 }}>
-          Preview
-        </div>
-        <InstagramPreview handle={handle} assets={previews} caption={caption} />
-      </div>
-    </div>
+    </form>
   );
 }
 
-/* ---------------- Batch composer ---------------- */
-function BatchComposer({
-  projectId,
-  onDone,
-  placeholder,
+/* ---------------- Data no calendário ---------------- */
+function ScheduleDialog({
+  post,
+  onClose,
+  onSave,
 }: {
-  projectId: string;
-  onDone: () => void;
-  placeholder: string;
+  post: Post | null;
+  onClose: () => void;
+  onSave: (p: Post, when: string | null) => Promise<string | null>;
 }) {
-  const [files, setFiles] = useState<File[]>([]);
-  const [captionsRaw, setCaptionsRaw] = useState("");
+  return (
+    <Modal
+      open={Boolean(post)}
+      onClose={onClose}
+      title="Data no calendário"
+      description="A data organiza o planejamento — a postagem no Instagram é manual."
+      size="sm"
+    >
+      {post && <ScheduleForm key={post.id} post={post} onClose={onClose} onSave={onSave} />}
+    </Modal>
+  );
+}
+
+function ScheduleForm({
+  post,
+  onClose,
+  onSave,
+}: {
+  post: Post;
+  onClose: () => void;
+  onSave: (p: Post, when: string | null) => Promise<string | null>;
+}) {
+  const [when, setWhen] = useState(() => toLocalInput(post.scheduledAt));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  const fileNames = files.map((f) => f.name);
-  const mapped = useMemo(() => {
-    const blocks = parseBatchCaptions(captionsRaw);
-    return matchCaptionsToFiles(blocks, fileNames);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [captionsRaw, fileNames.join("|")]);
-
-  const submit = async () => {
-    if (files.length === 0) {
-      setError("Selecione as artes do lote.");
-      return;
-    }
+  const save = async (value: string | null) => {
     setBusy(true);
-    setError(null);
-    const fd = new FormData();
-    fd.append("mode", "batch");
-    fd.append("captionsRaw", captionsRaw);
-    files.forEach((f) => fd.append("files", f));
-    const res = await fetch(`/api/social/projects/${projectId}/posts`, { method: "POST", body: fd });
+    // datetime-local é hora local; o servidor recebe ISO com fuso.
+    const err = await onSave(post, value ? new Date(value).toISOString() : null);
     setBusy(false);
-    if (res.ok) {
-      setFiles([]);
-      setCaptionsRaw("");
-      if (inputRef.current) inputRef.current.value = "";
-      onDone();
-    } else {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error || "Erro ao subir o lote.");
-    }
+    if (err) setError(err);
+    else onClose();
   };
 
   return (
-    <div>
-      <div className="field">
-        <label>Artes do lote (cada arte vira um post)</label>
-        <input
-          ref={inputRef}
-          className="input"
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-        />
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void save(when);
+      }}
+    >
+      <label className="block">
+        <span className="label">Publicar em</span>
+        <input type="datetime-local" className="field mt-1" value={when} onChange={(e) => setWhen(e.target.value)} autoFocus />
+      </label>
+      {error && <p className="mt-2 text-[12.5px] font-semibold text-vermelho-fg">{error}</p>}
+      <div className="modal-actions">
+        {post.scheduledAt && (
+          <button type="button" className="btn btn-ghost mr-auto" onClick={() => save(null)} disabled={busy}>
+            Remover data
+          </button>
+        )}
+        <button type="button" className="btn" onClick={onClose} disabled={busy}>
+          Cancelar
+        </button>
+        <button type="submit" className="btn btn-primary" disabled={busy || !when} aria-busy={busy}>
+          {busy && <span className="spinner" aria-hidden />}
+          {busy ? "Salvando…" : "Salvar data"}
+        </button>
       </div>
+    </form>
+  );
+}
 
-      <div className="field">
-        <label>
-          Legendas (formato para parse — <code className="mono">[nome-do-arquivo]</code> ou separadas por{" "}
-          <code className="mono">---</code>)
+/* ---------------- Editar projeto ---------------- */
+function ProjectDialog({
+  open,
+  project,
+  clients,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  project: Project;
+  clients: ClientOpt[];
+  onClose: () => void;
+  onSaved: (p: Project) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <Modal open={open} onClose={() => !busy && onClose()} title="Editar projeto">
+      <form
+        className="space-y-3"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.currentTarget);
+          setBusy(true);
+          setError(null);
+          try {
+            const { project: p } = await api<{ project: Project }>(`/api/social/projects/${project.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({
+                title: String(fd.get("title") ?? ""),
+                igHandle: String(fd.get("igHandle") ?? ""),
+                clientId: fd.get("clientId") ? Number(fd.get("clientId")) : null,
+              }),
+            });
+            onSaved(p);
+            toast("Projeto atualizado.");
+            onClose();
+          } catch (err) {
+            setError((err as Error).message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <label className="block">
+          <span className="label">Título</span>
+          <input name="title" required defaultValue={project.title} className="field mt-1" />
         </label>
-        <textarea
-          className="textarea"
-          style={{ minHeight: 160, fontFamily: "var(--font-mono)", fontSize: 13 }}
-          placeholder={placeholder}
-          value={captionsRaw}
-          onChange={(e) => setCaptionsRaw(e.target.value)}
-        />
-        <p className="hint">
-          Use <code className="mono">[arquivo.jpg]</code> para casar a legenda com a arte pelo nome, ou
-          separe os blocos com <code className="mono">---</code> para casar na ordem do upload.
-        </p>
-      </div>
-
-      {files.length > 0 && (
-        <div className="stack" style={{ gap: 6, marginBottom: 14 }}>
-          <div className="eyebrow">Pré-visualização do casamento</div>
-          {files.map((f, i) => (
-            <div key={f.name + i} className="row" style={{ gap: 10, alignItems: "flex-start" }}>
-              <span className="mono" style={{ color: "var(--fg-3)", minWidth: 20 }}>
-                {i + 1}
-              </span>
-              <span className="mono" style={{ color: "var(--fg-2)", minWidth: 140, wordBreak: "break-all" }}>
-                {f.name}
-              </span>
-              <span className="grow" style={{ font: "var(--t-body-sm)", color: mapped[i] ? "var(--fg)" : "var(--fg-4)" }}>
-                {mapped[i] ? mapped[i].replace(/\n/g, " ") : "— sem legenda —"}
-              </span>
-            </div>
-          ))}
+        <label className="block">
+          <span className="label">Cliente da carteira</span>
+          <select name="clientId" defaultValue={project.clientId ?? ""} className="field mt-1">
+            <option value="">— sem vínculo ({project.clientName}) —</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="label">@ do Instagram</span>
+          <input name="igHandle" defaultValue={project.igHandle} className="field mt-1 font-mono text-sm" />
+        </label>
+        {error && <p className="text-[12.5px] font-semibold text-vermelho-fg">{error}</p>}
+        <div className="modal-actions">
+          <button type="button" className="btn" onClick={onClose} disabled={busy}>
+            Cancelar
+          </button>
+          <button type="submit" className="btn btn-primary" disabled={busy} aria-busy={busy}>
+            {busy && <span className="spinner" aria-hidden />}
+            {busy ? "Salvando…" : "Salvar"}
+          </button>
         </div>
-      )}
-
-      {error && <p style={{ color: "var(--accent)", font: "var(--t-body-sm)", marginBottom: 12 }}>{error}</p>}
-      <button className="btn primary" onClick={submit} disabled={busy}>
-        {busy ? "Subindo lote…" : `Subir ${files.length || ""} post${files.length === 1 ? "" : "s"} em lote`}
-      </button>
-    </div>
+      </form>
+    </Modal>
   );
 }

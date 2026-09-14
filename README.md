@@ -10,24 +10,38 @@ Implementa o briefing "Health Score Dashboard — Unidade V4" e o design system
 
 ## Como rodar
 
-O banco é **Postgres (Neon)**, provisionado pelo Marketplace da Vercel. Não há banco local: o
-mesmo `DATABASE_URL` serve dev e produção (use um branch do Neon se quiser isolar).
+O banco é **Postgres (Neon)**, provisionado pelo Marketplace da Vercel. **Atenção:** o
+`DATABASE_URL` que o `vercel env pull` traz é o de **produção** — rodar `npm run dev` ou
+`npm run seed` com ele escreve (ou apaga) dados reais.
+
+Para desenvolver sem tocar produção, use o Postgres embutido (PGlite, gravado em `.data/`):
 
 ```bash
 npm install
-vercel link                       # se ainda não linkado
-vercel env pull .env.local --yes  # traz o DATABASE_URL
-npm run seed                      # carteira de demonstração (APAGA o que existir)
-npm run dev                       # http://localhost:3000
+DATABASE_URL="pglite://./.data/pglite" npm run seed   # carteira de demonstração local
+DATABASE_URL="pglite://./.data/pglite" npm run dev    # http://localhost:3000
 ```
 
-O schema é criado sozinho no primeiro boot (`src/instrumentation.ts` → `migrate()`, idempotente).
+O PGlite é single-process: pare o `dev` antes de rodar um script contra o mesmo diretório.
+Uploads de Social media ainda vão para o Blob do `BLOB_READ_WRITE_TOKEN` do `.env.local`.
+
+Contra o Neon (produção ou um branch):
+
+```bash
+vercel link                       # se ainda não linkado
+vercel env pull .env.local --yes  # traz o DATABASE_URL
+npm run dev
+```
+
+O schema é criado/atualizado no boot (`src/instrumentation.ts` → `migrate()`). O DDL só roda
+quando `SCHEMA_VERSION` (em `src/lib/db/index.ts`) muda — num único round-trip transacional;
+no boot comum é uma leitura só. Mudou o schema? Troque a string da versão.
 
 Outros comandos:
 
 | Comando | O que faz |
 |---|---|
-| `npm test` | 20 testes do motor de score — puros, não precisam de banco |
+| `npm test` | testes do motor de score e das regras de Social media — puros, não precisam de banco |
 | `npm run recompute` | Job diário — recalcula e grava o snapshot do dia |
 | `npm run recompute -- --days=90` | Backfill: refaz a série dos últimos 90 dias |
 | `npm run check` | Diagnóstico: carteira por risco; passe um nome para abrir um cliente |
@@ -46,7 +60,13 @@ Roda pelo cron da Vercel, declarado em `vercel.json`:
 ```
 
 Fora da Vercel, agende `npm run recompute` no cron do host. Para proteger a rota, defina
-`RECOMPUTE_TOKEN` e mande o header `x-recompute-token`.
+`RECOMPUTE_TOKEN` e mande o header `x-recompute-token` (o cron da Vercel é reconhecido pelo
+`Authorization: Bearer $CRON_SECRET`).
+
+### Região das funções
+
+`vercel.json` fixa as funções em `gru1` (São Paulo), ao lado do Neon (`sa-east-1`). Cada query é
+um round-trip HTTP; com a função no padrão `iad1` (EUA), cada uma cruzava o continente.
 
 ---
 
@@ -58,9 +78,16 @@ Fora da Vercel, agende `npm run recompute` no cron do host. Para proteger a rota
 | `/gt` → `/gt/[id]` | **GT** | semanal, sexta | "A conta entrega o contratado?" |
 | `/account` → `/account/[id]` | **Account** | a cada check-in | "O cliente está satisfeito e engajado?" |
 | `/clientes/[id]` | todos | — | decomposição, histórico, planos |
-| `/modelo` | todos | — | pesos, réguas e justificativas, abertos |
-| `/config` | coordenação | — | clientes, metas, calibração, time |
-| `/usuarios` | admin | — | quem entra no painel, senha e permissão |
+| `/social` | social + admin | por entrega | aprovação de criativos e calendário |
+| `/config` | coordenação | — | Configurações: clientes (cadastro, metas, arquivar/excluir) |
+| `/config/calibracao` | coordenação | trimestral | pesos, limiares, recompute |
+| `/config/usuarios` | admin | — | quem entra no painel, senha, permissão, exclusão |
+| `/config/integracoes` | admin | — | webhooks de CRM por cliente |
+| `/config/modelo` | todos | — | pesos, réguas e justificativas, abertos |
+
+O menu principal tem só as jornadas (Carteira, Performance, Check-in, Social media);
+administração mora em Configurações. Os endereços antigos (`/usuarios`, `/integracoes`,
+`/modelo`) redirecionam.
 
 Cada um preenche só o que controla. O GT não avalia relacionamento; o Account não estima métrica de
 mídia.
@@ -70,7 +97,7 @@ mídia.
 ## Acesso
 
 Uso fechado da unidade: **não existe cadastro aberto**. Quem entra é criado por um administrador em
-`/usuarios`. Felipe e Michelle nascem administradores — `ensureAdmins()` roda no boot
+Configurações › Usuários (`/config/usuarios`). Felipe e Michelle nascem administradores — `ensureAdmins()` roda no boot
 (`src/instrumentation.ts`), então um banco novo já sobe com acesso, sem passo manual.
 
 Todo usuário criado nasce com a senha padrão da unidade, `Oliveira@2026`, que o admin pode
@@ -81,7 +108,12 @@ redefinir a qualquer momento pelo painel.
 | `src/proxy.ts` | proxy do Next 16 (ex-middleware) | checagem otimista: sem cookie, manda para `/login` |
 | `src/lib/auth.ts` | servidor | senha em `scrypt`, sessão no banco, `requireUser` / `requireAdmin` |
 | `src/actions/auth.ts` | server actions | entrar, sair e administrar usuários |
-| `/usuarios` | página | criar acesso, resetar senha, promover a admin, desativar |
+| `/config/usuarios` | página | criar acesso, editar, resetar senha, promover a admin, desativar, excluir |
+
+**Excluir x desativar:** quem já assinou algum input (snapshot de performance ou check-in) não
+pode ser excluído — o histórico guarda quem preencheu. Para quem saiu, desative o acesso.
+Os administradores fixos (Felipe, Michelle) não podem ser excluídos nem desativados, e ninguém
+exclui/desativa a si mesmo.
 
 **O proxy nunca é a única trava.** Server Actions chegam como POST na própria rota e podem escapar
 do matcher, então toda página e toda mutação chamam `requireUser()` no servidor — `getSessionUser`
@@ -112,7 +144,7 @@ npm run usuarios -- reset felipe  # volta a senha padrão
 | Operacional / Dados | GT | 8% |
 
 Cada peso — de dimensão **e** de campo — carrega uma justificativa escrita no código
-(`weightRationale`) e exibida em `/modelo`. Nenhum número é chute.
+(`weightRationale`) e exibida em `/config/modelo`. Nenhum número é chute.
 
 ### Réguas de normalização (`src/lib/model/scoring.ts`)
 
@@ -240,7 +272,7 @@ reversíveis pela UI:
    dono claro sem travar o preenchimento, e o histórico de metas não é apagado.
 2. **Tipos de conta.** Os três do briefing (`lead_gen`, `ecommerce`, `branding`) com os campos
    propostos. Ajustar à carteira real é editar `catalog.ts` — formulários, cálculo e a página
-   `/modelo` derivam todos dele.
+   `/config/modelo` derivam todos dele.
 3. **Âncoras 1–5.** Implementadas literalmente como no briefing e exibidas no próprio formulário: o
    Account clica na descrição, não no número. Validar o texto com os Accounts é edição de uma
    constante (`SCALE_ANCHORS`).

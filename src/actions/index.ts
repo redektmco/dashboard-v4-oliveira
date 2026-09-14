@@ -2,26 +2,39 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import {
   createClient,
+  createIntegration,
   createPlan,
+  deleteClient,
+  deleteIntegration,
+  deletePlan,
+  getClient,
+  getPlan,
   persistScore,
   recomputeAll,
   recomputeRange,
+  rotateIntegrationToken,
   saveSnapshot,
   scoreFor,
+  setIntegrationActive,
   setSetting,
   setTargets,
   today,
   updateClient,
+  updatePlan,
   updatePlanStatus,
+  type Plan,
 } from "@/lib/repo";
 import { targetKeysFor } from "@/lib/model/catalog";
 import { parseCheckinForm, parsePerformanceForm } from "@/lib/model/form";
 import { DEFAULT_CONFIG } from "@/lib/model/scoring";
 import type { AccountType, DimensionKey } from "@/lib/model/types";
+import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
 import { DIMENSIONS } from "@/lib/model/catalog";
-import { requireUser } from "@/lib/auth";
+import { requireAdmin, requireUser } from "@/lib/auth";
+import type { ActionResult } from "@/lib/action";
 
 const str = (f: FormData, k: string) => (f.get(k) as string | null)?.trim() ?? "";
 const numOrNull = (f: FormData, k: string) => {
@@ -62,7 +75,7 @@ export async function savePerformance(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/gt");
   revalidatePath(`/clientes/${clientId}`);
-  redirect(`/clientes/${clientId}?salvo=performance`);
+  redirect(`/clientes/${clientId}?ok=${encodeURIComponent("Snapshot de performance salvo e score recalculado.")}`);
 }
 
 /* ------------------- input do Account (check-in) ------------------- */
@@ -84,17 +97,28 @@ export async function saveCheckin(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/account");
   revalidatePath(`/clientes/${clientId}`);
-  redirect(`/clientes/${clientId}?salvo=checkin`);
+  redirect(`/clientes/${clientId}?ok=${encodeURIComponent("Check-in salvo e score recalculado.")}`);
 }
 
 /* -------------------------- cadastro ------------------------------- */
 
-export async function upsertClient(formData: FormData) {
+/**
+ * Cria ou edita um cliente (modal "Novo cliente" / "Editar"). Devolve o
+ * resultado em vez de redirecionar: o modal fecha e a lista se atualiza no
+ * lugar. O recálculo do score do dia sai depois da resposta — a carteira
+ * calcula o score ao vivo, então ninguém espera por ele.
+ */
+export async function saveClient(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   await requireUser();
   const id = Number(str(formData, "id")) || 0;
+  const name = str(formData, "name");
+  const accountType = str(formData, "account_type") as AccountType;
+  if (!name) return { error: "Informe o nome do cliente." };
+  if (!(accountType in ACCOUNT_TYPE_LABEL)) return { error: "Escolha o tipo de conta." };
+
   const payload = {
-    name: str(formData, "name"),
-    account_type: str(formData, "account_type") as AccountType,
+    name,
+    account_type: accountType,
     mrr: numOrNull(formData, "mrr") ?? 0,
     gt_user_id: Number(str(formData, "gt_user_id")) || null,
     account_user_id: Number(str(formData, "account_user_id")) || null,
@@ -107,27 +131,47 @@ export async function upsertClient(formData: FormData) {
     const v = numOrNull(formData, t.key);
     if (v !== null) targets[t.key] = v;
   }
-  if (Object.keys(targets).length)
-    await setTargets(clientId, targets, str(formData, "effective_from") || today());
+  if (Object.keys(targets).length) await setTargets(clientId, targets, str(formData, "effective_from") || today());
 
-  await refresh(clientId);
+  after(() => refresh(clientId));
   revalidatePath("/config");
   revalidatePath("/");
-  redirect(`/config?salvo=${clientId}`);
+  return { ok: id ? `${name} atualizado.` : `${name} cadastrado.` };
 }
 
-export async function toggleClientActive(formData: FormData) {
+/** Arquivar tira o cliente da carteira e dos formulários sem apagar histórico. */
+export async function setClientArchived(id: number, archived: boolean): Promise<ActionResult> {
   await requireUser();
-  const id = Number(str(formData, "id"));
-  const active = str(formData, "active") === "1" ? 0 : 1;
-  await updateClient(id, { active });
+  const client = await getClient(id);
+  if (!client) return { error: "Cliente não encontrado." };
+  await updateClient(id, { active: archived ? 0 : 1 });
   revalidatePath("/config");
   revalidatePath("/");
+  revalidatePath("/gt");
+  revalidatePath("/account");
+  return { ok: archived ? `${client.name} arquivado.` : `${client.name} voltou para a carteira.` };
+}
+
+/**
+ * Exclusão definitiva — só administradores, e só confirmando o nome. Leva
+ * junto todo o histórico do cliente (ver `deleteClient`).
+ */
+export async function removeClient(id: number, confirmName: string): Promise<ActionResult> {
+  await requireAdmin();
+  const client = await getClient(id);
+  if (!client) return { error: "Cliente não encontrado." };
+  if (confirmName.trim().toLowerCase() !== client.name.trim().toLowerCase())
+    return { error: "O nome digitado não confere." };
+  await deleteClient(id);
+  revalidatePath("/config");
+  revalidatePath("/");
+  revalidatePath("/social");
+  return { ok: `${client.name} excluído com todo o histórico.` };
 }
 
 /* ------------------------- calibração ------------------------------ */
 
-export async function saveWeights(formData: FormData) {
+export async function saveWeights(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   await requireUser();
   const weights: Partial<Record<DimensionKey, number>> = {};
   for (const d of DIMENSIONS) {
@@ -147,46 +191,105 @@ export async function saveWeights(formData: FormData) {
   // reescrever o passado para que a comparação com o desfecho faça sentido.
   await recomputeRange(90);
   revalidatePath("/");
-  revalidatePath("/modelo");
-  revalidatePath("/config");
+  revalidatePath("/config", "layout");
+  return { ok: "Pesos salvos e últimos 90 dias recalculados." };
 }
 
-export async function resetWeights() {
+export async function resetWeights(): Promise<ActionResult> {
   await requireUser();
   await setSetting("weights", {});
   await setSetting("config", {});
   await recomputeRange(90);
   revalidatePath("/");
-  revalidatePath("/config");
+  revalidatePath("/config", "layout");
+  return { ok: "Pesos e limiares voltaram ao padrão; 90 dias recalculados." };
 }
 
-export async function runRecompute() {
+export async function runRecompute(): Promise<ActionResult> {
   await requireUser();
-  await recomputeAll();
+  const r = await recomputeAll();
   revalidatePath("/");
+  return { ok: `Score do dia recalculado para ${r.clients} cliente(s).` };
+}
+
+/* ----------------------- integrações (CRM) ------------------------- */
+
+export async function enableIntegration(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const me = await requireAdmin();
+  const clientId = Number(str(formData, "client_id"));
+  if (!clientId) return { error: "Escolha o cliente." };
+  await createIntegration(clientId, me.id ?? null);
+  revalidatePath("/config/integracoes");
+  return { ok: "Webhook gerado. Copie o endereço e cole no CRM." };
+}
+
+export async function setIntegrationPaused(clientId: number, paused: boolean): Promise<ActionResult> {
+  await requireAdmin();
+  await setIntegrationActive(clientId, !paused);
+  // Ligar/desligar muda o que entra no score — recalcula a série recente.
+  after(() => recomputeRange(45));
+  revalidatePath("/config/integracoes");
+  revalidatePath("/");
+  return { ok: paused ? "Integração pausada — os leads voltam para o input manual." : "Integração reativada." };
+}
+
+export async function rotateIntegration(clientId: number): Promise<ActionResult> {
+  await requireAdmin();
+  await rotateIntegrationToken(clientId);
+  revalidatePath("/config/integracoes");
+  return { ok: "Novo endereço gerado. Atualize o webhook no CRM." };
+}
+
+export async function removeIntegration(clientId: number): Promise<ActionResult> {
+  await requireAdmin();
+  await deleteIntegration(clientId);
+  after(() => recomputeRange(45));
+  revalidatePath("/config/integracoes");
+  revalidatePath("/");
+  return { ok: "Integração removida. Os leads já recebidos continuam no histórico." };
 }
 
 /* --------------------------- planos -------------------------------- */
 
-export async function addPlan(formData: FormData) {
-  await requireUser();
-  const clientId = Number(str(formData, "client_id"));
-  await createPlan({
-    client_id: clientId,
+function planFields(formData: FormData) {
+  return {
     risk: str(formData, "risk"),
     plan: str(formData, "plan"),
     owner: str(formData, "owner"),
     due_date: str(formData, "due_date") || null,
-  });
-  revalidatePath(`/clientes/${clientId}`);
-  revalidatePath("/");
+  };
 }
 
-export async function setPlanStatus(formData: FormData) {
+export async function savePlan(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   await requireUser();
-  const id = Number(str(formData, "id"));
   const clientId = Number(str(formData, "client_id"));
-  await updatePlanStatus(id, str(formData, "status") as never);
+  const id = Number(str(formData, "id")) || 0;
+  const f = planFields(formData);
+  if (!f.risk || !f.plan || !f.owner) return { error: "Preencha risco, plano e dono." };
+  if (id) await updatePlan(id, f);
+  else await createPlan({ client_id: clientId, ...f });
   revalidatePath(`/clientes/${clientId}`);
   revalidatePath("/");
+  return { ok: id ? "Plano atualizado." : "Plano registrado." };
+}
+
+export async function changePlanStatus(id: number, status: Plan["status"]): Promise<ActionResult> {
+  await requireUser();
+  const plan = await getPlan(id);
+  if (!plan) return { error: "Plano não encontrado." };
+  await updatePlanStatus(id, status);
+  revalidatePath(`/clientes/${plan.client_id}`);
+  revalidatePath("/");
+  const label = { aberto: "reaberto", em_andamento: "em andamento", concluido: "concluído", cancelado: "cancelado" }[status];
+  return { ok: `Plano ${label}.` };
+}
+
+export async function removePlan(id: number): Promise<ActionResult> {
+  await requireUser();
+  const plan = await getPlan(id);
+  if (!plan) return { error: "Plano não encontrado." };
+  await deletePlan(id);
+  revalidatePath(`/clientes/${plan.client_id}`);
+  revalidatePath("/");
+  return { ok: "Plano excluído." };
 }

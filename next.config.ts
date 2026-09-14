@@ -1,7 +1,28 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // PGlite (Postgres local em WASM, só em desenvolvimento) carrega os próprios
+  // .wasm do node_modules — precisa ficar fora do bundle do servidor.
+  serverExternalPackages: ["@electric-sql/pglite"],
+  images: {
+    // AVIF/WebP servidos conforme o Accept do navegador; o cliente recebe a
+    // versão do tamanho que a tela usa em vez da arte em resolução cheia.
+    formats: ["image/avif", "image/webp"],
+    qualities: [70, 75],
+    remotePatterns: [
+      // Artes das aprovações vivem no Vercel Blob público.
+      { protocol: "https", hostname: "**.public.blob.vercel-storage.com" },
+    ],
+  },
+  // Áreas administrativas saíram do menu principal e foram para dentro de
+  // Configurações. Os endereços antigos continuam valendo para quem salvou.
+  async redirects() {
+    return [
+      { source: "/usuarios", destination: "/config/usuarios", permanent: true },
+      { source: "/integracoes", destination: "/config/integracoes", permanent: true },
+      { source: "/modelo", destination: "/config/modelo", permanent: true },
+    ];
+  },
 };
 
 export default nextConfig;

@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono, Montserrat } from "next/font/google";
 import "./globals.css";
-import { MobileNav, Sidebar, Topbar } from "@/components/nav";
+import { Suspense } from "react";
+import { AppFrame } from "@/components/app-frame";
+import { FlashFromUrl, Toaster } from "@/components/toast";
 import { getSessionUser } from "@/lib/auth";
 
 /* Montserrat = tipo oficial da marca (display).
@@ -21,6 +23,9 @@ const jetbrains = JetBrains_Mono({
   subsets: ["latin"],
   weight: ["400", "500", "700"],
   variable: "--font-jetbrains",
+  // Mono só aparece em IDs e números de tabela — nunca é o texto crítico do
+  // primeiro paint. Sem preload ele entra sob demanda e libera banda p/ o LCP.
+  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -44,7 +49,7 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Sem sessão a única rota alcançável é /login, que não usa a moldura do app.
   const user = await getSessionUser();
-  const perfil = user ? { name: user.name, isAdmin: Boolean(user.is_admin) } : null;
+  const perfil = user ? { name: user.name, isAdmin: Boolean(user.is_admin), role: user.role } : null;
 
   return (
     <html
@@ -52,20 +57,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       className={`${montserrat.variable} ${inter.variable} ${jetbrains.variable}`}
     >
       <body className="flex min-h-screen">
-        {user && perfil ? (
-          <>
-            <Sidebar isAdmin={perfil.isAdmin} />
-            <div className="flex min-w-0 flex-1 flex-col">
-              <Topbar user={perfil} />
-              <MobileNav user={perfil} />
-              <main className="app-main mx-auto w-full max-w-[1480px] px-4 pt-5 sm:px-6 lg:px-7 lg:pt-6">
-                {children}
-              </main>
-            </div>
-          </>
-        ) : (
-          children
-        )}
+        {user && perfil ? <AppFrame user={perfil}>{children}</AppFrame> : children}
+        <Toaster />
+        <Suspense fallback={null}>
+          <FlashFromUrl />
+        </Suspense>
       </body>
     </html>
   );

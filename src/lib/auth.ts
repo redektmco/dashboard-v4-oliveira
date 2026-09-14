@@ -9,7 +9,7 @@ import type { User } from "./model/types";
 /**
  * Acesso fechado da unidade — não existe cadastro público.
  * Felipe e Michelle nascem como admin (semeados em `ensureAdmins`) e são os
- * únicos que criam novos usuários, pelo painel em /usuarios.
+ * únicos que criam novos usuários, pelo painel em Configurações › Usuários.
  *
  * A sessão vive no banco, não em cookie assinado: desativar alguém no painel
  * derruba o acesso na hora e não depende de segredo em variável de ambiente.
@@ -26,6 +26,13 @@ const ADMINS = [
   { login: "felipe", name: "Felipe" },
   { login: "michelle", name: "Michelle" },
 ];
+
+/**
+ * Logins que o boot garante como admin ativo (`ensureAdmins`). Excluir,
+ * desativar ou rebaixar esses não duraria até o próximo deploy — então o
+ * painel nem oferece.
+ */
+export const FIXED_ADMIN_LOGINS = ADMINS.map((a) => a.login);
 
 export type AuthUser = User & {
   login: string;
@@ -202,7 +209,13 @@ export async function setUserAdmin(userId: number, isAdmin: boolean) {
   await run("UPDATE users SET is_admin = ? WHERE id = ?", [isAdmin ? 1 : 0, userId]);
 }
 
-export async function updateUserProfile(userId: number, name: string, role: User["role"]) {
+export async function updateUserProfile(userId: number, name: string, role: User["role"], login?: string) {
+  if (login) {
+    await run("UPDATE users SET name = ?, role = ?, login = ? WHERE id = ?", [name, role, normalizeLogin(login), userId]);
+    // Login trocado: quem estava logado entra de novo com o nome novo.
+    await run("DELETE FROM sessions WHERE user_id = ?", [userId]);
+    return;
+  }
   await run("UPDATE users SET name = ?, role = ? WHERE id = ?", [name, role, userId]);
 }
 
@@ -211,6 +224,14 @@ export async function updateUserProfile(userId: number, name: string, role: User
  * (instrumentation.ts) para que um banco novo já nasça com acesso.
  */
 export async function ensureAdmins() {
+  // Caminho quente do boot: uma query confirma que está tudo no lugar e sai.
+  const ok = await one<{ n: number }>(
+    `SELECT COUNT(*)::int AS n FROM users
+     WHERE login = ANY(?) AND is_admin = 1 AND active = 1 AND password_hash IS NOT NULL`,
+    [ADMINS.map((a) => a.login)],
+  );
+  if (ok?.n === ADMINS.length) return;
+
   for (const a of ADMINS) {
     const existing = await one<{ id: number; password_hash: string | null }>(
       "SELECT id, password_hash FROM users WHERE login = ?",

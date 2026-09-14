@@ -8,24 +8,88 @@ import { neon } from "@neondatabase/serverless";
  *
  * Datas voltam sempre como texto (`::text` nas queries): o cálculo compara e
  * subtrai strings `YYYY-MM-DD` e não deve receber objetos `Date`.
+ *
+ * Desenvolvimento local: `DATABASE_URL=pglite://./.data/pglite` troca o Neon
+ * por um Postgres embutido (PGlite, WASM) gravado em disco. Sem isso o
+ * `npm run dev` escreve direto no banco de produção do `.env.local`.
  */
 
-type Sql = ReturnType<typeof neon>;
+type Driver = {
+  query(sql: string, params: unknown[]): Promise<unknown[]>;
+  /** Vários statements num único round-trip, dentro de uma transação. */
+  batch(statements: string[]): Promise<void>;
+  /** Vários statements parametrizados, tudo ou nada, num único round-trip. */
+  tx(steps: { sql: string; params: unknown[] }[]): Promise<void>;
+};
 
-let _sql: Sql | null = null;
+let _driver: Promise<Driver> | null = null;
 
-export function getSql(): Sql {
-  if (!_sql) {
-    const url = process.env.DATABASE_URL;
-    if (!url) {
-      throw new Error(
-        "DATABASE_URL não definida. Rode `vercel env pull .env.local --yes` " +
-          "depois de provisionar o Neon pelo Marketplace.",
-      );
-    }
-    _sql = neon(url);
+function databaseUrl() {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error(
+      "DATABASE_URL não definida. Rode `vercel env pull .env.local --yes` " +
+        "depois de provisionar o Neon pelo Marketplace.",
+    );
   }
-  return _sql;
+  return url;
+}
+
+function neonDriver(url: string): Driver {
+  const sql = neon(url);
+  return {
+    query: (text, params) => sql.query(text, params as never[]) as Promise<unknown[]>,
+    batch: async (statements) => {
+      await sql.transaction(statements.map((s) => sql.query(s)));
+    },
+    tx: async (steps) => {
+      await sql.transaction(steps.map((st) => sql.query(st.sql, st.params as never[])));
+    },
+  };
+}
+
+type PgliteDb = {
+  query(sql: string, params: unknown[]): Promise<{ rows: unknown[] }>;
+  exec(sql: string): Promise<unknown>;
+  transaction<T>(fn: (tx: { query(sql: string, params: unknown[]): Promise<unknown> }) => Promise<T>): Promise<T>;
+};
+
+async function pgliteDriver(url: string): Promise<Driver> {
+  // Uma instância por processo, sobrevivendo ao hot reload do dev server:
+  // o PGlite é single-user e não aceita duas aberturas do mesmo diretório.
+  const g = globalThis as typeof globalThis & { __pglite?: Promise<PgliteDb> };
+  g.__pglite ??= (async () => {
+    // Nome fora do alcance do bundler: é dependência de desenvolvimento e
+    // não deve entrar no pacote da função em produção.
+    const pkg = "@electric-sql/pglite";
+    const { PGlite } = (await import(/* turbopackIgnore: true */ /* webpackIgnore: true */ pkg)) as {
+      PGlite: new (dir: string) => PgliteDb;
+    };
+    const dir = url.replace(/^pglite:\/\//, "") || "./.data/pglite";
+    const { mkdirSync } = await import("node:fs");
+    mkdirSync(dir, { recursive: true });
+    return new PGlite(dir);
+  })();
+  const db = await g.__pglite;
+  return {
+    query: async (text, params) => (await db.query(text, params)).rows,
+    batch: async (statements) => {
+      await db.exec(`BEGIN;\n${statements.join(";\n")};\nCOMMIT;`);
+    },
+    tx: async (steps) => {
+      await db.transaction(async (t) => {
+        for (const st of steps) await t.query(st.sql, st.params);
+      });
+    },
+  };
+}
+
+function driver(): Promise<Driver> {
+  if (!_driver) {
+    const url = databaseUrl();
+    _driver = url.startsWith("pglite:") ? pgliteDriver(url) : Promise.resolve(neonDriver(url));
+  }
+  return _driver;
 }
 
 /** Converte os `?` do SQL para os `$1..$n` do Postgres. */
@@ -38,7 +102,7 @@ export async function all<T = Record<string, unknown>>(
   sql: string,
   params: unknown[] = [],
 ): Promise<T[]> {
-  const rows = await getSql().query(toPg(sql), params as never[]);
+  const rows = await (await driver()).query(toPg(sql), params);
   return rows as T[];
 }
 
@@ -52,6 +116,11 @@ export async function one<T = Record<string, unknown>>(
 
 export async function run(sql: string, params: unknown[] = []): Promise<void> {
   await all(sql, params);
+}
+
+/** Vários comandos como uma transação só — tudo ou nada, um round-trip no Neon. */
+export async function transaction(steps: [sql: string, params?: unknown[]][]): Promise<void> {
+  await (await driver()).tx(steps.map(([sql, params = []]) => ({ sql: toPg(sql), params })));
 }
 
 /** INSERT que devolve o id gerado. */
@@ -223,16 +292,85 @@ CREATE TABLE IF NOT EXISTS sm_posts (
 CREATE INDEX IF NOT EXISTS idx_sm_posts_project ON sm_posts (project_id, ord);
 CREATE INDEX IF NOT EXISTS idx_sm_posts_due
   ON sm_posts (publish_status, scheduled_at);
+
+-- Formato do criativo: post de feed (1 arte = post, varias = carrossel),
+-- Reels (video vertical) ou Story (sequencia vertical de frames 9:16).
+ALTER TABLE sm_posts ADD COLUMN IF NOT EXISTS format TEXT NOT NULL DEFAULT 'feed';
+ALTER TABLE sm_posts DROP CONSTRAINT IF EXISTS sm_posts_format_check;
+ALTER TABLE sm_posts ADD CONSTRAINT sm_posts_format_check
+  CHECK (format IN ('feed','reels','story'));
+
+-- Chave de idempotencia gerada no navegador por arquivo enviado: reenviar o
+-- mesmo lote depois de uma falha parcial nao duplica o criativo.
+ALTER TABLE sm_posts ADD COLUMN IF NOT EXISTS client_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sm_posts_client_key
+  ON sm_posts (project_id, client_key) WHERE client_key IS NOT NULL;
+
+-- =====================================================================
+-- Integracoes — contabilizacao automatica de leads. O CRM envia um webhook
+-- por lead para /api/integrations/webhook/<token>; uma integracao por
+-- cliente (token na URL, como o guest do Social). A contagem por semana-
+-- ritual alimenta direto a regua de "Leads gerados" no score.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS crm_integrations (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER NOT NULL UNIQUE REFERENCES clients(id) ON DELETE CASCADE,
+  token TEXT NOT NULL UNIQUE,
+  provider TEXT NOT NULL DEFAULT 'generic',
+  active SMALLINT NOT NULL DEFAULT 1,
+  created_by INTEGER REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_event_at TIMESTAMPTZ
+);
+
+-- Cada lead recebido, datado pela semana-ritual que fecha. Nunca sobrescreve:
+-- a contagem e um COUNT desta tabela, mesmo principio do snapshot.
+CREATE TABLE IF NOT EXISTS crm_leads (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  ref_date DATE NOT NULL,
+  received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  dedup_key TEXT,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+CREATE INDEX IF NOT EXISTS idx_crm_leads_client ON crm_leads (client_id, ref_date);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_leads_dedup
+  ON crm_leads (client_id, dedup_key) WHERE dedup_key IS NOT NULL;
 `;
+
+/**
+ * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
+ * próximo boot aplicar o DDL de novo.
+ */
+export const SCHEMA_VERSION = "2026-09-10.stories";
 
 let migrated = false;
 
-/** Cria o schema se ainda não existir. Idempotente. */
-export async function migrate() {
-  if (migrated) return;
-  const sql = getSql();
-  for (const stmt of DDL.split(";\n").map((s) => s.trim()).filter(Boolean)) {
-    await sql.query(stmt);
+/**
+ * Cria/atualiza o schema. Idempotente.
+ *
+ * Roda no `register()` de cada boot, antes da primeira requisição — então o
+ * custo aqui é tempo de cold start. Antes eram ~45 statements em série, um
+ * round-trip HTTP cada, e um `ALTER TABLE users` que trava a tabela a cada
+ * boot. Agora: uma leitura da versão gravada e, só se ela mudou, o DDL
+ * inteiro num único round-trip transacional.
+ */
+export async function migrate({ force = false }: { force?: boolean } = {}) {
+  if (migrated && !force) return;
+  if (!force) {
+    const current = await one<{ value: string }>(
+      "SELECT value FROM settings WHERE key = 'schema_version'",
+    ).catch(() => null); // banco novo: a tabela settings ainda não existe
+    if (current?.value === SCHEMA_VERSION) {
+      migrated = true;
+      return;
+    }
   }
+  const statements = DDL.split(";\n").map((s) => s.trim()).filter(Boolean);
+  statements.push(
+    `INSERT INTO settings (key, value, updated_at) VALUES ('schema_version', '${JSON.stringify(SCHEMA_VERSION)}'::jsonb, now())
+     ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()`,
+  );
+  await (await driver()).batch(statements);
   migrated = true;
 }

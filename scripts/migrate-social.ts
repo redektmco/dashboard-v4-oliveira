@@ -6,7 +6,7 @@
 import { all, migrate } from "../src/lib/db";
 
 async function main() {
-  await migrate();
+  await migrate({ force: true });
   const rows = await all<{ table_name: string }>(
     `SELECT table_name FROM information_schema.tables
      WHERE table_schema = 'public' AND table_name IN ('sm_projects','sm_posts')

@@ -8,6 +8,7 @@ import { savePerformance } from "@/actions";
 import { FieldBlock } from "@/components/form-fields";
 import { FillerSelect } from "@/components/filler-select";
 import { PageHeader, Panel, TableScroll, dateBR } from "@/components/ui";
+import { SubmitButton } from "@/components/form-controls";
 import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -15,15 +16,17 @@ export const dynamic = "force-dynamic";
 export default async function GtFormPage({ params }: { params: Promise<{ id: string }> }) {
   await requireUser();
   const { id } = await params;
-  const client = await getClient(Number(id));
-  if (!client) notFound();
-
+  const clientId = Number(id);
   const ref = currentRitualDate();
-  const [history, targets, gts] = await Promise.all([
-    perfSnapshots(client.id, 6),
-    getTargets(client.id),
+  // Cadastro, histórico, metas e time em paralelo — antes o cadastro vinha
+  // sozinho antes do resto.
+  const [client, history, targets, gts] = await Promise.all([
+    getClient(clientId),
+    perfSnapshots(clientId, 6),
+    getTargets(clientId),
     listFillers("gt"),
   ]);
+  if (!client) notFound();
   const last = history[0] ?? null;
 
   const fields = fieldsFor(client.account_type, "gt");
@@ -108,9 +111,9 @@ export default async function GtFormPage({ params }: { params: Promise<{ id: str
             embaixo. No desktop volta a ser uma linha comum. */}
         <div className="form-actions">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-            <button type="submit" className="btn btn-primary justify-center">
+            <SubmitButton className="btn-primary justify-center" pendingLabel="Salvando snapshot…">
               Salvar snapshot da semana
-            </button>
+            </SubmitButton>
             <Link href="/gt" className="btn justify-center">
               Cancelar
             </Link>

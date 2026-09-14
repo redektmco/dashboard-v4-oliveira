@@ -7,7 +7,12 @@ import { recomputeAll, recomputeRange } from "@/lib/repo";
  */
 export async function POST(req: Request) {
   const token = process.env.RECOMPUTE_TOKEN;
-  if (token && req.headers.get("x-recompute-token") !== token) {
+  // O cron da Vercel não manda `x-recompute-token`: ele se identifica com
+  // `Authorization: Bearer $CRON_SECRET`. Sem aceitar os dois, definir o
+  // RECOMPUTE_TOKEN silenciava o job diário com 401.
+  const cronSecret = process.env.CRON_SECRET;
+  const fromCron = Boolean(cronSecret) && req.headers.get("authorization") === `Bearer ${cronSecret}`;
+  if (token && !fromCron && req.headers.get("x-recompute-token") !== token) {
     return NextResponse.json({ error: "não autorizado" }, { status: 401 });
   }
 

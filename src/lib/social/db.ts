@@ -9,10 +9,24 @@ import type {
   Asset,
   DecisionEvent,
   Post,
+  PostFormat,
   Project,
   PostStatus,
   PublishStatus,
 } from "./types";
+
+/**
+ * `timestamptz::text` sai como "2026-09-10 15:21:15.9-03" — espaço no lugar do
+ * T e fuso sem os minutos. O `Date` do navegador recusa isso ("Invalid
+ * Date"), então o domínio recebe ISO 8601 de verdade.
+ */
+function iso(s: string): string;
+function iso(s: string | null): string | null;
+function iso(s: string | null): string | null {
+  if (!s) return null;
+  const d = new Date(s.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00"));
+  return Number.isNaN(d.getTime()) ? s : d.toISOString();
+}
 
 /* ------------------------------ projetos ------------------------------ */
 
@@ -48,13 +62,21 @@ function toProject(r: ProjectRow): Project {
     igUserId: r.ig_user_id,
     hasIgToken: Boolean(r.has_ig_token),
     createdBy: r.created_by,
-    createdAt: r.created_at,
+    createdAt: iso(r.created_at),
   };
 }
 
 export async function listProjects(): Promise<Project[]> {
   const rows = await all<ProjectRow>(
     `${PROJECT_SELECT} WHERE p.archived = 0 ORDER BY p.created_at DESC`,
+  );
+  return rows.map(toProject);
+}
+
+/** Projetos arquivados — somem das listas e do link do cliente, mas não perdem nada. */
+export async function listArchivedProjects(): Promise<Project[]> {
+  const rows = await all<ProjectRow>(
+    `${PROJECT_SELECT} WHERE p.archived = 1 ORDER BY p.created_at DESC`,
   );
   return rows.map(toProject);
 }
@@ -120,19 +142,15 @@ export async function updateProject(
   return getProject(id);
 }
 
-export async function deleteProject(id: string): Promise<void> {
+/**
+ * Exclui o projeto e seus posts (ON DELETE CASCADE). Devolve as URLs das
+ * mídias para o chamador limpar o Blob — o banco não sabe apagar arquivo.
+ */
+export async function deleteProject(id: string): Promise<string[]> {
+  const rows = await all<{ assets: Asset[] }>("SELECT assets FROM sm_posts WHERE project_id = ?", [id]);
+  // Posts caem junto por ON DELETE CASCADE.
   await run("DELETE FROM sm_projects WHERE id = ?", [id]);
-}
-
-/** Só para o worker de publicação: token real da conta IG. */
-export async function getProjectCredentials(
-  id: string,
-): Promise<{ igUserId: string | null; igAccessToken: string | null } | null> {
-  const r = await one<{ ig_user_id: string | null; ig_access_token: string | null }>(
-    "SELECT ig_user_id, ig_access_token FROM sm_projects WHERE id = ?",
-    [id],
-  );
-  return r ? { igUserId: r.ig_user_id, igAccessToken: r.ig_access_token } : null;
+  return rows.flatMap((r) => (Array.isArray(r.assets) ? r.assets.map((a) => a.url) : []));
 }
 
 /* ------------------------------- posts -------------------------------- */
@@ -141,6 +159,7 @@ type PostRow = {
   id: string;
   project_id: string;
   ord: number;
+  format: PostFormat;
   caption: string;
   assets: Asset[];
   status: PostStatus;
@@ -156,7 +175,7 @@ type PostRow = {
 };
 
 const POST_SELECT = `
-  SELECT id, project_id, ord, caption, assets, status,
+  SELECT id, project_id, ord, format, caption, assets, status,
          decided_at::text AS decided_at, feedback, history,
          created_at::text AS created_at, scheduled_at::text AS scheduled_at,
          publish_status, published_at::text AS published_at,
@@ -168,16 +187,17 @@ function toPost(r: PostRow): Post {
     id: r.id,
     projectId: r.project_id,
     order: r.ord,
+    format: r.format ?? "feed",
     caption: r.caption,
     assets: Array.isArray(r.assets) ? r.assets : [],
     status: r.status,
-    decidedAt: r.decided_at,
+    decidedAt: iso(r.decided_at),
     feedback: r.feedback ?? undefined,
     history: Array.isArray(r.history) ? r.history : [],
-    createdAt: r.created_at,
-    scheduledAt: r.scheduled_at,
+    createdAt: iso(r.created_at),
+    scheduledAt: iso(r.scheduled_at),
     publishStatus: r.publish_status,
-    publishedAt: r.published_at,
+    publishedAt: iso(r.published_at),
     igMediaId: r.ig_media_id,
     publishError: r.publish_error,
   };
@@ -196,30 +216,60 @@ export async function getPost(id: string): Promise<Post | null> {
   return r ? toPost(r) : null;
 }
 
-export async function nextOrder(projectId: string): Promise<number> {
-  const r = await one<{ n: number | null }>(
-    "SELECT MAX(ord) AS n FROM sm_posts WHERE project_id = ?",
-    [projectId],
+export type NewPost = {
+  id: string;
+  projectId: string;
+  format: PostFormat;
+  caption: string;
+  assets: Asset[];
+  /** Chave de idempotência do navegador: reenvio não duplica. */
+  clientKey: string | null;
+};
+
+/**
+ * Grava os posts na ordem recebida, depois dos que já existem, num único
+ * INSERT. Posts cuja `clientKey` já existe no projeto são ignorados (reenvio
+ * depois de falha parcial) — o retorno diz quais entraram de fato.
+ */
+export async function createPosts(posts: NewPost[]): Promise<Set<string>> {
+  if (!posts.length) return new Set();
+  const projectId = posts[0].projectId;
+  const values = posts
+    .map(
+      (_, i) =>
+        `(?, ?, (SELECT COALESCE(MAX(ord), -1) + ${i + 1} FROM sm_posts WHERE project_id = ?), ?, ?, ?::jsonb, ?)`,
+    )
+    .join(", ");
+  const params = posts.flatMap((p) => [
+    p.id,
+    projectId,
+    projectId,
+    p.format,
+    p.caption,
+    JSON.stringify(p.assets),
+    p.clientKey,
+  ]);
+  const rows = await all<{ id: string }>(
+    `INSERT INTO sm_posts (id, project_id, ord, format, caption, assets, client_key)
+     VALUES ${values}
+     ON CONFLICT (project_id, client_key) WHERE client_key IS NOT NULL DO NOTHING
+     RETURNING id`,
+    params,
   );
-  return r?.n == null ? 0 : Number(r.n) + 1;
+  return new Set(rows.map((r) => r.id));
 }
 
-export async function createPosts(
-  posts: {
-    id: string;
-    projectId: string;
-    order: number;
-    caption: string;
-    assets: Asset[];
-  }[],
-): Promise<void> {
-  for (const p of posts) {
-    await run(
-      `INSERT INTO sm_posts (id, project_id, ord, caption, assets)
-       VALUES (?, ?, ?, ?, ?::jsonb)`,
-      [p.id, p.projectId, p.order, p.caption, JSON.stringify(p.assets)],
-    );
-  }
+/** Posts já existentes para estas chaves — resposta idempotente ao reenvio. */
+export async function postIdsByClientKey(
+  projectId: string,
+  keys: string[],
+): Promise<Map<string, string>> {
+  if (!keys.length) return new Map();
+  const rows = await all<{ id: string; client_key: string }>(
+    `SELECT id, client_key FROM sm_posts WHERE project_id = ? AND client_key = ANY(?)`,
+    [projectId, keys],
+  );
+  return new Map(rows.map((r) => [r.client_key, r.id]));
 }
 
 export async function updatePost(
@@ -259,8 +309,31 @@ export async function updatePost(
   return getPost(id);
 }
 
-export async function deletePost(id: string): Promise<void> {
-  await run("DELETE FROM sm_posts WHERE id = ?", [id]);
+/** Exclui o post e devolve as URLs das mídias para limpar o Blob. */
+export async function deletePost(id: string): Promise<string[]> {
+  const rows = await all<{ assets: Asset[] }>(
+    "DELETE FROM sm_posts WHERE id = ? RETURNING assets",
+    [id],
+  );
+  return rows.flatMap((r) => (Array.isArray(r.assets) ? r.assets.map((a) => a.url) : []));
+}
+
+/** Contagem de decisões de um projeto — usada para saber quando o cliente terminou. */
+export async function countByStatus(projectId: string): Promise<{
+  total: number;
+  pending: number;
+  approved: number;
+  rejected: number;
+}> {
+  const r = await one<{ total: number; pending: number; approved: number; rejected: number }>(
+    `SELECT COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE status = 'pending')::int AS pending,
+            COUNT(*) FILTER (WHERE status = 'approved')::int AS approved,
+            COUNT(*) FILTER (WHERE status = 'rejected')::int AS rejected
+     FROM sm_posts WHERE project_id = ?`,
+    [projectId],
+  );
+  return r ?? { total: 0, pending: 0, approved: 0, rejected: 0 };
 }
 
 /* --------------------------- dashboard de orgânico -------------------------- */
@@ -347,7 +420,7 @@ export type ScheduledPost = Post & {
 };
 
 const SCHEDULED_SELECT = `
-  SELECT po.id, po.project_id, po.ord, po.caption, po.assets, po.status,
+  SELECT po.id, po.project_id, po.ord, po.format, po.caption, po.assets, po.status,
          po.decided_at::text AS decided_at, po.feedback, po.history,
          po.created_at::text AS created_at, po.scheduled_at::text AS scheduled_at,
          po.publish_status, po.published_at::text AS published_at,
@@ -367,31 +440,20 @@ function toScheduled(
   };
 }
 
-/** Planejamento: posts com data marcada, do mais próximo ao mais distante. */
+/**
+ * Planejamento: posts com data marcada, do mais próximo ao mais distante.
+ * Inclui os já publicados (o calendário mostra o que saiu, em verde) e deixa
+ * de fora projeto arquivado — arquivar tira do calendário.
+ */
 export async function listPlanned(): Promise<ScheduledPost[]> {
   const rows = await all<
     PostRow & { project_title: string; client_name: string; ig_handle: string }
   >(
     `${SCHEDULED_SELECT}
      WHERE po.scheduled_at IS NOT NULL
-       AND po.publish_status IN ('scheduled','publishing','failed')
+       AND p.archived = 0
+       AND po.publish_status IN ('scheduled','publishing','failed','published')
      ORDER BY po.scheduled_at ASC`,
-  );
-  return rows.map(toScheduled);
-}
-
-/** Fila do worker: agendados cujo horário já chegou. */
-export async function listDuePosts(limit = 10): Promise<ScheduledPost[]> {
-  const rows = await all<
-    PostRow & { project_title: string; client_name: string; ig_handle: string }
-  >(
-    `${SCHEDULED_SELECT}
-     WHERE po.publish_status = 'scheduled'
-       AND po.scheduled_at IS NOT NULL
-       AND po.scheduled_at <= now()
-     ORDER BY po.scheduled_at ASC
-     LIMIT ?`,
-    [limit],
   );
   return rows.map(toScheduled);
 }

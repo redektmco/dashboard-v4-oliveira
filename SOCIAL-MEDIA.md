@@ -1,81 +1,78 @@
-# Social media — o que falta fazer
+# Social media — como funciona e o que falta
 
-Módulo de **aprovação de criativos + planejamento + publicação automática no Instagram**,
-integrado ao dashboard sob a aba **Social media** (`/social`). Este arquivo lista o que
-ainda depende de você (credenciais/decisões externas) e o que vale verificar antes de
-considerar 100% pronto em produção.
+Módulo de **aprovação de criativos (post, carrossel, Reels e Stories) + planejamento de
+conteúdo**, integrado ao dashboard sob a aba **Social media** (`/social`).
 
-> Status: código integrado, build OK, schema aplicado no Neon, Blob provisionado.
-> **Bloqueio principal para o auto-post:** credenciais do Instagram por projeto (abaixo).
+> Status: código integrado, build OK. O schema novo (colunas `format` e `client_key` em
+> `sm_posts`) é aplicado sozinho no primeiro boot depois do deploy (`SCHEMA_VERSION`).
 
 ---
 
-## 1. Ligar a publicação automática no Instagram (obrigatório p/ auto-post)
+## 1. Formatos
 
-Hoje o fluxo aprova → agenda → **fica esperando credencial**. O worker
-(`/api/social/publish`) só publica de verdade quando o projeto tiver conta IG configurada.
+| Formato | Mídia | Como o cliente vê |
+| --- | --- | --- |
+| Post | 1 imagem (ou vídeo) | mock do feed do Instagram |
+| Carrossel | 2+ mídias no mesmo criativo (derivado da quantidade) | feed com paginação |
+| Reels | 1 vídeo vertical 9:16 | card vertical com legenda; tela cheia |
+| Story | 1+ frames verticais 9:16 (imagem ou vídeo), aprovados como um conjunto | bandeja de Stories no topo do link + viewer em tela cheia no idioma do Instagram |
 
-> **Atenção ao plano da Vercel:** a conta é **Hobby**, que limita cron a **1×/dia**. Por isso
-> o cron em `vercel.json` está em `5 9 * * *` (uma varredura diária). Para publicar **perto do
-> horário agendado** (ex.: de 5 em 5 min), escolha uma das opções:
->
-> - **Upgrade para Pro** e voltar o cron para `*/5 * * * *` em `vercel.json` (troca de 1 linha).
-> - **Cron externo** (cron-job.org, GitHub Actions, EasyCron…) batendo em
->   `https://<seu-dominio>/api/social/publish` a cada poucos minutos — o endpoint é público
->   (fora do proxy). Nesse caso, **defina `RECOMPUTE_TOKEN`** e mande o header
->   `x-recompute-token` no cron externo para ninguém mais disparar.
+**Stories no link do cliente:** a bandeja mostra um círculo por Story (gradiente = pendente,
+verde = aprovado, vermelho = reprovado). O viewer tem barra de progresso por frame, toque à
+direita avança, à esquerda volta, segurar pausa, arrastar para baixo fecha; setas/Esc no
+desktop. Aprovar/Reprovar (com comentário apontando o frame) ficam no rodapé. Um Story
+pendente **não passa sozinho** para o próximo — o viewer para no último frame esperando a
+decisão. O relógio do frame só anda depois de a mídia carregar.
 
-Pré-requisitos externos (fora do nosso controle):
+**No painel:** o composer tem Formato (Post/Carrossel · Reels · Stories) × Quantidade
+(Um criativo · Em lote). "Um criativo" junta os arquivos num carrossel ou numa sequência de
+Stories; "Em lote" cria um criativo por arquivo. Tudo tem pré-visualização (inclusive tela
+cheia) **antes** de "Enviar para aprovação" — só nesse clique o criativo vai para o link.
 
-- [ ] **App no Meta for Developers** com o produto *Instagram Graph API* adicionado.
-- [ ] Conta **Instagram Business/Creator** de cada cliente ligada a uma **Página do Facebook**.
-- [ ] Gerar um **token de longa duração** (long-lived) com as permissões
-      `instagram_basic`, `instagram_content_publish`, `pages_read_engagement`
-      (e `business_management` se a conta estiver em um Business Manager).
-- [ ] Obter o **IG Business Account ID** de cada cliente (via
-      `GET /{page-id}?fields=instagram_business_account`).
+## 2. Upload (por que o lote quebrava e como funciona agora)
 
-Depois, dentro do dashboard:
+**Causa do erro no lote:** o upload mandava todos os arquivos numa única requisição
+multipart para `/api/social/projects/[id]/posts`. Com o `proxy.ts` ativo, o Next bufferiza o
+corpo e **trunca em 10 MB** (`proxyClientMaxBodySize`); o multipart truncado não parseia e a
+rota respondia `invalid form`. Três fotos de ~4 MB já passavam do limite. Além disso o
+processamento era sequencial e tudo-ou-nada, arquivos já enviados ao Blob ficavam órfãos
+quando um falhava, e a mensagem de erro era genérica.
 
-- [ ] Abrir cada projeto em `/social/projetos/<id>` → seção **"Conta Instagram"** →
-      colar o **IG Business Account ID** e o **token**. Pronto: o próximo ciclo do cron publica.
+**Agora:**
+- O navegador envia cada arquivo **direto ao Vercel Blob** (`@vercel/blob/client`), 3 por vez,
+  com progresso por arquivo e multipart acima de 8 MB. `/api/social/upload` só emite um token
+  curto (só para quem opera Social, só para `social/<projectId>/`, só imagem/vídeo no limite).
+- Depois, `POST /api/social/projects/[id]/posts` recebe **JSON** com as URLs e devolve o
+  resultado **por item** — um arquivo ruim não derruba os outros.
+- **Idempotência:** cada criativo leva uma `client_key` (hash de nome+tamanho+data do arquivo);
+  índice único por projeto. O composer pergunta antes de subir quais já existem, e reenviar
+  depois de falha parcial não duplica nem sobe de novo.
+- Limites: imagem 30 MB, vídeo 500 MB. HEIC é recusado com instrução ("exporte como JPG").
+  Proporção fora do formato gera aviso (feed fora de 4:5–1.91:1; Story/Reels fora de 9:16).
+- **Sem órfãos:** excluir post/projeto apaga as mídias do Blob (`deleteAssets`, depois da
+  resposta); upload que não virou post é apagado quando o usuário descarta ou sai da página.
 
-Limitações conhecidas do seam atual (`src/lib/social/instagram.ts`):
+## 3. Postagem automática no Instagram — DESCARTADA
 
-- [ ] Cobre **imagem única e carrossel**. **Reels/vídeo** exigem polling assíncrono do
-      status do container — ainda não implementado.
-- [ ] Token de longa duração **expira em ~60 dias**. Definir um plano de renovação
-      (refresh periódico) ou reautenticação — hoje não há refresh automático.
-- [ ] O token é guardado em texto na coluna `sm_projects.ig_access_token`. Aceitável para
-      uso interno; se quiser, migrar para cofre/criptografia depois.
+Removidos o worker `/api/social/publish`, o seam da Graph API e o cron. A data no calendário
+(`/social/planejamento`) é um plano; a postagem é **manual** e o time marca "publicado" pelo
+menu do criativo. As colunas `ig_user_id`/`ig_access_token` seguem no schema (reversível).
 
-## 2. Verificações em produção
+## 4. Gestão
 
-- [ ] Confirmar que `BLOB_READ_WRITE_TOKEN` existe também nos escopos **Preview** e
-      **Production** na Vercel (o `create-store` costuma propagar; conferir em
-      `vercel env ls`).
-- [ ] Confirmar que os **crons** aparecem no projeto após o deploy de produção
-      (`/api/recompute` e `/api/social/publish`).
-- [ ] Testar o **link do cliente** (`/a/<token>`) num dispositivo móvel real — swipe,
-      grade, lista, desfazer e comentário.
-- [ ] Testar upload (post único e em lote) validando que as imagens sobem para o Blob e
-      aparecem no preview do cliente.
-- [ ] (Opcional) Definir `RECOMPUTE_TOKEN` na Vercel para proteger os endpoints de cron
-      — hoje `/api/social/publish` e `/api/recompute` ficam abertos (fora do proxy).
-      Se definir, garantir que o cron da Vercel envie o header/segredo esperado.
+- Projeto: editar (título, cliente, @), arquivar (sai das listas, do calendário e o link do
+  cliente para de abrir), **restaurar** em Social media › Arquivados, excluir (digitando o nome).
+- Criativo: visualizar, editar legenda/observação, data no calendário, marcar publicado,
+  voltar para pendente, excluir.
 
-## 3. Acessos e conteúdo
+## 5. Verificações em produção
 
-- [ ] Criar os usuários do time de social em `/usuarios` com o papel **Social Media**.
-- [ ] Popular os primeiros projetos por cliente e enviar o link de aprovação.
-
-## 4. Ideias / melhorias futuras (não bloqueiam)
-
-- [ ] Arquivar projeto (a coluna `archived` já existe; falta o botão na UI).
-- [ ] Notificar a equipe quando o cliente termina de avaliar um projeto.
-- [ ] Editar legenda de um post já subido pela UI (o `PATCH` já aceita `caption`).
-- [ ] Suporte a vídeo/Reels no publicador.
-- [ ] Métricas pós-publicação (alcance/likes) puxando de volta da Graph API.
+- [ ] `BLOB_READ_WRITE_TOKEN` nos escopos Preview e Production (`vercel env ls`).
+- [ ] Testar o link do cliente num celular real — swipe, grade, lista, Stories, desfazer.
+- [ ] (Opcional) `SOCIAL_NOTIFY_WEBHOOK` com uma Incoming Webhook (Slack/Discord/Zapier):
+      avisa a equipe quando o cliente termina de avaliar. Sem a env, é no-op.
+- [ ] (Opcional) `RECOMPUTE_TOKEN` para proteger `/api/recompute` (o cron da Vercel é aceito
+      pelo `CRON_SECRET`).
 
 ---
 
@@ -86,15 +83,20 @@ Limitações conhecidas do seam atual (`src/lib/social/instagram.ts`):
 | Tabelas (DDL) | `src/lib/db/index.ts` (`sm_projects`, `sm_posts`) |
 | Repositório | `src/lib/social/db.ts` |
 | Tipos | `src/lib/social/types.ts` |
+| Regras de mídia (cliente+servidor) | `src/lib/social/media.ts` |
 | Storage (Blob) | `src/lib/social/storage.ts` |
-| Publicação IG (seam) | `src/lib/social/instagram.ts` |
-| Worker/cron | `src/app/api/social/publish/route.ts` + `vercel.json` |
-| Dashboard/orgânico | `src/app/social/page.tsx` |
+| Token de upload / limpeza | `src/app/api/social/upload/route.ts` |
+| Criação de criativos (JSON) | `src/app/api/social/projects/[id]/posts/route.ts` |
+| Composer | `src/components/social/composer.tsx` |
+| Viewer de Stories | `src/components/social/story-viewer.tsx` (+ `story-nav.ts`, `story.css`) |
+| Card vertical / bandeja / etiqueta | `src/components/social/vertical-preview.tsx` |
+| Notificação da equipe | `src/lib/social/notify.ts` (env `SOCIAL_NOTIFY_WEBHOOK`) |
+| Lista de projetos | `src/app/social/page.tsx` + `src/components/social/project-list.tsx` |
 | Planejamento | `src/app/social/planejamento/page.tsx` |
-| Workspace do projeto | `src/app/social/projetos/[id]/page.tsx` + `src/components/social/project-workspace.tsx` |
+| Workspace do projeto | `src/components/social/project-workspace.tsx` |
 | Cliente (swipe, guest) | `src/app/a/[token]/` + `src/components/social/client-approval.tsx` |
 | Decisão do cliente (API) | `src/app/api/g/[token]/decision/route.ts` |
 | CSS isolado | `src/app/social/approval.css` (`.sm-scope`) |
 | Acesso/roles | `src/lib/auth.ts` (`canManageSocial`, `requireSocial`), role `social` |
 
-Migração idempotente do schema: `npm run migrate:social`.
+Migração forçada do schema: `npm run migrate:social`.

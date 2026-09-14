@@ -73,14 +73,16 @@ export default async function CarteiraPage() {
         title="Saúde da carteira"
         description={`Recompute de ${dateBR(at)} · ${rows.length} contas ativas · ordenado por risco`}
         actions={
-          <Link href="/modelo" className="btn shrink-0">
+          <Link href="/config/modelo" className="btn btn-ghost shrink-0">
             <Icon name="target" size={14} />
             Como o score é calculado
           </Link>
         }
       />
 
-      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-5">
+      {/* Quatro números: a contagem de "confiança < alta" vive na caixa
+          "Dado desatualizado" da triagem, logo abaixo — não repete aqui. */}
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
         <Stat
           label="Vermelho"
           value={summary.byBand.vermelho}
@@ -105,12 +107,6 @@ export default async function CarteiraPage() {
           hint={`de ${brl(summary.mrrTotal)} na carteira`}
           tone={summary.mrrAtRisk > summary.mrrTotal * 0.3 ? "vermelho" : "default"}
           accent
-        />
-        <Stat
-          label="Confiança < alta"
-          value={stale.length}
-          tone={stale.length ? "amarelo" : "default"}
-          hint="cobrar preenchimento é trabalho diário"
         />
       </div>
 

@@ -1,6 +1,8 @@
 import Image from "next/image";
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/login-form";
+import { getSessionUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +15,12 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ de?: string }>;
 }) {
+  // Quem já está logado não precisa ver o formulário. A checagem é aqui, e não
+  // no proxy, porque só aqui dá para conferir a sessão no banco: cookie
+  // obsoleto (senha resetada, acesso revogado, sessão expirada) cai no
+  // formulário em vez de quicar de volta para `/`. Ver src/proxy.ts.
+  if (await getSessionUser()) redirect("/");
+
   const { de } = await searchParams;
 
   return (

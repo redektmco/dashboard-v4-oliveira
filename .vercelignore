@@ -10,3 +10,8 @@ V4 Oliveira & Co Design System
 
 # Protótipo de origem do módulo de Social media — já integrado em src/.
 aprovação-v4
+
+# Banco local de desenvolvimento (PGlite) e worktrees/skills do agente —
+# nada disso entra no build.
+.data
+.claude
