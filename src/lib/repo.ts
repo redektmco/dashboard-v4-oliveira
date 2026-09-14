@@ -1,4 +1,6 @@
-import { all, insert, one, run } from "./db";
+import { all, insert, one, run, transaction } from "./db";
+import { newToken } from "./social/id";
+import { ritualWeekEnd } from "./week";
 import { DIMENSIONS } from "./model/catalog";
 import { computeScore, DEFAULT_CONFIG, type ScoreConfig, type WeightMap } from "./model/scoring";
 import { insertDemoData, wipe } from "./seed";
@@ -50,10 +52,17 @@ export async function getConfig(): Promise<ScoreConfig> {
 
 /* ------------------------------ users ------------------------------ */
 
+/**
+ * Colunas públicas do time. Nunca `SELECT *`: esta lista vai para componentes
+ * de cliente (selects de GT/Account, "preenchido por") e o `*` levava o hash
+ * de senha de todo mundo serializado para o navegador.
+ */
+const USER_PUBLIC = "id, name, role";
+
 export const listUsers = (role?: User["role"]) =>
   role
-    ? all<User>("SELECT * FROM users WHERE role = ? ORDER BY name", [role])
-    : all<User>("SELECT * FROM users ORDER BY role, name");
+    ? all<User>(`SELECT ${USER_PUBLIC} FROM users WHERE role = ? ORDER BY name`, [role])
+    : all<User>(`SELECT ${USER_PUBLIC} FROM users ORDER BY role, name`);
 
 /**
  * Quem pode aparecer no "Preenchido por" de um formulário.
@@ -66,7 +75,45 @@ export const listUsers = (role?: User["role"]) =>
 export async function listFillers(role: User["role"]): Promise<User[]> {
   const byRole = await listUsers(role);
   if (byRole.length) return byRole;
-  return all<User>("SELECT * FROM users WHERE login IS NOT NULL AND active = 1 ORDER BY name");
+  return all<User>(`SELECT ${USER_PUBLIC} FROM users WHERE login IS NOT NULL AND active = 1 ORDER BY name`);
+}
+
+/** O que cada pessoa do time carrega: contas atribuídas e inputs assinados. */
+export type UserFootprint = { gtOf: number; accountOf: number; perfFilled: number; checkinsFilled: number };
+
+export async function userFootprints(): Promise<Map<number, UserFootprint>> {
+  const rows = await all<{ id: number } & UserFootprint>(
+    `SELECT u.id,
+            (SELECT COUNT(*)::int FROM clients c WHERE c.gt_user_id = u.id) AS "gtOf",
+            (SELECT COUNT(*)::int FROM clients c WHERE c.account_user_id = u.id) AS "accountOf",
+            (SELECT COUNT(*)::int FROM performance_snapshots s WHERE s.filled_by = u.id) AS "perfFilled",
+            (SELECT COUNT(*)::int FROM checkin_snapshots s WHERE s.filled_by = u.id) AS "checkinsFilled"
+     FROM users u`,
+  );
+  return new Map(rows.map((r) => [r.id, r]));
+}
+
+/**
+ * Exclui alguém do time. Só quem nunca assinou um input: snapshot é
+ * auditoria ("quem preencheu"), e apagar a pessoa apagaria a assinatura.
+ * Para quem já preencheu, o caminho é desativar o acesso. As contas em que
+ * a pessoa estava nomeada ficam sem GT/Account até alguém ser atribuído.
+ */
+export async function deleteUser(id: number): Promise<{ error?: string }> {
+  const fp = (await userFootprints()).get(id);
+  if (!fp) return { error: "Usuário não encontrado." };
+  if (fp.perfFilled + fp.checkinsFilled > 0)
+    return {
+      error: `Tem ${fp.perfFilled + fp.checkinsFilled} preenchimento(s) assinados no histórico. Desative o acesso em vez de excluir — o histórico guarda quem preencheu.`,
+    };
+  await transaction([
+    ["UPDATE clients SET gt_user_id = NULL WHERE gt_user_id = ?", [id]],
+    ["UPDATE clients SET account_user_id = NULL WHERE account_user_id = ?", [id]],
+    ["UPDATE sm_projects SET created_by = NULL WHERE created_by = ?", [id]],
+    ["UPDATE crm_integrations SET created_by = NULL WHERE created_by = ?", [id]],
+    ["DELETE FROM users WHERE id = ?", [id]],
+  ]);
+  return {};
 }
 
 /* ----------------------------- clients ----------------------------- */
@@ -116,6 +163,42 @@ export async function updateClient(id: number, c: Partial<Client>) {
   if (!keys.length) return;
   const set = keys.map((k) => (k === "renewal_date" ? `${k} = ?::date` : `${k} = ?`)).join(", ");
   await run(`UPDATE clients SET ${set} WHERE id = ?`, [...keys.map((k) => c[k] ?? null), id]);
+}
+
+/**
+ * O que existe ligado a cada cliente — base do "impacto" mostrado antes de
+ * arquivar ou excluir. Uma query só para a carteira inteira.
+ */
+export type ClientFootprint = {
+  perf: number;
+  checkins: number;
+  plans: number;
+  projects: number;
+  leads: number;
+  integration: boolean;
+};
+
+export async function clientFootprints(): Promise<Map<number, ClientFootprint>> {
+  const rows = await all<{ id: number } & Omit<ClientFootprint, "integration"> & { integration: number }>(
+    `SELECT c.id,
+            (SELECT COUNT(*)::int FROM performance_snapshots s WHERE s.client_id = c.id) AS perf,
+            (SELECT COUNT(*)::int FROM checkin_snapshots s WHERE s.client_id = c.id) AS checkins,
+            (SELECT COUNT(*)::int FROM action_plans a WHERE a.client_id = c.id) AS plans,
+            (SELECT COUNT(*)::int FROM sm_projects p WHERE p.client_id = c.id) AS projects,
+            (SELECT COUNT(*)::int FROM crm_leads l WHERE l.client_id = c.id) AS leads,
+            (SELECT COUNT(*)::int FROM crm_integrations i WHERE i.client_id = c.id) AS integration
+     FROM clients c`,
+  );
+  return new Map(rows.map((r) => [r.id, { ...r, integration: r.integration > 0 }]));
+}
+
+/**
+ * Exclusão definitiva do cliente. O histórico (snapshots, check-ins, scores,
+ * planos, integração e leads do CRM) cai junto por ON DELETE CASCADE; os
+ * projetos de Social media ficam, só perdem o vínculo (ON DELETE SET NULL).
+ */
+export async function deleteClient(id: number): Promise<void> {
+  await run("DELETE FROM clients WHERE id = ?", [id]);
 }
 
 /* ----------------------------- targets ----------------------------- */
@@ -201,15 +284,36 @@ export const perfSnapshots = (clientId: number, limit = 30) =>
 export const checkinSnapshots = (clientId: number, limit = 30) =>
   snapshotsOf("checkin_snapshots", clientId, limit);
 
-/** Todos os snapshots de todos os clientes, em duas queries. */
-async function allSnapshots(): Promise<{ perf: Map<number, Snap[]>; chk: Map<number, Snap[]> }> {
-  const [perf, chk] = await Promise.all([
-    all<Snap>(`${SNAP_SELECT("performance_snapshots")} ORDER BY s.ref_date DESC, s.id DESC`),
-    all<Snap>(`${SNAP_SELECT("checkin_snapshots")} ORDER BY s.ref_date DESC, s.id DESC`),
-  ]);
+/**
+ * Snapshots de todos os clientes, em duas queries.
+ *
+ * `perClient` limita aos N mais recentes de cada cliente (janela no próprio
+ * Postgres). A carteira, a jornada do GT e a do Account só calculam o score
+ * de hoje, que usa o último snapshot e poucas semanas de histórico — antes
+ * elas baixavam a série inteira de todos os clientes a cada abertura, um
+ * volume que só cresce. O recompute de vários dias segue pedindo tudo.
+ */
+async function allSnapshots(perClient?: number): Promise<{ perf: Map<number, Snap[]>; chk: Map<number, Snap[]> }> {
+  const query = (table: string) =>
+    perClient
+      ? all<Snap>(
+          `SELECT * FROM (
+             ${SNAP_SELECT(table)}
+           ) x WHERE x.rn <= ? ORDER BY x.ref_date DESC, x.id DESC`.replace(
+            "u.name AS filler",
+            "u.name AS filler, ROW_NUMBER() OVER (PARTITION BY s.client_id ORDER BY s.ref_date DESC, s.id DESC) AS rn",
+          ),
+          [perClient],
+        )
+      : all<Snap>(`${SNAP_SELECT(table)} ORDER BY s.ref_date DESC, s.id DESC`);
+  const [perf, chk] = await Promise.all([query("performance_snapshots"), query("checkin_snapshots")]);
   const group = (rows: Snap[]) => {
     const m = new Map<number, Snap[]>();
-    for (const r of rows) m.set(r.client_id, [...(m.get(r.client_id) ?? []), r]);
+    for (const r of rows) {
+      const list = m.get(r.client_id);
+      if (list) list.push(r);
+      else m.set(r.client_id, [r]);
+    }
     return m;
   };
   return { perf: group(perf), chk: group(chk) };
@@ -232,6 +336,50 @@ export async function saveSnapshot(
 
 /* ------------------------------ score ------------------------------ */
 
+/**
+ * Contagem de leads do CRM por semana-ritual (chave = `ref_date` da semana que
+ * fecha) mais a meta de leads vigente. É o que faz a contabilização automática
+ * entrar direto no score sem passar pelo preenchimento manual do GT.
+ */
+export type CrmOverlay = { leadsByWeek: Map<string, number>; leadsMeta: number | null };
+
+/**
+ * Sobrepõe a contagem do CRM na régua de leads das contas de geração:
+ *  1. onde já há snapshot manual da semana, troca só o `leads_real` pela
+ *     contagem do CRM — CPL, verba e MQL continuam do preenchimento do GT;
+ *  2. na semana em curso ainda sem snapshot, sintetiza um registro "vivo" com
+ *     a contagem, ancorado no dia do cálculo para passar o filtro `<= at`, para
+ *     que o score reflita os leads sem esperar o ritual da sexta.
+ * Só mexe quando o CRM tem dado para aquela semana — semana sem evento cai no
+ * fallback do preenchimento manual, então um webhook mudo nunca zera o histórico.
+ */
+function applyCrmOverlay(client: ClientRow, perf: Snap[], at: string, overlay: CrmOverlay): Snap[] {
+  if (client.account_type !== "lead_gen") return perf;
+
+  const list = perf.map((s) => {
+    const n = overlay.leadsByWeek.get(s.ref_date);
+    return n === undefined ? s : { ...s, data: { ...s.data, leads_real: n } };
+  });
+
+  const curWeek = ritualWeekEnd(at);
+  const curCount = overlay.leadsByWeek.get(curWeek);
+  const hasCur = list.some((s) => s.ref_date === curWeek && s.ref_date <= at);
+  if (!hasCur && curCount !== undefined) {
+    list.push({
+      id: 0,
+      client_id: client.id,
+      ref_date: at,
+      filled_by: null,
+      filled_at: at + "T12:00:00",
+      filler: "CRM",
+      data: { leads_real: curCount, leads_meta: overlay.leadsMeta ?? undefined },
+    });
+  }
+  return list.sort((a, b) =>
+    a.ref_date < b.ref_date ? 1 : a.ref_date > b.ref_date ? -1 : b.id - a.id,
+  );
+}
+
 /** Cálculo puro a partir de snapshots já carregados — não toca no banco. */
 function scoreFrom(
   client: ClientRow,
@@ -240,8 +388,10 @@ function scoreFrom(
   at: string,
   weights: WeightMap,
   config: ScoreConfig,
+  overlay?: CrmOverlay | null,
 ): ScoreResult {
-  const p = perf.filter((s) => s.ref_date <= at);
+  const perfEff = overlay ? applyCrmOverlay(client, perf, at, overlay) : perf;
+  const p = perfEff.filter((s) => s.ref_date <= at);
   const c = chk.filter((s) => s.ref_date <= at);
   const latestPerf = p[0] ?? null;
   const latestChk = c[0] ?? null;
@@ -273,16 +423,20 @@ function scoreFrom(
   });
 }
 
+/** Snapshots por cliente que o cálculo do score de um dia enxerga. */
+const SCORE_WINDOW = 12;
+
 export async function scoreFor(clientId: number, at = today()): Promise<ScoreResult | null> {
-  const [client, perf, chk, weights, config] = await Promise.all([
+  const [client, perf, chk, weights, config, overlay] = await Promise.all([
     getClient(clientId),
-    perfSnapshots(clientId, 12),
-    checkinSnapshots(clientId, 12),
+    perfSnapshots(clientId, SCORE_WINDOW),
+    checkinSnapshots(clientId, SCORE_WINDOW),
     getWeights(),
     getConfig(),
+    crmOverlay(clientId),
   ]);
   if (!client) return null;
-  return scoreFrom(client, perf, chk, at, weights, config);
+  return scoreFrom(client, perf, chk, at, weights, config, overlay);
 }
 
 export type ScoreSnapRow = {
@@ -332,11 +486,12 @@ export const persistScore = (clientId: number, day: string, r: ScoreResult) =>
  * sobre HTTP, uma query por cliente por dia levaria minutos.
  */
 export async function recomputeRange(days: number, endDay = today()) {
-  const [clients, snaps, weights, config] = await Promise.all([
+  const [clients, snaps, weights, config, overlays] = await Promise.all([
     listClients(),
     allSnapshots(),
     getWeights(),
     getConfig(),
+    crmOverlays(),
   ]);
 
   const dayList = Array.from({ length: days }, (_, i) => addDaysIso(endDay, -(days - 1 - i)));
@@ -345,9 +500,10 @@ export async function recomputeRange(days: number, endDay = today()) {
   for (const client of clients) {
     const perf = snaps.perf.get(client.id) ?? [];
     const chk = snaps.chk.get(client.id) ?? [];
+    const overlay = overlays.get(client.id) ?? null;
     const rows = dayList.map((day) => ({
       day,
-      r: scoreFrom(client, perf, chk, day, weights, config),
+      r: scoreFrom(client, perf, chk, day, weights, config, overlay),
     }));
     await persistScores(client.id, rows);
     n += rows.length;
@@ -365,6 +521,144 @@ export const scoreHistory = (clientId: number, limit = 60) =>
     [clientId, limit],
   );
 
+/* ----------------------- integrações (CRM) ------------------------- */
+
+export type Integration = {
+  id: number;
+  client_id: number;
+  token: string;
+  provider: string;
+  active: number;
+  created_at: string;
+  last_event_at: string | null;
+};
+
+const INTEGRATION_SELECT = `
+  SELECT id, client_id, token, provider, active, created_at::text AS created_at,
+         last_event_at::text AS last_event_at
+  FROM crm_integrations`;
+
+export const getIntegration = (clientId: number) =>
+  one<Integration>(`${INTEGRATION_SELECT} WHERE client_id = ?`, [clientId]);
+
+export const getIntegrationByToken = (token: string) =>
+  one<Integration>(`${INTEGRATION_SELECT} WHERE token = ?`, [token]);
+
+/** Cria (ou reativa) a integração do cliente. Um webhook por cliente. */
+export async function createIntegration(clientId: number, createdBy: number | null) {
+  await run(
+    `INSERT INTO crm_integrations (client_id, token, created_by) VALUES (?, ?, ?)
+     ON CONFLICT (client_id) DO UPDATE SET active = 1`,
+    [clientId, newToken(), createdBy],
+  );
+  return getIntegration(clientId);
+}
+
+export const setIntegrationActive = (clientId: number, active: boolean) =>
+  run(`UPDATE crm_integrations SET active = ? WHERE client_id = ?`, [active ? 1 : 0, clientId]);
+
+export const rotateIntegrationToken = (clientId: number) =>
+  run(`UPDATE crm_integrations SET token = ? WHERE client_id = ?`, [newToken(), clientId]);
+
+export const deleteIntegration = (clientId: number) =>
+  run(`DELETE FROM crm_integrations WHERE client_id = ?`, [clientId]);
+
+/**
+ * Grava um lead recebido por webhook. Idempotente quando vem `dedupKey`
+ * (id/e-mail/telefone do CRM): reenvio do mesmo lead não conta duas vezes.
+ * Devolve `true` se contou um lead novo.
+ */
+export async function recordLead(
+  clientId: number,
+  refDate: string,
+  dedupKey: string | null,
+  payload: unknown,
+): Promise<boolean> {
+  const rows = await all<{ id: number }>(
+    `INSERT INTO crm_leads (client_id, ref_date, dedup_key, payload)
+     VALUES (?, ?::date, ?, ?::jsonb)
+     ON CONFLICT (client_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING
+     RETURNING id`,
+    [clientId, refDate, dedupKey, JSON.stringify(payload ?? {})],
+  );
+  await run(`UPDATE crm_integrations SET last_event_at = now() WHERE client_id = ?`, [clientId]);
+  return rows.length > 0;
+}
+
+/** Overlay de todos os clientes com integração ativa — uma passada só. */
+async function crmOverlays(): Promise<Map<number, CrmOverlay>> {
+  const [counts, metas] = await Promise.all([
+    all<{ client_id: number; ref_date: string; n: number }>(
+      `SELECT l.client_id, l.ref_date::text AS ref_date, COUNT(*)::int AS n
+       FROM crm_leads l
+       JOIN crm_integrations i ON i.client_id = l.client_id AND i.active = 1
+       GROUP BY l.client_id, l.ref_date`,
+    ),
+    getAllTargets(),
+  ]);
+  const map = new Map<number, CrmOverlay>();
+  for (const r of counts) {
+    let ov = map.get(r.client_id);
+    if (!ov) {
+      ov = { leadsByWeek: new Map(), leadsMeta: metas.get(r.client_id)?.leads_meta ?? null };
+      map.set(r.client_id, ov);
+    }
+    ov.leadsByWeek.set(r.ref_date, Number(r.n));
+  }
+  return map;
+}
+
+/** Overlay de um cliente só — usado no recompute pontual após cada webhook. */
+async function crmOverlay(clientId: number): Promise<CrmOverlay | null> {
+  const active = await one<{ id: number }>(
+    `SELECT id FROM crm_integrations WHERE client_id = ? AND active = 1`,
+    [clientId],
+  );
+  if (!active) return null;
+  const [counts, targets] = await Promise.all([
+    all<{ ref_date: string; n: number }>(
+      `SELECT ref_date::text AS ref_date, COUNT(*)::int AS n FROM crm_leads
+       WHERE client_id = ? GROUP BY ref_date`,
+      [clientId],
+    ),
+    getTargets(clientId),
+  ]);
+  const leadsByWeek = new Map<string, number>();
+  for (const c of counts) leadsByWeek.set(c.ref_date, Number(c.n));
+  return { leadsByWeek, leadsMeta: targets.leads_meta ?? null };
+}
+
+export type IntegrationRow = Integration & {
+  client_name: string;
+  account_type: AccountType;
+  client_active: number;
+  total_leads: number;
+  week_leads: number;
+  prev_week_leads: number;
+  last_lead_at: string | null;
+};
+
+/** Integrações cadastradas com a contabilidade de leads da semana. */
+export async function listIntegrations(): Promise<IntegrationRow[]> {
+  const cur = ritualWeekEnd(today());
+  const prev = addDaysIso(cur, -7);
+  return all<IntegrationRow>(
+    `SELECT i.id, i.client_id, i.token, i.provider, i.active,
+            i.created_at::text AS created_at, i.last_event_at::text AS last_event_at,
+            c.name AS client_name, c.account_type, c.active AS client_active,
+            COUNT(l.id)::int AS total_leads,
+            COUNT(l.id) FILTER (WHERE l.ref_date = ?::date)::int AS week_leads,
+            COUNT(l.id) FILTER (WHERE l.ref_date = ?::date)::int AS prev_week_leads,
+            MAX(l.received_at)::text AS last_lead_at
+     FROM crm_integrations i
+     JOIN clients c ON c.id = i.client_id
+     LEFT JOIN crm_leads l ON l.client_id = i.client_id
+     GROUP BY i.id, c.name, c.account_type, c.active
+     ORDER BY c.name`,
+    [cur, prev],
+  );
+}
+
 /* --------------------------- carteira ------------------------------ */
 
 export type PortfolioRow = {
@@ -378,11 +672,13 @@ export type PortfolioRow = {
 };
 
 export async function portfolio(at = today()): Promise<PortfolioRow[]> {
-  const [clients, snaps, weights, config, hist, plans] = await Promise.all([
+  const [clients, snaps, weights, config, overlays, hist, plans] = await Promise.all([
     listClients(),
-    allSnapshots(),
+    // Mesma janela do `scoreFor` (12 por cliente): o score de hoje sai idêntico.
+    allSnapshots(SCORE_WINDOW),
     getWeights(),
     getConfig(),
+    crmOverlays(),
     all<{ client_id: number; ref_day: string; score: number | null; band: Band | null }>(
       `SELECT client_id, ref_day::text AS ref_day, score, band FROM score_snapshots
        WHERE ref_day <= ?::date AND ref_day > ?::date ORDER BY ref_day DESC`,
@@ -411,6 +707,7 @@ export async function portfolio(at = today()): Promise<PortfolioRow[]> {
         at,
         weights,
         config,
+        overlays.get(client.id) ?? null,
       );
       const h = histBy.get(client.id) ?? [];
       const prev7 = h.find((x) => x.ref_day <= day7);
@@ -493,6 +790,23 @@ export const updatePlanStatus = (id: number, status: Plan["status"]) =>
      WHERE id = ?`,
     [status, status, id],
   );
+
+export const getPlan = (id: number) => one<Plan>(`${PLAN_SELECT} FROM action_plans p WHERE p.id = ?`, [id]);
+
+export const updatePlan = (
+  id: number,
+  p: Pick<Plan, "risk" | "plan" | "owner" | "due_date">,
+) =>
+  run(`UPDATE action_plans SET risk = ?, plan = ?, owner = ?, due_date = ?::date WHERE id = ?`, [
+    p.risk,
+    p.plan,
+    p.owner,
+    p.due_date,
+    id,
+  ]);
+
+/** Plano registrado por engano. Plano real que não vai adiante é "cancelado", não excluído. */
+export const deletePlan = (id: number) => run("DELETE FROM action_plans WHERE id = ?", [id]);
 
 export const setPlanClickup = (id: number, url: string) =>
   run("UPDATE action_plans SET clickup_url = ? WHERE id = ?", [url, id]);

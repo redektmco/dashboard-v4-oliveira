@@ -141,6 +141,14 @@ const PATHS = {
     </>
   ),
   x: <path d="M18 6 6 18M6 6l12 12" />,
+  /* Integrações — tomada que "pluga" o CRM no painel. */
+  plug: (
+    <>
+      <path d="M9 2v6M15 2v6" />
+      <path d="M6 8h12v3a6 6 0 0 1-12 0V8z" />
+      <path d="M12 17v5" />
+    </>
+  ),
   filter: <path d="M3 5h18l-7 8v6l-4 2v-8L3 5z" />,
   sort: (
     <>

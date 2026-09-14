@@ -15,6 +15,10 @@ import {
 } from "../src/lib/model/scoring";
 import { parseCheckinForm, parsePerformanceForm } from "../src/lib/model/form";
 import { DIMENSIONS } from "../src/lib/model/catalog";
+import { aspectWarning, formatBadge, rejectReason } from "../src/lib/social/media";
+import { matchCaptionsToFiles, parseBatchCaptions } from "../src/lib/social/batch";
+import { isOwnBlobUrl } from "../src/lib/social/storage";
+import { navReducer, type Nav } from "../src/components/social/story-nav";
 
 const TODAY = "2026-06-15";
 
@@ -352,4 +356,91 @@ test("Check-in em branco não vira nota zero — vira ausência", () => {
   assert.equal(data.q1_satisfaction, null);
   assert.equal(data.risk_flag, false);
   assert.equal(data.payment_ok, false);
+});
+
+/* ------------------------- Social media: mídia ------------------------- */
+
+test("Upload recusa HEIC com instrução clara e aceita JPG/MP4", () => {
+  assert.match(rejectReason({ name: "IMG_0001.HEIC", type: "image/heic", size: 1000 }, "feed")!, /HEIC/);
+  assert.equal(rejectReason({ name: "arte.jpg", type: "image/jpeg", size: 1000 }, "feed"), null);
+  assert.equal(rejectReason({ name: "story.mp4", type: "video/mp4", size: 1000 }, "story"), null);
+  // Sistema que não informa o tipo: cai na extensão.
+  assert.equal(rejectReason({ name: "story.mov", type: "", size: 1000 }, "story"), null);
+});
+
+test("Reels só aceita vídeo; limite de tamanho por tipo", () => {
+  assert.match(rejectReason({ name: "capa.png", type: "image/png", size: 1000 }, "reels")!, /vídeo/);
+  assert.match(rejectReason({ name: "enorme.jpg", type: "image/jpeg", size: 31 * 1024 * 1024 }, "feed")!, /limite/);
+  assert.equal(rejectReason({ name: "longo.mp4", type: "video/mp4", size: 200 * 1024 * 1024 }, "reels"), null);
+  assert.match(rejectReason({ name: "vazio.jpg", type: "image/jpeg", size: 0 }, "feed")!, /vazio/);
+});
+
+test("Formato exibido: carrossel é derivado da quantidade de mídias", () => {
+  const a = { id: "a", url: "u", name: "n" };
+  assert.equal(formatBadge({ format: "feed", assets: [a] }), "post");
+  assert.equal(formatBadge({ format: "feed", assets: [a, a] }), "carousel");
+  assert.equal(formatBadge({ format: "story", assets: [a, a] }), "story");
+  assert.equal(formatBadge({ format: "reels", assets: [a] }), "reels");
+});
+
+test("Aviso de proporção: Story fora de 9:16 e feed mais alto que 4:5", () => {
+  assert.equal(aspectWarning("story", { width: 1080, height: 1920 }), null);
+  assert.match(aspectWarning("story", { width: 1080, height: 1350 })!, /9:16/);
+  assert.equal(aspectWarning("feed", { width: 1080, height: 1350 }), null);
+  assert.match(aspectWarning("feed", { width: 1080, height: 1920 })!, /4:5/);
+  assert.equal(aspectWarning("story", {}), null, "sem dimensão, sem aviso");
+});
+
+test("Legendas em lote casam por nome e o resto por ordem", () => {
+  const blocks = parseBatchCaptions("[b.jpg]\nLegenda B\n---\nPrimeira livre\n---\nSegunda livre");
+  const caps = matchCaptionsToFiles(blocks, ["a.jpg", "b.jpg", "c.jpg"]);
+  assert.deepEqual(caps, ["Primeira livre", "Legenda B", "Segunda livre"]);
+});
+
+test("Só aceita URL do próprio store do Blob, na pasta do projeto", () => {
+  const prev = process.env.BLOB_READ_WRITE_TOKEN;
+  process.env.BLOB_READ_WRITE_TOKEN = "vercel_blob_rw_AbC123_segredo";
+  try {
+    const ok = "https://abc123.public.blob.vercel-storage.com/social/prj_1/arte-x1.jpg";
+    assert.equal(isOwnBlobUrl(ok, "prj_1"), true);
+    assert.equal(isOwnBlobUrl(ok, "prj_2"), false, "pasta de outro projeto");
+    assert.equal(isOwnBlobUrl("https://outro.public.blob.vercel-storage.com/social/prj_1/a.jpg", "prj_1"), false, "outro store");
+    assert.equal(isOwnBlobUrl("https://evil.com/social/prj_1/a.jpg", "prj_1"), false);
+    assert.equal(isOwnBlobUrl("http://abc123.public.blob.vercel-storage.com/social/prj_1/a.jpg", "prj_1"), false, "sem https");
+    assert.equal(isOwnBlobUrl("não é url", "prj_1"), false);
+  } finally {
+    process.env.BLOB_READ_WRITE_TOKEN = prev;
+  }
+});
+
+/* ---------------------- Social media: viewer de Stories ---------------------- */
+
+const start: Nav = { itemIdx: 0, frameIdx: 0, progress: 0, ended: false };
+
+test("Viewer: toque avança frame a frame e passa para o próximo Story", () => {
+  const ctx = { counts: [2, 1], hold: [false, false] };
+  let s = navReducer(start, { type: "next", auto: false, ctx });
+  assert.deepEqual([s.itemIdx, s.frameIdx], [0, 1]);
+  s = navReducer(s, { type: "next", auto: false, ctx });
+  assert.deepEqual([s.itemIdx, s.frameIdx], [1, 0]);
+  s = navReducer(s, { type: "next", auto: false, ctx });
+  assert.equal(s.ended, true, "último frame do último Story encerra");
+  s = navReducer(s, { type: "prev", ctx });
+  assert.deepEqual([s.itemIdx, s.frameIdx, s.ended], [0, 1, false], "voltar cai no último frame do Story anterior");
+});
+
+test("Viewer: na aprovação, Story pendente segura o avanço automático", () => {
+  const ctx = { counts: [1, 1], hold: [true, false] };
+  let s = navReducer(start, { type: "tick", dt: 1.2, ctx });
+  assert.deepEqual([s.itemIdx, s.ended], [0, true], "o tempo acabou mas o pendente não passa sozinho");
+  s = navReducer(s, { type: "next", auto: false, ctx });
+  assert.equal(s.itemIdx, 1, "o toque do cliente passa");
+});
+
+test("Viewer: relógio acumula até completar o frame", () => {
+  const ctx = { counts: [2], hold: [false] };
+  let s = navReducer(start, { type: "tick", dt: 0.4, ctx });
+  assert.equal(s.frameIdx, 0);
+  s = navReducer(s, { type: "tick", dt: 0.7, ctx });
+  assert.deepEqual([s.frameIdx, s.progress], [1, 0]);
 });

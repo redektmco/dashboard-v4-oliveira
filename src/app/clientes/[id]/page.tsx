@@ -5,6 +5,7 @@ import {
   getClient,
   getTargets,
   listPlans,
+  listUsers,
   perfSnapshots,
   scoreFor,
   scoreHistory,
@@ -13,7 +14,6 @@ import {
 import { ACCOUNT_TYPE_LABEL, type DimensionKey } from "@/lib/model/types";
 import { DIMENSIONS, fieldByKey } from "@/lib/model/catalog";
 import { daysBetween } from "@/lib/model/scoring";
-import { addPlan, setPlanStatus } from "@/actions";
 import { ScoreChart } from "@/components/score-chart";
 import {
   CheckinHeatmap,
@@ -24,11 +24,7 @@ import {
 } from "@/components/charts";
 import {
   BandChip,
-  CardList,
-  CardMeta,
-  CardRow,
   ConfidenceTag,
-  Empty,
   HealthRing,
   PageHeader,
   Panel,
@@ -38,6 +34,8 @@ import {
   dateBR,
 } from "@/components/ui";
 import { Icon } from "@/components/icon";
+import { PlansPanel } from "@/components/plans-panel";
+import { ClientActions } from "@/components/client-actions";
 import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -52,38 +50,37 @@ const CHECKIN_ROWS = [
   { key: "q6_expectation", short: "Expectativa" },
 ];
 
-export default async function ClientePage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ salvo?: string }>;
-}) {
+export default async function ClientePage({ params }: { params: Promise<{ id: string }> }) {
   await requireUser();
   const { id } = await params;
-  const { salvo } = await searchParams;
   const clientId = Number(id);
-  const client = await getClient(clientId);
-  if (!client) notFound();
+  if (!Number.isInteger(clientId)) notFound();
 
   const at = today();
-  const [s, histRows, perf, checkins, plans, targets] = await Promise.all([
+  // Tudo em paralelo: antes o cadastro vinha sozinho e só depois o resto,
+  // somando um round-trip inteiro ao tempo de abrir a ficha.
+  const [client, s, histRows, perf, checkins, plans, targets, users] = await Promise.all([
+    getClient(clientId),
     scoreFor(clientId, at),
     scoreHistory(clientId, 60),
     perfSnapshots(clientId, 8),
     checkinSnapshots(clientId, 8),
     listPlans(clientId),
     getTargets(clientId),
+    listUsers(),
   ]);
-  if (!s) notFound();
+  if (!client || !s) notFound();
   const hist = histRows.map((h) => ({ day: h.ref_day, score: h.score })).reverse();
   const renewalIn = client.renewal_date ? daysBetween(at, client.renewal_date) : null;
-
-  const openPlans = plans.filter((p) => p.status === "aberto" || p.status === "em_andamento");
 
   // Variação da série: primeiro ponto com dado vs último.
   const serie = hist.filter((h): h is { day: string; score: number } => h.score !== null);
   const delta = serie.length > 1 ? serie[serie.length - 1].score - serie[0].score : null;
+
+  // A dimensão mais baixa com dado abre sozinha na decomposição.
+  const worstKey = s.dimensions
+    .filter((d) => d.score !== null)
+    .sort((a, b) => (a.score ?? 0) - (b.score ?? 0))[0]?.key;
 
   const heatRows = CHECKIN_ROWS.map((r) => ({
     ...r,
@@ -92,25 +89,21 @@ export default async function ClientePage({
 
   return (
     <div className="space-y-5">
-      {salvo && (
-        <div className="flex items-center gap-2 rounded-lg bg-verde-dim px-4 py-2.5 text-sm font-semibold text-verde-fg">
-          <Icon name="check" size={15} />
-          {salvo === "performance" ? "Snapshot de performance" : "Check-in"} salvo e score recalculado.
-        </div>
-      )}
-
       <PageHeader
         back={{ href: "/", label: "Carteira" }}
         title={client.name}
-        description={`${ACCOUNT_TYPE_LABEL[client.account_type]} · GT ${client.gt_name ?? "—"} · Account ${client.account_name ?? "—"} · ${brl(client.mrr)}/mês`}
+        description={`${ACCOUNT_TYPE_LABEL[client.account_type]} · GT ${client.gt_name ?? "—"} · Account ${client.account_name ?? "—"} · ${brl(client.mrr)}/mês${client.active ? "" : " · arquivado"}`}
         actions={
           <>
             <Link href={`/gt/${clientId}`} className="btn shrink-0">
+              <Icon name="chart" size={14} />
               Preencher performance
             </Link>
             <Link href={`/account/${clientId}`} className="btn shrink-0">
+              <Icon name="users" size={14} />
               Registrar check-in
             </Link>
+            <ClientActions client={client} users={users} targets={targets} />
           </>
         }
       />
@@ -224,56 +217,42 @@ export default async function ClientePage({
         </Panel>
       </div>
 
-      {/* -------- decomposição: um container por dimensão -------- */}
-      <div>
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h2 className="font-display text-[20px] font-bold tracking-tight text-ink-100">
-              Decomposição do score
-            </h2>
-            <p className="mt-1 text-[13px] text-ink-400">
-              Um bloco por dimensão: os campos que a formam, o valor cru e o normalizado. Aja na
-              causa, não no sintoma.
-            </p>
-          </div>
-          <span className="text-[11px] text-ink-600">
-            {s.dimensions.filter((d) => d.score !== null).length} de {s.dimensions.length} dimensões
-            com dado
-          </span>
-        </div>
-
-        <div className="grid gap-3 xl:grid-cols-2">
+      {/* -------- decomposição: uma linha por dimensão, aberta sob demanda -------- */}
+      <Panel
+        title="Decomposição do score"
+        subtitle="Os campos que formam cada dimensão, com o valor cru e o normalizado. A pior dimensão já vem aberta — aja na causa, não no sintoma."
+      >
+        <div className="divide-y divide-[var(--border-hair)]">
           {s.dimensions.map((d) => {
             const def = DIMENSIONS.find((x) => x.key === (d.key as DimensionKey))!;
             const b = d.score === null ? null : bandOf(d.score);
             return (
-              <Panel
-                key={d.key}
-                critical={b === "vermelho"}
-                title={d.label}
-                subtitle={`${def.source} · peso ${d.weight}%${
-                  d.effectiveWeight !== d.weight && d.score !== null
-                    ? ` · efetivo ${d.effectiveWeight}% (renormalizado)`
-                    : ""
-                }`}
-                right={
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    <span className={`tnum font-display text-[26px] font-bold leading-none ${bandFg(b)}`}>
-                      {d.score === null ? "—" : Math.round(d.score)}
-                    </span>
-                    <BandChip band={b} />
+              <details key={d.key} className="group" open={worstKey === d.key}>
+                <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-ink-850 sm:px-5">
+                  <Icon name="chevronRight" size={14} className="shrink-0 text-ink-500 transition-transform group-open:rotate-90" />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold text-ink-100">{d.label}</div>
+                    <div className="text-[12px] text-ink-500">
+                      {def.source} · peso {d.weight}%
+                      {d.effectiveWeight !== d.weight && d.score !== null ? ` · efetivo ${d.effectiveWeight}%` : ""}
+                    </div>
                   </div>
-                }
-              >
-                <FieldBars fields={d.fields} />
-                <p className="border-t border-[var(--border-hair)] px-5 py-3 text-[11px] leading-relaxed text-ink-500">
-                  {def.rationale}
-                </p>
-              </Panel>
+                  <span className={`tnum font-display text-[20px] font-bold leading-none ${bandFg(b)}`}>
+                    {d.score === null ? "—" : Math.round(d.score)}
+                  </span>
+                  <BandChip band={b} />
+                </summary>
+                <div className="bg-ink-950/40">
+                  <FieldBars fields={d.fields} />
+                  <p className="border-t border-[var(--border-hair)] px-5 py-3 text-[11px] leading-relaxed text-ink-500">
+                    {def.rationale}
+                  </p>
+                </div>
+              </details>
             );
           })}
         </div>
-      </div>
+      </Panel>
 
       {/* -------- mapa da relação -------- */}
       <Panel
@@ -283,250 +262,135 @@ export default async function ClientePage({
         <CheckinHeatmap rows={heatRows} snapshots={checkins} />
       </Panel>
 
-      {/* -------- planos -------- */}
-      <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-        <Panel
-          title="Planos de ação"
-          subtitle="Para cada risco: plano, dono e prazo. O loop fecha na revisão semanal."
-        >
-          {plans.length === 0 ? (
-            <Empty>Nenhum plano registrado.</Empty>
-          ) : (
-            <>
-              <CardList>
-                {plans.map((p) => (
-                  <CardRow key={p.id}>
-                    <div className="font-semibold text-ink-100">{p.risk}</div>
-                    <p className="mt-1 text-[13px] leading-snug text-ink-400">{p.plan}</p>
-                    <CardMeta
-                      items={[
-                        { label: "Dono", value: p.owner },
-                        {
-                          label: "Prazo",
-                          value: dateBR(p.due_date),
-                          className:
-                            p.due_date && p.due_date < at ? "text-vermelho-fg" : undefined,
-                        },
-                      ]}
-                    />
-                    <form action={setPlanStatus} className="mt-3 flex items-center gap-2">
-                      <input type="hidden" name="id" value={p.id} />
-                      <input type="hidden" name="client_id" value={clientId} />
-                      <select name="status" defaultValue={p.status} className="field">
-                        <option value="aberto">aberto</option>
-                        <option value="em_andamento">em andamento</option>
-                        <option value="concluido">concluído</option>
-                        <option value="cancelado">cancelado</option>
-                      </select>
-                      <button className="btn shrink-0">Salvar</button>
-                    </form>
-                    <a
-                      className="mt-2.5 inline-flex items-center gap-1 text-[12px] font-semibold text-v4-red"
-                      href={clickupUrl(client.name, p.risk, p.plan, p.due_date)}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Abrir tarefa no ClickUp
-                      <Icon name="external" size={11} />
-                    </a>
-                  </CardRow>
-                ))}
-              </CardList>
+      <PlansPanel
+        plans={plans}
+        clientId={clientId}
+        clientName={client.name}
+        defaultOwner={client.gt_name ?? client.account_name ?? ""}
+        today={at}
+        clickupBase={process.env.NEXT_PUBLIC_CLICKUP_LIST_URL ?? "https://app.clickup.com/"}
+      />
 
-              <div className="hidden lg:block">
-              <TableScroll>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Risco / plano</th>
-                  <th>Dono</th>
-                  <th>Prazo</th>
-                  <th className="text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {plans.map((p) => (
-                  <tr key={p.id}>
-                    <td className="max-w-[420px]">
-                      <div className="font-medium text-ink-100">{p.risk}</div>
-                      <div className="mt-0.5 text-xs text-ink-400">{p.plan}</div>
-                      <a
-                        className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-v4-red hover:underline"
-                        href={clickupUrl(client.name, p.risk, p.plan, p.due_date)}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Abrir tarefa no ClickUp
-                        <Icon name="external" size={11} />
-                      </a>
-                    </td>
-                    <td className="text-ink-300">{p.owner}</td>
-                    <td className={p.due_date && p.due_date < at ? "text-vermelho-fg" : "text-ink-300"}>
-                      {dateBR(p.due_date)}
-                    </td>
-                    <td className="text-right">
-                      <form action={setPlanStatus} className="inline-flex items-center gap-1">
-                        <input type="hidden" name="id" value={p.id} />
-                        <input type="hidden" name="client_id" value={clientId} />
-                        <select name="status" defaultValue={p.status} className="field w-auto py-1 text-xs">
-                          <option value="aberto">aberto</option>
-                          <option value="em_andamento">em andamento</option>
-                          <option value="concluido">concluído</option>
-                          <option value="cancelado">cancelado</option>
-                        </select>
-                        <button className="btn py-1 text-xs">ok</button>
-                      </form>
-                    </td>
+      {/* -------- histórico dos dois inputs: consulta, não tarefa -------- */}
+      <details className="panel group">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 sm:px-5">
+          <div>
+            <h2 className="font-display text-[16px] font-semibold text-ink-100">Histórico de inputs e metas</h2>
+            <p className="mt-0.5 text-[12.5px] text-ink-400">
+              {perf.length} snapshot(s) de performance · {checkins.length} check-in(s) · {Object.keys(targets).length} meta(s) vigente(s)
+            </p>
+          </div>
+          <Icon name="chevronDown" size={16} className="shrink-0 text-ink-400 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="grid gap-px border-t border-[var(--border-hair)] bg-[var(--border-hair)] lg:grid-cols-2">
+          <div className="bg-ink-900">
+            <div className="px-4 pb-1 pt-3 sm:px-5">
+              <span className="label">Performance · GT, semanal</span>
+            </div>
+            <TableScroll>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Semana</th>
+                    <th>Principais números</th>
+                    <th>Por</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-              </TableScroll>
-              </div>
-            </>
-          )}
-        </Panel>
+                </thead>
+                <tbody>
+                  {perf.map((p) => (
+                    <tr key={p.id}>
+                      <td className="tnum whitespace-nowrap">{dateBR(p.ref_date)}</td>
+                      <td className="text-xs text-ink-300">{summarizePerf(p.data, client.account_type)}</td>
+                      <td className="text-xs text-ink-500">{p.filler ?? "—"}</td>
+                    </tr>
+                  ))}
+                  {perf.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="py-6 text-center text-sm text-ink-400">
+                        Nunca preenchido.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </TableScroll>
+          </div>
 
-        <Panel title="Novo plano" subtitle={`${openPlans.length} em aberto`}>
-          <form action={addPlan} className="space-y-3 px-4 py-4">
-            <input type="hidden" name="client_id" value={clientId} />
-            <label className="block">
-              <span className="label">Risco</span>
-              <input
-                name="risk"
-                required
-                className="field mt-1"
-                placeholder="Ex.: CPL 40% acima da meta há 3 semanas"
-              />
-            </label>
-            <label className="block">
-              <span className="label">Plano</span>
-              <textarea name="plan" required rows={3} className="field mt-1" />
-            </label>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <label className="block">
-                <span className="label">Dono</span>
-                <input
-                  name="owner"
-                  required
-                  className="field mt-1"
-                  defaultValue={client.gt_name ?? client.account_name ?? ""}
-                />
-              </label>
-              <label className="block">
-                <span className="label">Prazo</span>
-                <input type="date" name="due_date" className="field mt-1" />
-              </label>
+          <div className="bg-ink-900">
+            <div className="px-4 pb-1 pt-3 sm:px-5">
+              <span className="label">Check-ins · Account</span>
             </div>
-            <button className="btn btn-primary w-full justify-center">Registrar plano</button>
-          </form>
-        </Panel>
-      </div>
+            <TableScroll>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Notas (1–5)</th>
+                    <th>Por</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {checkins.map((c) => (
+                    <tr key={c.id}>
+                      <td className="tnum whitespace-nowrap">{dateBR(c.ref_date)}</td>
+                      <td>
+                        <div className="flex gap-1">
+                          {CHECKIN_ROWS.map(({ key }) => {
+                            const n = Number(c.data[key]) || 0;
+                            return (
+                              <span
+                                key={key}
+                                title={fieldByKey(key)?.question ?? fieldByKey(key)?.label}
+                                className={`tnum flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold ${
+                                  n >= 4
+                                    ? "bg-verde-dim text-verde-fg"
+                                    : n === 3
+                                      ? "bg-ink-800 text-ink-300"
+                                      : "bg-vermelho-dim text-vermelho-fg"
+                                }`}
+                              >
+                                {n || "—"}
+                              </span>
+                            );
+                          })}
+                        </div>
+                        {c.data.risk_flag ? (
+                          <div className="mt-1 text-[11px] text-vermelho-fg">risco: {String(c.data.risk_note || "sim")}</div>
+                        ) : null}
+                      </td>
+                      <td className="text-xs text-ink-500">{c.filler ?? "—"}</td>
+                    </tr>
+                  ))}
+                  {checkins.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="py-6 text-center text-sm text-ink-400">
+                        Relação sem leitura.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </TableScroll>
+          </div>
 
-      {/* -------- histórico dos dois inputs -------- */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Snapshots de performance" subtitle="GT · semanal, nunca sobrescrito">
-          <TableScroll>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Semana</th>
-                <th>Principais números</th>
-                <th>Por</th>
-              </tr>
-            </thead>
-            <tbody>
-              {perf.map((p) => (
-                <tr key={p.id}>
-                  <td className="tnum whitespace-nowrap">{dateBR(p.ref_date)}</td>
-                  <td className="text-xs text-ink-300">{summarizePerf(p.data, client.account_type)}</td>
-                  <td className="text-xs text-ink-500">{p.filler ?? "—"}</td>
-                </tr>
-              ))}
-              {perf.length === 0 && (
-                <tr>
-                  <td colSpan={3} className="py-6 text-center text-sm text-ink-400">
-                    Nunca preenchido.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-          </TableScroll>
-        </Panel>
-
-        <Panel title="Check-ins" subtitle="Account · a cada contato">
-          <TableScroll>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Notas (1–5)</th>
-                <th>Por</th>
-              </tr>
-            </thead>
-            <tbody>
-              {checkins.map((c) => (
-                <tr key={c.id}>
-                  <td className="tnum whitespace-nowrap">{dateBR(c.ref_date)}</td>
-                  <td>
-                    <div className="flex gap-1">
-                      {CHECKIN_ROWS.map(({ key }) => {
-                        const n = Number(c.data[key]) || 0;
-                        return (
-                          <span
-                            key={key}
-                            title={fieldByKey(key)?.question ?? fieldByKey(key)?.label}
-                            className={`tnum flex h-5 w-5 items-center justify-center rounded text-[11px] font-bold ${
-                              n >= 4
-                                ? "bg-verde-dim text-verde-fg"
-                                : n === 3
-                                  ? "bg-ink-800 text-ink-300"
-                                  : "bg-vermelho-dim text-vermelho-fg"
-                            }`}
-                          >
-                            {n || "—"}
-                          </span>
-                        );
-                      })}
-                    </div>
-                    {c.data.risk_flag ? (
-                      <div className="mt-1 text-[11px] text-vermelho-fg">
-                        risco: {String(c.data.risk_note || "sim")}
-                      </div>
-                    ) : null}
-                  </td>
-                  <td className="text-xs text-ink-500">{c.filler ?? "—"}</td>
-                </tr>
-              ))}
-              {checkins.length === 0 && (
-                <tr>
-                  <td colSpan={3} className="py-6 text-center text-sm text-ink-400">
-                    Relação sem leitura.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-          </TableScroll>
-        </Panel>
-      </div>
-
-      <Panel title="Metas vigentes" subtitle="Base das réguas A e B. Alteradas pelo GT ou no cadastro.">
-        <div className="grid gap-x-8 gap-y-2 px-4 py-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Object.entries(targets).length === 0 && (
-            <span className="text-sm text-ink-400">Nenhuma meta cadastrada — sem meta não há régua.</span>
-          )}
-          {Object.entries(targets).map(([k, v]) => (
-            <div key={k} className="flex items-baseline justify-between border-b border-[var(--border-hair)] pb-1">
-              <span className="text-xs text-ink-400">{k}</span>
-              <span className="tnum text-sm text-ink-100">
-                {v.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}
-              </span>
+          <div className="bg-ink-900 lg:col-span-2">
+            <div className="px-4 pb-1 pt-3 sm:px-5">
+              <span className="label">Metas vigentes · base das réguas A e B</span>
             </div>
-          ))}
+            <div className="grid gap-x-8 gap-y-2 px-4 pb-4 pt-2 sm:grid-cols-2 sm:px-5 lg:grid-cols-3">
+              {Object.entries(targets).length === 0 && (
+                <span className="text-sm text-ink-400">Nenhuma meta cadastrada — sem meta não há régua.</span>
+              )}
+              {Object.entries(targets).map(([k, v]) => (
+                <div key={k} className="flex items-baseline justify-between border-b border-[var(--border-hair)] pb-1">
+                  <span className="text-xs text-ink-400">{fieldByKey(k)?.label ?? k}</span>
+                  <span className="tnum text-sm text-ink-100">{v.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      </Panel>
+      </details>
     </div>
   );
 }
@@ -572,14 +436,4 @@ function summarizePerf(data: Record<string, unknown>, type: string) {
   if (type === "ecommerce")
     return `Fat. ${n("revenue_real")}/${n("revenue_meta")} · ROAS ${n("roas_real")} (meta ${n("roas_meta")})`;
   return `Alcance ${n("reach_real")}/${n("reach_meta")} · Entregas ${n("deliveries_real")}/${n("deliveries_meta")}`;
-}
-
-/** Risco vira tarefa (briefing 6). Sem API paga: abre o ClickUp já preenchido. */
-function clickupUrl(client: string, risk: string, plan: string, due: string | null) {
-  const base = process.env.NEXT_PUBLIC_CLICKUP_LIST_URL ?? "https://app.clickup.com/";
-  const q = new URLSearchParams({
-    name: `[Health Score] ${client} — ${risk}`,
-    description: `${plan}${due ? `\n\nPrazo: ${due}` : ""}`,
-  });
-  return `${base}?${q}`;
 }

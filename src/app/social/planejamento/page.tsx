@@ -1,90 +1,57 @@
-import Link from "next/link";
 import { requireSocial } from "@/lib/auth";
 import { listPlanned } from "@/lib/social/db";
-import { Panel, PageHeader } from "@/components/ui";
-import type { PublishStatus } from "@/lib/social/types";
+import { Panel, PageHeader, Stat } from "@/components/ui";
+import PlanningCalendar, { type PlannedItem } from "@/components/social/planning-calendar";
+import { formatBadge } from "@/lib/social/media";
 
 export const dynamic = "force-dynamic";
-
-const PUB: Record<PublishStatus, { label: string; cls: string }> = {
-  draft: { label: "Rascunho", cls: "bg-ink-800 text-ink-300" },
-  scheduled: { label: "Agendado", cls: "bg-amarelo-dim text-amarelo-fg" },
-  publishing: { label: "Publicando", cls: "bg-amarelo-dim text-amarelo-fg" },
-  published: { label: "Publicado", cls: "bg-verde-dim text-verde-fg" },
-  failed: { label: "Falhou", cls: "bg-vermelho-dim text-vermelho-fg" },
-};
-
-const dayKey = (iso: string) =>
-  new Date(iso).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
-const timeBR = (iso: string) =>
-  new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
 export default async function PlanejamentoPage() {
   await requireSocial();
   const planned = await listPlanned();
 
-  const groups = new Map<string, typeof planned>();
-  for (const p of planned) {
-    if (!p.scheduledAt) continue;
-    const k = dayKey(p.scheduledAt);
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k)!.push(p);
-  }
+  const items: PlannedItem[] = planned
+    .filter((p) => p.scheduledAt)
+    .map((p) => ({
+      id: p.id,
+      projectId: p.projectId,
+      scheduledAt: p.scheduledAt!,
+      caption: p.caption,
+      thumb: p.assets[0] ? { url: p.assets[0].url, name: p.assets[0].name, kind: p.assets[0].kind, contentType: p.assets[0].contentType } : null,
+      format: formatBadge(p),
+      clientName: p.clientName,
+      igHandle: p.igHandle,
+      projectTitle: p.projectTitle,
+      publishStatus: p.publishStatus,
+    }));
+
+  const clients = new Set(items.map((p) => p.clientName)).size;
+  const projects = new Set(items.map((p) => p.projectId)).size;
 
   return (
     <div className="space-y-6">
       <PageHeader
         back={{ href: "/social", label: "Social media" }}
         title="Planejamento"
-        description="Criativos aprovados com horário marcado. No horário, o worker publica sozinho no Instagram da conta configurada no projeto."
+        description="Calendário de conteúdo aprovado. Visualize as datas marcadas por mês e organize a esteira de publicação de cada cliente."
       />
 
-      {planned.length === 0 ? (
+      {items.length === 0 ? (
         <Panel title="Nada agendado">
           <p className="px-5 py-8 text-center text-sm text-ink-400">
-            Aprove criativos e defina o horário de publicação na página do projeto para eles
-            aparecerem aqui.
+            Aprove criativos e defina a data de publicação na página do projeto para eles
+            aparecerem no calendário.
           </p>
         </Panel>
       ) : (
-        <div className="space-y-5">
-          {[...groups.entries()].map(([day, items]) => (
-            <Panel key={day} title={day[0].toUpperCase() + day.slice(1)} subtitle={`${items.length} publicação(ões)`}>
-              <div className="divide-y divide-[var(--border-hair)]">
-                {items.map((p) => (
-                  <Link
-                    key={p.id}
-                    href={`/social/projetos/${p.projectId}`}
-                    className="flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-ink-850"
-                  >
-                    <div className="tnum w-14 shrink-0 font-mono text-sm text-ink-200">
-                      {timeBR(p.scheduledAt!)}
-                    </div>
-                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded bg-ink-900">
-                      {p.assets[0] && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.assets[0].url} alt="" className="h-full w-full object-cover" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-[13px] text-ink-200">
-                        {p.caption ? p.caption.replace(/\n/g, " ") : "— sem legenda —"}
-                      </div>
-                      <div className="truncate text-[12px] text-ink-500">
-                        {p.clientName} · @{p.igHandle} · {p.projectTitle}
-                      </div>
-                    </div>
-                    <span
-                      className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${PUB[p.publishStatus].cls}`}
-                    >
-                      {PUB[p.publishStatus].label}
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            </Panel>
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-3 gap-3">
+            <Stat label="Datas marcadas" value={items.length} tone="amarelo" />
+            <Stat label="Projetos" value={projects} />
+            <Stat label="Clientes" value={clients} />
+          </div>
+          <PlanningCalendar items={items} />
+        </>
       )}
     </div>
   );

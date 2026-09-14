@@ -16,6 +16,7 @@
     "migrate:sqlite": "dotenv -e .env.local -- tsx scripts/migrate-sqlite.ts",
     "usuarios": "dotenv -e .env.local -- tsx scripts/usuarios.ts",
     "migrate:social": "dotenv -e .env.local -- tsx scripts/migrate-social.ts",
+    "migrate:crm": "dotenv -e .env.local -- tsx scripts/migrate-crm.ts",
     "limpar": "dotenv -e .env.local -- tsx scripts/limpar.ts"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "react-dom": "19.2.8"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^26.4.0",
     "@types/react": "^19",

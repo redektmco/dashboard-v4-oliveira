@@ -55,3 +55,9 @@ aprovação-v4/
 
 # Exports soltos de planejamento
 *.csv
+
+# banco local de desenvolvimento (PGlite)
+/.data/
+
+.vercel
+.env*

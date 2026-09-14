@@ -1,36 +1,52 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "@/actions/auth";
+import { ActionMenu } from "./action-menu";
 import { Icon, type IconName } from "./icon";
 
-const LINKS: { href: string; label: string; hint: string; icon: IconName; admin?: boolean }[] = [
-  { href: "/", label: "Carteira", hint: "Coordenação", icon: "grid" },
-  { href: "/gt", label: "Performance", hint: "GT · semanal", icon: "chart" },
-  { href: "/account", label: "Check-in", hint: "Account · por contato", icon: "users" },
-  { href: "/social", label: "Social media", hint: "Aprovação e planejamento", icon: "image" },
+type NavLink = { href: string; label: string; hint: string; icon: IconName };
+
+/**
+ * Navegação principal = o que o time faz toda semana. Cadastro, calibração,
+ * acesso e integrações são configuração: moram dentro de Configurações, com
+ * sub-abas, em vez de competir com as jornadas no menu.
+ */
+const MAIN: NavLink[] = [
+  { href: "/", label: "Carteira", hint: "Saúde da carteira e triagem", icon: "grid" },
+  { href: "/gt", label: "Performance", hint: "GT · ritual semanal", icon: "chart" },
+  { href: "/account", label: "Check-in", hint: "Account · depois da call", icon: "users" },
+  { href: "/social", label: "Social media", hint: "Aprovação e calendário", icon: "image" },
   { href: "/onboarding", label: "Onboarding", hint: "Portal de aprendizagem do time", icon: "book" },
-  { href: "/modelo", label: "Modelo", hint: "Pesos e réguas", icon: "target" },
-  { href: "/config", label: "Configuração", hint: "Clientes, metas, calibração", icon: "settings" },
-  { href: "/usuarios", label: "Usuários", hint: "Acesso do time", icon: "shield", admin: true },
 ];
+const SETTINGS: NavLink = {
+  href: "/config",
+  label: "Configurações",
+  hint: "Clientes, calibração, usuários e integrações",
+  icon: "settings",
+};
 
-/** As três jornadas diárias ficam no polegar; o resto vai para a gaveta. */
-const TAB_HREFS = ["/", "/gt", "/account"];
-
-const isActive = (href: string, path: string) =>
-  href === "/" ? path === "/" : path.startsWith(href);
+const isActive = (href: string, path: string) => (href === "/" ? path === "/" : path.startsWith(href));
 
 /** Título da rota atual — usado no cabeçalho mobile e na topbar. */
 function currentLabel(path: string) {
   return (
-    LINKS.find((l) => isActive(l.href, path))?.label ??
+    [...MAIN, SETTINGS].find((l) => isActive(l.href, path))?.label ??
     (path.startsWith("/clientes") ? "Cliente" : "Health Score")
   );
 }
+
+const ROLE_LABEL: Record<string, string> = {
+  gt: "GT",
+  account: "Account Manager",
+  coord: "Coordenação",
+  social: "Social Media",
+};
+
+type Perfil = { name: string; isAdmin: boolean; role: string };
 
 /* ------------------------------------------------------------------ */
 /* Preferência de menu recolhido                                       */
@@ -38,8 +54,7 @@ function currentLabel(path: string) {
 /**
  * Vive no localStorage e é lida por `useSyncExternalStore`: o servidor não
  * conhece a preferência, então o snapshot do servidor é sempre "expandido" e
- * o React troca no hydrate sem divergência de marcação. Ler em `useEffect`
- * daria o mesmo resultado com um render extra — e cascata de setState.
+ * o React troca no hydrate sem divergência de marcação.
  */
 const COLLAPSE_KEY = "healthscore.sidebar.colapsado";
 
@@ -72,16 +87,33 @@ function writeCollapsed(v: boolean) {
   listeners.forEach((l) => l());
 }
 
-/** Rail lateral persistente — padrão do BI da unidade. */
-export function Sidebar({
-  counts,
-  isAdmin = false,
-}: {
-  counts?: Record<string, number>;
-  isAdmin?: boolean;
-}) {
-  const path = usePathname();
+function SideLink({ l, collapsed, path }: { l: NavLink; collapsed: boolean; path: string }) {
+  const active = isActive(l.href, path);
+  return (
+    <Link
+      href={l.href}
+      title={collapsed ? `${l.label} — ${l.hint}` : l.hint}
+      aria-label={l.label}
+      aria-current={active ? "page" : undefined}
+      className={`relative flex items-center rounded-md py-2 text-[13px] font-semibold transition-colors duration-[120ms] ${
+        collapsed ? "justify-center px-0" : "gap-2.5 px-2.5"
+      } ${
+        active
+          ? `bg-[rgba(229,9,20,0.10)] text-ink-100 before:absolute before:bottom-2 before:top-2 before:w-0.5 before:rounded-r before:bg-v4-red before:content-[''] ${
+              collapsed ? "before:-left-2.5" : "before:-left-3.5"
+            }`
+          : "text-ink-300 hover:bg-ink-850 hover:text-ink-100"
+      }`}
+    >
+      <Icon name={l.icon} size={18} stroke={1.75} />
+      {!collapsed && l.label}
+    </Link>
+  );
+}
 
+/** Rail lateral persistente — padrão do BI da unidade. */
+export function Sidebar() {
+  const path = usePathname();
   const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false);
   const toggle = () => writeCollapsed(!collapsed);
 
@@ -110,58 +142,20 @@ export function Sidebar({
         )}
       </Link>
 
-      <nav className="flex flex-col gap-0.5">
-        {LINKS.filter((l) => !l.admin || isAdmin).map((l) => {
-          const active = l.href === "/" ? path === "/" : path.startsWith(l.href);
-          const count = counts?.[l.href];
-          return (
-            <Link
-              key={l.href}
-              href={l.href}
-              title={collapsed ? `${l.label} — ${l.hint}` : l.hint}
-              aria-label={l.label}
-              className={`relative flex items-center rounded-md py-2 text-[13px] font-semibold transition-colors duration-[120ms] ${
-                collapsed ? "justify-center px-0" : "gap-2.5 px-2.5"
-              } ${
-                active
-                  ? `bg-[rgba(229,9,20,0.10)] text-ink-100 before:absolute before:bottom-2 before:top-2 before:w-0.5 before:rounded-r before:bg-v4-red before:content-[''] ${
-                      collapsed ? "before:-left-2.5" : "before:-left-3.5"
-                    }`
-                  : "text-ink-300 hover:bg-ink-850 hover:text-ink-100"
-              }`}
-            >
-              <Icon name={l.icon} size={18} stroke={1.75} />
-              {!collapsed && l.label}
-              {count ? (
-                collapsed ? (
-                  <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-vermelho" />
-                ) : (
-                  <span
-                    className={`tnum ml-auto rounded-sm px-1.5 py-0.5 font-mono text-[11px] ${
-                      count > 0 ? "bg-vermelho-dim text-vermelho-fg" : "bg-ink-850 text-ink-400"
-                    }`}
-                  >
-                    {count}
-                  </span>
-                )
-              ) : null}
-            </Link>
-          );
-        })}
+      <nav className="flex flex-col gap-0.5" aria-label="Navegação principal">
+        {MAIN.map((l) => (
+          <SideLink key={l.href} l={l} collapsed={collapsed} path={path} />
+        ))}
       </nav>
 
-      <div className="mt-auto space-y-3 border-t border-[var(--border-hair)] pt-3.5">
-        {!collapsed && (
-          <p className="text-[11px] leading-relaxed text-ink-500">
-            Input 100% manual. Snapshot datado, nunca sobrescrito. Recompute diário.
-          </p>
-        )}
+      <div className="mt-auto space-y-1 border-t border-[var(--border-hair)] pt-3">
+        <SideLink l={SETTINGS} collapsed={collapsed} path={path} />
         <button
           type="button"
           onClick={toggle}
           aria-expanded={!collapsed}
           title={collapsed ? "Expandir menu" : "Recolher menu"}
-          className={`flex w-full items-center rounded-md py-2 text-[12px] font-semibold text-ink-400 transition-colors duration-[120ms] hover:bg-ink-850 hover:text-ink-100 ${
+          className={`flex w-full items-center rounded-md py-2 text-[12px] font-semibold text-ink-500 transition-colors duration-[120ms] hover:bg-ink-850 hover:text-ink-100 ${
             collapsed ? "justify-center px-0" : "gap-2.5 px-2.5"
           }`}
         >
@@ -173,40 +167,57 @@ export function Sidebar({
   );
 }
 
-/** Topbar do desktop: onde estou + quem sou + ação rápida. */
-export function Topbar({ user }: { user?: { name: string; isAdmin: boolean } }) {
+function Avatar({ name, size = 32 }: { name: string; size?: number }) {
+  return (
+    <span
+      className="flex shrink-0 items-center justify-center rounded-full border border-[var(--border-strong)] bg-ink-850 font-display font-bold text-ink-200"
+      style={{ width: size, height: size, fontSize: size * 0.4 }}
+      aria-hidden
+    >
+      {iniciais(name)}
+    </span>
+  );
+}
+
+function useSignOut() {
+  const [pending, start] = useTransition();
+  return { pending, run: () => start(() => signOut()) };
+}
+
+/** Topbar do desktop: onde estou + quem sou. As ações vivem nas páginas. */
+export function Topbar({ user }: { user: Perfil }) {
   const path = usePathname();
   const here = currentLabel(path);
+  const out = useSignOut();
   return (
-    <div className="sticky top-0 z-10 hidden items-center gap-3.5 border-b border-[var(--border-hair)] bg-[rgba(13,13,13,0.85)] px-7 py-3.5 backdrop-blur-xl lg:flex">
+    <div className="sticky top-0 z-10 hidden items-center gap-3.5 border-b border-[var(--border-hair)] bg-[rgba(13,13,13,0.85)] px-7 py-3 backdrop-blur-xl lg:flex">
       <div className="flex items-center gap-2 text-[13px] text-ink-400">
         <span>Unidade Oliveira &amp; Co</span>
         <span className="text-ink-600">/</span>
         <span className="font-semibold text-ink-100">{here}</span>
       </div>
-      <div className="ml-auto flex items-center gap-2">
-        <Link href="/gt" className="btn btn-sm">
-          <Icon name="chart" size={14} />
-          Performance
-        </Link>
-        <Link href="/account" className="btn btn-sm btn-primary">
-          <Icon name="plus" size={14} />
-          Check-in
-        </Link>
-        {user && (
-          <div className="ml-2 flex items-center gap-2 border-l border-[var(--border-hair)] pl-3">
-            <span className="flex items-center gap-1.5 text-[13px] text-ink-300" title={user.isAdmin ? "Administrador" : undefined}>
-              {user.isAdmin && <Icon name="shield" size={13} className="text-v4-red" />}
+      <div className="ml-auto">
+        <ActionMenu
+          label={`Conta de ${user.name}`}
+          trigger={
+            <span className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2.5 text-[13px] font-semibold text-ink-200 hover:bg-ink-850">
+              <Avatar name={user.name} size={28} />
               {user.name}
+              {out.pending ? <span className="spinner" aria-hidden /> : <Icon name="chevronDown" size={14} className="text-ink-500" />}
             </span>
-            <form action={signOut}>
-              <button className="btn btn-sm" title="Sair">
-                <Icon name="logout" size={14} />
-                Sair
-              </button>
-            </form>
-          </div>
-        )}
+          }
+          items={[
+            {
+              label: user.name,
+              hint: `${ROLE_LABEL[user.role] ?? user.role}${user.isAdmin ? " · administrador" : ""}`,
+              icon: user.isAdmin ? "shield" : "users",
+              disabled: true,
+            },
+            "separator",
+            { label: "Configurações", icon: "settings", href: "/config" },
+            { label: "Sair", icon: "logout", onSelect: out.run },
+          ]}
+        />
       </div>
     </div>
   );
@@ -216,26 +227,16 @@ export function Topbar({ user }: { user?: { name: string; isAdmin: boolean } }) 
 /* Moldura do celular                                                  */
 /* ------------------------------------------------------------------ */
 /**
- * Abaixo de `lg` o rail de 228px comeria 60% de um iPhone, então some e
- * a navegação se divide em dois: cabeçalho fino no topo (onde estou) e
- * barra de abas no rodapé (para onde vou). As três jornadas diárias —
- * carteira, performance, check-in — ficam na altura do polegar; modelo,
- * configuração, usuários e sair moram na gaveta do "Mais", que é para
+ * Abaixo de `lg` o rail some e a navegação se divide: cabeçalho fino no topo
+ * (onde estou + conta) e barra de abas no rodapé com as quatro jornadas.
+ * Configurações e sair ficam na gaveta da conta, aberta pelo avatar — é para
  * onde se vai uma vez por semana, não o dia inteiro.
- *
- * Cabeçalho e barra dividem o mesmo estado da gaveta, por isso vivem no
- * mesmo componente — a barra é `position: fixed`, então renderizar as
- * duas juntas não atrapalha o fluxo do documento.
  */
-export function MobileNav({ user }: { user: { name: string; isAdmin: boolean } }) {
+export function MobileNav({ user }: { user: Perfil }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const here = currentLabel(path);
-  const secundarios = LINKS.filter(
-    (l) => !TAB_HREFS.includes(l.href) && (!l.admin || user.isAdmin),
-  );
-  // A gaveta conta como "estar em" qualquer rota que ela abriga.
-  const emSecundario = secundarios.some((l) => isActive(l.href, path));
+  const out = useSignOut();
 
   // Enquanto aberta, o fundo não rola e Esc fecha.
   useEffect(() => {
@@ -268,15 +269,15 @@ export function MobileNav({ user }: { user: { name: string; isAdmin: boolean } }
             onClick={() => setOpen(true)}
             aria-label={`Conta de ${user.name}`}
             aria-haspopup="dialog"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--border-strong)] bg-ink-850 font-display text-[13px] font-bold text-ink-200"
+            className={`rounded-full ${isActive(SETTINGS.href, path) ? "ring-2 ring-v4-red" : ""}`}
           >
-            {iniciais(user.name)}
+            <Avatar name={user.name} size={36} />
           </button>
         </div>
       </header>
 
       <nav className="tabbar" aria-label="Navegação principal">
-        {LINKS.filter((l) => TAB_HREFS.includes(l.href)).map((l) => (
+        {MAIN.map((l) => (
           <Link
             key={l.href}
             href={l.href}
@@ -284,36 +285,25 @@ export function MobileNav({ user }: { user: { name: string; isAdmin: boolean } }
             aria-current={isActive(l.href, path) ? "page" : undefined}
           >
             <Icon name={l.icon} size={20} stroke={isActive(l.href, path) ? 2.2 : 1.75} />
-            {l.label}
+            {l.label === "Social media" ? "Social" : l.label}
           </Link>
         ))}
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          data-active={emSecundario || open ? "" : undefined}
-          aria-haspopup="dialog"
-          aria-expanded={open}
-        >
-          <Icon name="dots" size={20} stroke={2} />
-          Mais
-        </button>
       </nav>
 
       {open && (
         <>
           <div className="drawer-backdrop" onClick={() => setOpen(false)} aria-hidden />
-          <div className="drawer-sheet" role="dialog" aria-modal="true" aria-label="Mais opções">
+          <div className="drawer-sheet" role="dialog" aria-modal="true" aria-label="Conta e configurações">
             <div className="drawer-grip" aria-hidden />
 
             <div className="flex items-center gap-3 px-5 py-3.5">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border-strong)] bg-ink-850 font-display text-sm font-bold text-ink-200">
-                {iniciais(user.name)}
-              </span>
+              <Avatar name={user.name} size={40} />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-semibold text-ink-100">{user.name}</div>
                 <div className="flex items-center gap-1.5 text-[11px] text-ink-500">
                   {user.isAdmin && <Icon name="shield" size={11} className="text-v4-red" />}
-                  {user.isAdmin ? "Administrador" : "Unidade Oliveira & Co"}
+                  {ROLE_LABEL[user.role] ?? user.role}
+                  {user.isAdmin ? " · administrador" : ""}
                 </div>
               </div>
               <button
@@ -327,40 +317,30 @@ export function MobileNav({ user }: { user: { name: string; isAdmin: boolean } }
             </div>
 
             <nav className="border-t border-[var(--border-hair)] px-2.5 py-2">
-              {secundarios.map((l) => (
-                <Link
-                  key={l.href}
-                  href={l.href}
-                  /* A gaveta fecha aqui, na própria navegação: fechá-la
-                     num efeito que observa o pathname custaria um render
-                     em cascata a cada troca de rota. */
-                  onClick={() => setOpen(false)}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-semibold ${
-                    isActive(l.href, path)
-                      ? "bg-[rgba(229,9,20,0.10)] text-ink-100"
-                      : "text-ink-200"
-                  }`}
-                >
-                  <Icon name={l.icon} size={19} stroke={1.75} />
-                  <span className="min-w-0 flex-1">
-                    {l.label}
-                    <span className="block text-[11px] font-normal text-ink-500">{l.hint}</span>
-                  </span>
-                  <Icon name="chevronRight" size={15} className="text-ink-600" />
-                </Link>
-              ))}
+              <Link
+                href={SETTINGS.href}
+                /* A gaveta fecha aqui, na própria navegação: fechá-la num
+                   efeito que observa o pathname custaria um render em
+                   cascata a cada troca de rota. */
+                onClick={() => setOpen(false)}
+                className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-semibold ${
+                  isActive(SETTINGS.href, path) ? "bg-[rgba(229,9,20,0.10)] text-ink-100" : "text-ink-200"
+                }`}
+              >
+                <Icon name={SETTINGS.icon} size={19} stroke={1.75} />
+                <span className="min-w-0 flex-1">
+                  {SETTINGS.label}
+                  <span className="block text-[11px] font-normal text-ink-500">{SETTINGS.hint}</span>
+                </span>
+                <Icon name="chevronRight" size={15} className="text-ink-600" />
+              </Link>
             </nav>
 
             <div className="border-t border-[var(--border-hair)] px-5 py-3.5">
-              <form action={signOut}>
-                <button className="btn w-full justify-center">
-                  <Icon name="logout" size={15} />
-                  Sair
-                </button>
-              </form>
-              <p className="mt-3 text-[11px] leading-relaxed text-ink-500">
-                Input 100% manual. Snapshot datado, nunca sobrescrito. Recompute diário.
-              </p>
+              <button className="btn w-full justify-center" onClick={out.run} disabled={out.pending} aria-busy={out.pending}>
+                {out.pending ? <span className="spinner" aria-hidden /> : <Icon name="logout" size={15} />}
+                Sair
+              </button>
             </div>
           </div>
         </>

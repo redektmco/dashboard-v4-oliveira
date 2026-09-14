@@ -1,7 +1,7 @@
 import { DIMENSIONS, SCALE_ANCHORS, fieldsFor } from "@/lib/model/catalog";
 import { getConfig, getWeights } from "@/lib/repo";
 import { ACCOUNT_TYPE_LABEL, type AccountType } from "@/lib/model/types";
-import { PageHeader, Panel, TableScroll } from "@/components/ui";
+import { Panel, SectionHeader, TableScroll } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export default async function ModeloPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <SectionHeader
         title="O modelo, aberto"
         description="Nenhum peso é chute — cada um sai de duas perguntas objetivas: quão cedo a dimensão avisa o churn, e quão confiável é o dado. Dado duro e antecipatório pesa mais; nota subjetiva pesa menos porque tem ruído."
       />

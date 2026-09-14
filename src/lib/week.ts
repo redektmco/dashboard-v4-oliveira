@@ -15,6 +15,21 @@ export function currentRitualDate(from = new Date()): string {
   return isoDay(d);
 }
 
+/**
+ * Sexta que FECHA a semana-ritual em que `from` cai — o próximo dia de ritual
+ * ≥ `from`. É a âncora que o GT usa ao preencher a semana (default do form),
+ * então um lead recebido em qualquer dia da semana cai no mesmo `ref_date` que
+ * o snapshot manual daquela semana. Contraste com `currentRitualDate`, que
+ * devolve a sexta que já passou (a semana que fechou).
+ */
+export function ritualWeekEnd(from: string | Date = new Date()): string {
+  const d = typeof from === "string" ? new Date(from + "T12:00:00") : new Date(from);
+  d.setHours(12, 0, 0, 0);
+  const diff = (RITUAL_DAY - d.getDay() + 7) % 7;
+  d.setDate(d.getDate() + diff);
+  return isoDay(d);
+}
+
 export const RITUAL_LABEL = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"][
   RITUAL_DAY
 ];

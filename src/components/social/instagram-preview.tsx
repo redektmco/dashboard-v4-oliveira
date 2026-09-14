@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Asset } from "@/lib/social/types";
+import { MediaView } from "./media";
 
 /**
  * Mock fiel de post do Instagram no feed: header, mídia (com dots do
@@ -13,12 +14,15 @@ export default function InstagramPreview({
   caption,
   avatarUrl = "/brand/v4-simbolo.webp",
   interactive = true,
+  priority = false,
 }: {
   handle: string;
   assets: Asset[];
   caption: string;
   avatarUrl?: string;
   interactive?: boolean;
+  /** Carrega a mídia imediatamente (carta do topo). O resto entra sob demanda. */
+  priority?: boolean;
 }) {
   const [idx, setIdx] = useState(0);
   const [expanded, setExpanded] = useState(false);
@@ -39,7 +43,15 @@ export default function InstagramPreview({
   return (
     <div className="ig">
       <div className="ig__head">
-        <img className="ig__avatar" src={avatarUrl} alt="" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          className="ig__avatar"
+          src={avatarUrl}
+          alt=""
+          width={30}
+          height={30}
+          decoding="async"
+        />
         <div className="ig__handle">{handle}</div>
         <svg className="ig__dots" viewBox="0 0 24 24" aria-hidden>
           <circle cx="5" cy="12" r="1.6" />
@@ -50,7 +62,12 @@ export default function InstagramPreview({
 
       <div className="ig__media" onClick={advance}>
         {current ? (
-          <img src={current.url} alt={current.name} draggable={false} />
+          <MediaView
+            asset={current}
+            sizes="(max-width: 480px) 100vw, 440px"
+            priority={priority && idx === 0}
+            playing={interactive}
+          />
         ) : (
           <div className="ig__placeholder">sem arte</div>
         )}

@@ -349,6 +349,30 @@ export function PageHeader({
 }
 
 /**
+ * Cabeçalho de seção dentro de uma área com sub-navegação (Configurações):
+ * um degrau abaixo do PageHeader, com a ação principal à direita.
+ */
+export function SectionHeader({
+  title,
+  description,
+  actions,
+}: {
+  title: string;
+  description?: React.ReactNode;
+  actions?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0">
+        <h2 className="font-display text-[18px] font-bold tracking-tight text-ink-100">{title}</h2>
+        {description && <p className="mt-1 max-w-3xl text-[13px] text-ink-400">{description}</p>}
+      </div>
+      {actions && <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>}
+    </div>
+  );
+}
+
+/**
  * Lista em cartões — o que substitui a tabela abaixo de `lg`. Não é a
  * tabela encolhida: é a mesma linha reescrita para uma coluna só, com a
  * identidade no topo e a ação de largura cheia no pé.
@@ -386,8 +410,13 @@ export function CardMeta({
 }
 
 /** Estado vazio compartilhado por tabela e lista de cartões. */
-export function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="px-4 py-8 text-center text-sm text-ink-400">{children}</div>;
+export function Empty({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
+  return (
+    <div className="px-4 py-9 text-center text-sm text-ink-400">
+      {children}
+      {action && <div className="mt-3 flex justify-center">{action}</div>}
+    </div>
+  );
 }
 
 export function ClientLink({ id, name }: { id: number; name: string }) {
@@ -404,5 +433,9 @@ export function ClientLink({ id, name }: { id: number; name: string }) {
 export const brl = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
-export const dateBR = (s: string | null) =>
-  s ? new Date(s + (s.length === 10 ? "T00:00:00" : "")).toLocaleDateString("pt-BR") : "—";
+/** Data do banco (`YYYY-MM-DD`, ISO ou `timestamptz::text`) em dd/mm/aaaa. */
+export const dateBR = (s: string | null) => {
+  if (!s) return "—";
+  const d = new Date(s.length === 10 ? s + "T00:00:00" : s.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00"));
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
+};

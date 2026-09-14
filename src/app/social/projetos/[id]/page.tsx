@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import "@/app/social/approval.css";
 import { requireSocial } from "@/lib/auth";
+import { listClients } from "@/lib/repo";
 import { getProject, listPosts } from "@/lib/social/db";
 import ProjectWorkspace from "@/components/social/project-workspace";
 
@@ -13,14 +14,15 @@ export default async function SocialProjectPage({
 }) {
   await requireSocial();
   const { id } = await params;
-  const project = await getProject(id);
+  // Projeto, criativos e carteira em paralelo — um round-trip de espera, não três.
+  const [project, posts, clients] = await Promise.all([getProject(id), listPosts(id), listClients()]);
   if (!project) notFound();
 
-  const posts = await listPosts(id);
-
   return (
-    <div className="sm-scope">
-      <ProjectWorkspace project={project} initialPosts={posts} />
-    </div>
+    <ProjectWorkspace
+      project={project}
+      initialPosts={posts}
+      clients={clients.map((c) => ({ id: c.id, name: c.name }))}
+    />
   );
 }

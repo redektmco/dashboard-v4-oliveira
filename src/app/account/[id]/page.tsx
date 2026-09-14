@@ -7,6 +7,7 @@ import { saveCheckin } from "@/actions";
 import { FieldBlock } from "@/components/form-fields";
 import { FillerSelect } from "@/components/filler-select";
 import { PageHeader, Panel, TableScroll, dateBR } from "@/components/ui";
+import { SubmitButton } from "@/components/form-controls";
 import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -23,13 +24,14 @@ const SCALE_ORDER = [
 export default async function CheckinFormPage({ params }: { params: Promise<{ id: string }> }) {
   await requireUser();
   const { id } = await params;
-  const client = await getClient(Number(id));
-  if (!client) notFound();
-
-  const [history, accounts] = await Promise.all([
-    checkinSnapshots(client.id, 6),
+  const clientId = Number(id);
+  // Cadastro, histórico e time em paralelo — um round-trip de espera, não dois.
+  const [client, history, accounts] = await Promise.all([
+    getClient(clientId),
+    checkinSnapshots(clientId, 6),
     listFillers("account"),
   ]);
+  if (!client) notFound();
   const last = history[0] ?? null;
 
   const fields = fieldsFor(client.account_type, "account");
@@ -146,9 +148,9 @@ export default async function CheckinFormPage({ params }: { params: Promise<{ id
             acompanha, grudado acima da barra de abas. */}
         <div className="form-actions">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-            <button type="submit" className="btn btn-primary justify-center">
+            <SubmitButton className="btn-primary justify-center" pendingLabel="Salvando check-in…">
               Salvar check-in
-            </button>
+            </SubmitButton>
             <Link href="/account" className="btn justify-center">
               Cancelar
             </Link>
