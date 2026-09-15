@@ -187,10 +187,20 @@ export default async function CarteiraPage() {
       <PortfolioTable rows={view} />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel
-          title="Planos em aberto"
-          subtitle="Cada risco tem plano, dono e prazo. O loop fecha na revisão semanal."
-        >
+        {/* Acompanhamento, não alarme: recolhido por padrão para aliviar a
+            primeira dobra — mas abre sozinho se há plano vencido, que é o caso
+            em que ele não pode esperar. */}
+        <details className="panel group" open={plans.some((p) => p.due_date && p.due_date < at)}>
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 sm:px-5">
+            <div>
+              <h2 className="font-display text-[16px] font-semibold text-ink-100">Planos em aberto</h2>
+              <p className="mt-0.5 text-[12.5px] text-ink-400">
+                {plans.length} em aberto · cada risco tem plano, dono e prazo. O loop fecha na revisão semanal.
+              </p>
+            </div>
+            <Icon name="chevronDown" size={16} className="shrink-0 text-ink-400 transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="border-t border-[var(--border-hair)]">
           {plans.length === 0 ? (
             <Empty>Nenhum plano em aberto.</Empty>
           ) : (
@@ -253,7 +263,8 @@ export default async function CarteiraPage() {
               </div>
             </>
           )}
-        </Panel>
+          </div>
+        </details>
 
         <Panel
           title="Renovações nos próximos 60 dias"

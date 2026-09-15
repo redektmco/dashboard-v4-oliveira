@@ -201,66 +201,107 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
         </div>
       )}
 
-      {/* -------- panorama visual: onde está e onde dói -------- */}
-      <div className="grid gap-3 lg:grid-cols-2">
-        <Panel
-          title="Panorama das dimensões"
-          subtitle="Mesma escala 0–100 para as cinco. As duas divisas no trilho são os pisos do amarelo e do verde."
-        >
-          <DimensionBars dimensions={s.dimensions} />
-        </Panel>
-        <Panel
-          title="Onde o score se perde"
-          subtitle="Peso × distância de 100. A soma das barras é exatamente o que falta para o score cheio — comece pela maior."
-        >
-          <LossBreakdown dimensions={s.dimensions} score={s.score} />
-        </Panel>
-      </div>
+      {/* -------- Análise do score: um bloco só, três leituras --------
+          Antes eram três painéis competindo (Panorama · Perde · Decomposição).
+          São perguntas diferentes — onde cada dimensão está, o que mais custa e
+          o detalhe campo a campo — então nenhuma sai; elas passam a viver sob um
+          cabeçalho único, com divisas de sub-seção, para ler como UMA análise em
+          vez de uma pilha. */}
+      <section className="panel">
+        <header className="border-b border-[var(--border-hair)] px-4 py-3.5 sm:px-5 sm:py-4">
+          <h2 className="font-display text-[16px] font-semibold text-ink-100 sm:text-[17px]">
+            Análise do score
+          </h2>
+          <p className="mt-1 text-[12.5px] text-ink-400 sm:text-[13px]">
+            Onde cada dimensão está, o que mais custa e o detalhe campo a campo. Comece pela maior perda.
+          </p>
+        </header>
 
-      {/* -------- decomposição: uma linha por dimensão, aberta sob demanda -------- */}
-      <Panel
-        title="Decomposição do score"
-        subtitle="Os campos que formam cada dimensão, com o valor cru e o normalizado. A pior dimensão já vem aberta — aja na causa, não no sintoma."
-      >
-        <div className="divide-y divide-[var(--border-hair)]">
-          {s.dimensions.map((d) => {
-            const def = DIMENSIONS.find((x) => x.key === (d.key as DimensionKey))!;
-            const b = d.score === null ? null : bandOf(d.score);
-            return (
-              <details key={d.key} className="group" open={worstKey === d.key}>
-                <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-ink-850 sm:px-5">
-                  <Icon name="chevronRight" size={14} className="shrink-0 text-ink-500 transition-transform group-open:rotate-90" />
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-ink-100">{d.label}</div>
-                    <div className="text-[12px] text-ink-500">
-                      {def.source} · peso {d.weight}%
-                      {d.effectiveWeight !== d.weight && d.score !== null ? ` · efetivo ${d.effectiveWeight}%` : ""}
-                    </div>
-                  </div>
-                  <span className={`tnum font-display text-[20px] font-bold leading-none ${bandFg(b)}`}>
-                    {d.score === null ? "—" : Math.round(d.score)}
-                  </span>
-                  <BandChip band={b} />
-                </summary>
-                <div className="bg-ink-950/40">
-                  <FieldBars fields={d.fields} />
-                  <p className="border-t border-[var(--border-hair)] px-5 py-3 text-[11px] leading-relaxed text-ink-500">
-                    {def.rationale}
-                  </p>
-                </div>
-              </details>
-            );
-          })}
+        {/* Panorama + Onde se perde, lado a lado no desktop, com a hairline
+            do grid `gap-px` fazendo a divisa — mesmo padrão da triagem. */}
+        <div className="grid gap-px bg-[var(--border-hair)] lg:grid-cols-2">
+          <div className="bg-ink-900">
+            <div className="px-5 pt-4">
+              <span className="label">Panorama das dimensões</span>
+              <p className="mt-1 text-[12px] text-ink-500">
+                Mesma escala 0–100 para as cinco. As divisas no trilho são os pisos do amarelo e do verde.
+              </p>
+            </div>
+            <DimensionBars dimensions={s.dimensions} />
+          </div>
+          <div className="bg-ink-900">
+            <div className="px-5 pt-4">
+              <span className="label">Onde o score se perde</span>
+              <p className="mt-1 text-[12px] text-ink-500">
+                Peso × distância de 100. A soma das barras é o que falta para o score cheio.
+              </p>
+            </div>
+            <LossBreakdown dimensions={s.dimensions} score={s.score} />
+          </div>
         </div>
-      </Panel>
 
-      {/* -------- mapa da relação -------- */}
-      <Panel
-        title="Mapa dos check-ins"
-        subtitle="As seis perguntas do roteiro ao longo do tempo, do mais antigo ao mais recente. A linha que escurece é a que vira churn."
-      >
-        <CheckinHeatmap rows={heatRows} snapshots={checkins} />
-      </Panel>
+        {/* Decomposição: uma linha por dimensão, a pior já aberta. */}
+        <div className="border-t border-[var(--border-hair)]">
+          <div className="px-5 pb-1 pt-4">
+            <span className="label">Decomposição · campo a campo</span>
+          </div>
+          <div className="divide-y divide-[var(--border-hair)]">
+            {s.dimensions.map((d) => {
+              const def = DIMENSIONS.find((x) => x.key === (d.key as DimensionKey))!;
+              const b = d.score === null ? null : bandOf(d.score);
+              return (
+                <details key={d.key} className="group" open={worstKey === d.key}>
+                  <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-ink-850 sm:px-5">
+                    <Icon name="chevronRight" size={14} className="shrink-0 text-ink-500 transition-transform group-open:rotate-90" />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-ink-100">{d.label}</div>
+                      <div className="text-[12px] text-ink-500">
+                        {def.source} · peso {d.weight}%
+                        {d.effectiveWeight !== d.weight && d.score !== null ? ` · efetivo ${d.effectiveWeight}%` : ""}
+                      </div>
+                    </div>
+                    <span className={`tnum font-display text-[20px] font-bold leading-none ${bandFg(b)}`}>
+                      {d.score === null ? "—" : Math.round(d.score)}
+                    </span>
+                    <BandChip band={b} />
+                  </summary>
+                  <div className="bg-ink-950/40">
+                    <FieldBars fields={d.fields} />
+                    <p className="border-t border-[var(--border-hair)] px-5 py-3 text-[11px] leading-relaxed text-ink-500">
+                      {def.rationale}
+                    </p>
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* -------- mapa da relação: drill-down temporal, abre sob demanda --------
+          A leitura acionável (Panorama · Perde · Decomposição) já está aberta
+          acima; o heatmap das seis perguntas ao longo do tempo é o aprofundamento
+          qualitativo. Fica recolhido no mesmo padrão do Histórico para baixar a
+          densidade da ficha sem esconder o sinal — o resumo diz o que há dentro. */}
+      <details className="panel group">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 sm:px-5">
+          <div>
+            <h2 className="font-display text-[16px] font-semibold text-ink-100">Mapa dos check-ins</h2>
+            <p className="mt-0.5 text-[12.5px] text-ink-400">
+              As seis perguntas do roteiro ao longo do tempo — {checkins.length} leitura(s). A linha que
+              escurece é a que vira churn.
+            </p>
+          </div>
+          <Icon
+            name="chevronDown"
+            size={16}
+            className="shrink-0 text-ink-400 transition-transform group-open:rotate-180"
+          />
+        </summary>
+        <div className="border-t border-[var(--border-hair)]">
+          <CheckinHeatmap rows={heatRows} snapshots={checkins} />
+        </div>
+      </details>
 
       <PlansPanel
         plans={plans}

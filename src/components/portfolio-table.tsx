@@ -53,8 +53,8 @@ export function PortfolioTable({ rows }: { rows: Row[] }) {
   const [trend, setTrend] = useState<"todas" | "caindo" | "subindo">("todas");
   const [sort, setSort] = useState<SortKey>("risk");
   const [q, setQ] = useState("");
-  // No celular os seis filtros viram uma gaveta: a barra ocuparia meia
-  // tela de altura e empurraria a carteira para fora da primeira dobra.
+  // Os filtros vivem recolhidos em toda tela: expostos ocupariam a faixa
+  // inteira acima da tabela e empurrariam a carteira para fora da dobra.
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
 
   const owners = useMemo(
@@ -88,9 +88,8 @@ export function PortfolioTable({ rows }: { rows: Row[] }) {
 
   const mrrShown = filtered.reduce((a, r) => a + r.mrr, 0);
 
-  // Um único descritor por filtro: a barra do desktop e a gaveta do
-  // celular renderizam a mesma lista, então não há como uma ganhar um
-  // filtro que a outra não tem.
+  // Um único descritor por filtro alimenta o painel recolhível — mesma lista
+  // em toda tela, sem como uma largura ganhar um filtro que a outra não tem.
   const filtros: { label: string; value: string; onChange: (v: string) => void; padrao: string; options: [string, string][] }[] = [
     {
       label: "Banda",
@@ -167,18 +166,12 @@ export function PortfolioTable({ rows }: { rows: Row[] }) {
         </div>
       }
     >
-      {/* ---- filtros: barra no desktop ---- */}
-      <div className="hidden flex-wrap items-center gap-2 border-b border-[var(--border-hair)] px-4 py-3 lg:flex">
-        {filtros.map((f) => (
-          <Select key={f.label} label={f.label} value={f.value} onChange={f.onChange} options={f.options} />
-        ))}
-        <div className="ml-auto">
-          <Select label="Ordenar" value={sort} onChange={(v) => setSort(v as SortKey)} options={ordenacao} />
-        </div>
-      </div>
-
-      {/* ---- filtros: gaveta no celular ---- */}
-      <div className="border-b border-[var(--border-hair)] lg:hidden">
+      {/* ---- filtros: um controle só, desktop e celular ----
+          Antes o desktop mostrava os cinco selects sempre abertos, competindo
+          com a tabela; agora vivem atrás do botão "Filtros" (com o contador de
+          ativos), como já era no celular. Buscar e ordenar seguem sempre à mão
+          — são o que muda a leitura da lista, não o recorte dela. */}
+      <div className="border-b border-[var(--border-hair)]">
         <div className="flex items-center gap-2 px-4 py-2.5">
           <button
             type="button"
@@ -199,7 +192,14 @@ export function PortfolioTable({ rows }: { rows: Row[] }) {
               className={`transition-transform duration-200 ${filtrosAbertos ? "rotate-180" : ""}`}
             />
           </button>
-          {/* Ordenar fica sempre à mão: é o que muda a leitura da lista. */}
+          {/* Limpar à vista quando há filtro ativo — no desktop ao lado do
+              botão; no celular ele desce para dentro do painel aberto. */}
+          {ativos > 0 && (
+            <button type="button" onClick={limpar} className="btn btn-sm btn-ghost hidden sm:inline-flex">
+              <Icon name="x" size={13} />
+              Limpar {ativos}
+            </button>
+          )}
           <label className="ml-auto flex min-w-0 items-center gap-1.5">
             <Icon name="sort" size={14} className="shrink-0 text-ink-500" />
             <span className="sr-only">Ordenar</span>
@@ -219,7 +219,7 @@ export function PortfolioTable({ rows }: { rows: Row[] }) {
         </div>
 
         {filtrosAbertos && (
-          <div className="grid grid-cols-2 gap-2.5 border-t border-[var(--border-hair)] px-4 py-3">
+          <div className="grid grid-cols-2 gap-2.5 border-t border-[var(--border-hair)] px-4 py-3 sm:grid-cols-3 lg:grid-cols-5">
             {filtros.map((f) => (
               <label key={f.label} className="block">
                 <span className="label">{f.label}</span>
@@ -238,7 +238,7 @@ export function PortfolioTable({ rows }: { rows: Row[] }) {
               </label>
             ))}
             {ativos > 0 && (
-              <button type="button" onClick={limpar} className="btn btn-sm col-span-2 justify-center">
+              <button type="button" onClick={limpar} className="btn btn-sm col-span-2 justify-center sm:hidden">
                 <Icon name="x" size={13} />
                 Limpar {ativos} filtro{ativos > 1 ? "s" : ""}
               </button>
@@ -420,35 +420,5 @@ export function PortfolioTable({ rows }: { rows: Row[] }) {
       </TableScroll>
       </div>
     </Panel>
-  );
-}
-
-function Select({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: [string, string][];
-}) {
-  return (
-    <label className="flex items-center gap-1.5">
-      <span className="sr-only">{label}</span>
-      <select
-        className="field w-auto py-1.5 text-xs"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        aria-label={label}
-      >
-        {options.map(([v, l]) => (
-          <option key={v} value={v}>
-            {l}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }
