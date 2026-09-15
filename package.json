@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "seed": "dotenv -e .env.local -- tsx scripts/seed.ts",
+    "seed:onboarding": "dotenv -e .env.local -- tsx scripts/seed-onboarding.ts",
     "recompute": "dotenv -e .env.local -- tsx scripts/recompute.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test scripts/test.ts",

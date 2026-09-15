@@ -293,6 +293,81 @@ CREATE INDEX IF NOT EXISTS idx_sm_posts_project ON sm_posts (project_id, ord);
 CREATE INDEX IF NOT EXISTS idx_sm_posts_due
   ON sm_posts (publish_status, scheduled_at);
 
+-- =====================================================================
+-- Onboarding / LMS interno — portal de aprendizagem do novo funcionário.
+-- Hierarquia categoria > módulo > aula; progresso individual por usuário.
+-- Conteúdo 100% no banco (nada hardcoded no front). ord ordena cada
+-- nível; status controla publicação (o funcionário só vê 'published').
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS ob_categories (
+  id SERIAL PRIMARY KEY,
+  slug TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  banner_url TEXT,
+  icon TEXT,
+  ord INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'draft'
+    CHECK (status IN ('draft','published','archived')),
+  is_demo SMALLINT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ob_categories_ord ON ob_categories (ord);
+
+CREATE TABLE IF NOT EXISTS ob_modules (
+  id SERIAL PRIMARY KEY,
+  category_id INTEGER NOT NULL REFERENCES ob_categories(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  ord INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'published'
+    CHECK (status IN ('draft','published','archived')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ob_modules_cat ON ob_modules (category_id, ord);
+
+-- Uma linha por aula. A coluna type decide o que o front renderiza; os campos
+-- de mídia (video_url/external_url/thumb_url/icon/checklist) são opcionais e só
+-- o do tipo em uso é preenchido. A coluna content guarda Markdown (texto) ou as
+-- instruções (link/ferramenta) — nunca HTML cru.
+CREATE TABLE IF NOT EXISTS ob_lessons (
+  id SERIAL PRIMARY KEY,
+  module_id INTEGER NOT NULL REFERENCES ob_modules(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  type TEXT NOT NULL DEFAULT 'text'
+    CHECK (type IN ('text','video','link','document','checklist','tool')),
+  content TEXT NOT NULL DEFAULT '',
+  video_url TEXT,
+  external_url TEXT,
+  thumb_url TEXT,
+  icon TEXT,
+  checklist JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ord INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'published'
+    CHECK (status IN ('draft','published','archived')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ob_lessons_mod ON ob_lessons (module_id, ord);
+
+-- Progresso do funcionário, uma linha por (usuário, aula). Só nasce quando a
+-- aula é aberta; ausência = "não iniciado". A conclusão de módulo/categoria é
+-- um agregado desta tabela — mesmo princípio de nunca sobrescrever da seção 7.
+CREATE TABLE IF NOT EXISTS ob_progress (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  lesson_id INTEGER NOT NULL REFERENCES ob_lessons(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'in_progress'
+    CHECK (status IN ('in_progress','done')),
+  checklist_state JSONB NOT NULL DEFAULT '[]'::jsonb,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  completed_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (user_id, lesson_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ob_progress_user ON ob_progress (user_id);
+CREATE INDEX IF NOT EXISTS idx_ob_progress_lesson ON ob_progress (lesson_id);
+
 -- Formato do criativo: post de feed (1 arte = post, varias = carrossel),
 -- Reels (video vertical) ou Story (sequencia vertical de frames 9:16).
 ALTER TABLE sm_posts ADD COLUMN IF NOT EXISTS format TEXT NOT NULL DEFAULT 'feed';
@@ -342,7 +417,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_leads_dedup
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-09-10.stories";
+export const SCHEMA_VERSION = "2026-09-14.onboarding";
 
 let migrated = false;
 

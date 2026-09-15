@@ -20,6 +20,7 @@ const MAIN: NavLink[] = [
   { href: "/gt", label: "Performance", hint: "GT · ritual semanal", icon: "chart" },
   { href: "/account", label: "Check-in", hint: "Account · depois da call", icon: "users" },
   { href: "/social", label: "Social media", hint: "Aprovação e calendário", icon: "image" },
+  { href: "/onboarding", label: "Onboarding", hint: "Portal de aprendizagem do time", icon: "book" },
 ];
 const SETTINGS: NavLink = {
   href: "/config",
