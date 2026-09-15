@@ -36,7 +36,8 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Fora da trava: estáticos, favicon, a marca em /public, o recompute (por
+  // Fora da trava: estáticos, favicon/ícones (icon.png, apple-icon.png), a
+  // marca em /public, o recompute (por
   // token), o webhook de leads do CRM (`/api/integrations/webhook/<token>`),
   // além das rotas públicas do cliente de Social media — o link de aprovação
   // `/a/<token>` e sua API de decisão `/api/g/...`, todos protegidos por token
@@ -47,6 +48,6 @@ export const config = {
   // Blob. Com o arquivo no caminho, o Next bufferiza o corpo e o trunca em
   // 10 MB (`proxyClientMaxBodySize`) — era isso que quebrava o upload em lote.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|brand/|api/recompute|api/integrations/webhook/|a/|api/g/).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icon.png|apple-icon.png|brand/|api/recompute|api/integrations/webhook/|a/|api/g/).*)",
   ],
 };
