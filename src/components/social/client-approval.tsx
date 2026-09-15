@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Post, PostStatus, Project } from "@/lib/social/types";
 import InstagramPreview from "@/components/social/instagram-preview";
 import { MediaView } from "@/components/social/media";
@@ -28,6 +28,7 @@ export default function ClientApproval({
   const [detailId, setDetailId] = useState<string | null>(null);
   const [viewer, setViewer] = useState<Viewer | null>(null);
   const [toast, setToast] = useState<{ msg: string; actions: ToastAction[] } | null>(null);
+  const [rejectionReview, setRejectionReview] = useState(false);
 
   const handle = "@" + project.igHandle;
 
@@ -42,6 +43,31 @@ export default function ClientApproval({
   const sorted = useMemo(() => [...posts].sort((a, b) => a.order - b.order), [posts]);
   const pendingDeck = useMemo(() => sorted.filter((p) => p.status === "pending"), [sorted]);
   const stories = useMemo(() => sorted.filter((p) => p.format === "story"), [sorted]);
+  const rejectedPosts = useMemo(() => sorted.filter((p) => p.status === "rejected"), [sorted]);
+
+  const allDecided = total > 0 && decided === total;
+  // Terminou de avaliar tudo e reprovou alguma arte: abre uma vez o popup
+  // para o cliente justificar as reprovas (reabre se ele voltar algo p/ pendente
+  // e concluir de novo).
+  const prompted = useRef(false);
+  useEffect(() => {
+    if (allDecided && rejected > 0 && !prompted.current) {
+      prompted.current = true;
+      setRejectionReview(true);
+    }
+    if (!allDecided) prompted.current = false;
+  }, [allDecided, rejected]);
+
+  function saveRejectionFeedback(drafts: Record<string, string>) {
+    for (const [id, text] of Object.entries(drafts)) {
+      const post = posts.find((p) => p.id === id);
+      const value = text.trim() || undefined;
+      if (post && post.status === "rejected" && (post.feedback ?? "") !== (value ?? "")) {
+        applyStatus(id, "rejected", value);
+      }
+    }
+    setRejectionReview(false);
+  }
 
   const flashToast = useCallback((msg: string, actions: ToastAction[] = [], ms = 4000) => {
     setToast({ msg, actions });
@@ -198,6 +224,14 @@ export default function ClientApproval({
         />
       )}
 
+      {rejectionReview && rejectedPosts.length > 0 && (
+        <RejectionReview
+          posts={rejectedPosts}
+          onClose={() => setRejectionReview(false)}
+          onSave={saveRejectionFeedback}
+        />
+      )}
+
       {viewer && viewerItems.length > 0 && (
         <StoryViewer
           items={viewerItems}
@@ -324,6 +358,70 @@ function ViewerDecision({
         <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></svg>
         Aprovar
       </button>
+    </div>
+  );
+}
+
+/* ---------------- Revisão das reprovas (popup ao concluir) ---------------- */
+function RejectionReview({
+  posts,
+  onClose,
+  onSave,
+}: {
+  posts: Post[];
+  onClose: () => void;
+  onSave: (drafts: Record<string, string>) => void;
+}) {
+  const [drafts, setDrafts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(posts.map((p) => [p.id, p.feedback ?? ""])),
+  );
+
+  return (
+    <div className="sheet-backdrop" onClick={onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet__grip" />
+        <h3 style={{ margin: 0 }}>Por que reprovou?</h3>
+        <p className="muted" style={{ margin: "4px 0 0" }}>
+          Você reprovou {posts.length} {posts.length === 1 ? "arte" : "artes"}. Diga rapidinho o que precisa mudar em
+          cada uma — assim a equipe já refaz certo.
+        </p>
+
+        <div className="reject-list">
+          {posts.map((p) => (
+            <div key={p.id} className="reject-item">
+              <div className={`list-thumb ${isVertical(p) ? "list-thumb--vertical" : ""}`}>
+                {p.assets[0] && <MediaView asset={p.assets[0]} sizes="52px" />}
+              </div>
+              <div className="grow">
+                <div className="reject-item__head">
+                  <FormatTag badge={formatBadge(p)} />
+                  <span className="muted">#{p.order + 1}</span>
+                </div>
+                <textarea
+                  className="textarea"
+                  placeholder={
+                    p.format === "story"
+                      ? "Ex.: frame 2, trocar o texto do preço…"
+                      : "Ex.: trocar a cor do fundo, ajustar o texto…"
+                  }
+                  value={drafts[p.id] ?? ""}
+                  maxLength={1000}
+                  onChange={(e) => setDrafts((d) => ({ ...d, [p.id]: e.target.value }))}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="sheet__row">
+          <button className="btn ghost block" onClick={onClose}>
+            Agora não
+          </button>
+          <button className="btn primary block" onClick={() => onSave(drafts)}>
+            Enviar justificativas
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
