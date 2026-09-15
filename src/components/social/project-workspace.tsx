@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Post, Project, PublishStatus } from "@/lib/social/types";
@@ -69,12 +69,16 @@ export default function ProjectWorkspace({
   const router = useRouter();
   const [posts, setPosts] = useState<Post[]>(initialPosts);
   const [mode, setMode] = useState<Mode>("single");
-  const [guestUrl, setGuestUrl] = useState("");
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    setGuestUrl(`${window.location.origin}/a/${project.guestToken}`);
-  }, [project.guestToken]);
+  // Depende de `window`: no servidor não existe origin, então o snapshot do
+  // servidor fica vazio e o cliente resolve no hydrate — sem efeito, sem
+  // setState em cascata (mesmo padrão do menu recolhível em nav.tsx).
+  const guestUrl = useSyncExternalStore(
+    () => () => {},
+    () => `${window.location.origin}/a/${project.guestToken}`,
+    () => "",
+  );
 
   const reload = async () => {
     const res = await fetch(`/api/social/projects/${project.id}`);
@@ -472,12 +476,11 @@ function BatchComposer({
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const fileNames = files.map((f) => f.name);
   const mapped = useMemo(() => {
     const blocks = parseBatchCaptions(captionsRaw);
+    const fileNames = files.map((f) => f.name);
     return matchCaptionsToFiles(blocks, fileNames);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [captionsRaw, fileNames.join("|")]);
+  }, [captionsRaw, files]);
 
   const submit = async () => {
     if (files.length === 0) {

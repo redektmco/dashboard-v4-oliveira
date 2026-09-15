@@ -213,6 +213,8 @@ export function Panel({
   children,
   className = "",
   critical = false,
+  collapsible = false,
+  defaultOpen = true,
 }: {
   title?: string;
   subtitle?: string;
@@ -220,22 +222,56 @@ export function Panel({
   children: React.ReactNode;
   className?: string;
   critical?: boolean;
+  /** Vira um `<details>`: o cabeçalho abre/fecha o corpo, sem JS. Usado
+   *  para reduzir quanto vai visível de cara em telas com muitos blocos
+   *  repetidos (ex.: decomposição do score por dimensão). */
+  collapsible?: boolean;
+  /** Só importa com `collapsible` — normalmente aberto só onde há algo a
+   *  fazer (amarelo/vermelho) e fechado onde já está tudo bem (verde). */
+  defaultOpen?: boolean;
 }) {
+  const headInner = (title || right) && (
+    <>
+      <div className="min-w-0">
+        {title && (
+          <h2 className="font-display text-[16px] font-semibold text-ink-100 sm:text-[17px]">
+            {title}
+          </h2>
+        )}
+        {subtitle && <p className="mt-1 text-[12.5px] text-ink-400 sm:text-[13px]">{subtitle}</p>}
+      </div>
+      {right}
+    </>
+  );
+
+  if (collapsible) {
+    return (
+      <details
+        className={`panel group ${critical ? "panel-critico" : ""} ${className}`}
+        open={defaultOpen}
+      >
+        <summary className="flex list-none items-start gap-3 border-b border-[var(--border-hair)] px-4 py-3.5 cursor-pointer sm:px-5 sm:py-4 [&::-webkit-details-marker]:hidden">
+          <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            {headInner}
+          </div>
+          <Icon
+            name="chevronDown"
+            size={16}
+            className="mt-0.5 shrink-0 text-ink-500 transition-transform duration-200 group-open:rotate-180"
+          />
+        </summary>
+        {children}
+      </details>
+    );
+  }
+
   return (
     <section className={`panel ${critical ? "panel-critico" : ""} ${className}`}>
-      {(title || right) && (
+      {headInner && (
         /* No celular o slot `right` (busca, score, botão) desce para baixo
            do título em vez de disputar a mesma linha com ele. */
         <header className="flex flex-col gap-3 border-b border-[var(--border-hair)] px-4 py-3.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:px-5 sm:py-4">
-          <div className="min-w-0">
-            {title && (
-              <h2 className="font-display text-[16px] font-semibold text-ink-100 sm:text-[17px]">
-                {title}
-              </h2>
-            )}
-            {subtitle && <p className="mt-1 text-[12.5px] text-ink-400 sm:text-[13px]">{subtitle}</p>}
-          </div>
-          {right}
+          {headInner}
         </header>
       )}
       {children}

@@ -233,7 +233,7 @@ export default async function ClientePage({
             </h2>
             <p className="mt-1 text-[13px] text-ink-400">
               Um bloco por dimensão: os campos que a formam, o valor cru e o normalizado. Aja na
-              causa, não no sintoma.
+              causa, não no sintoma. Dimensões saudáveis nascem recolhidas — abra para conferir.
             </p>
           </div>
           <span className="text-[11px] text-ink-600">
@@ -250,6 +250,8 @@ export default async function ClientePage({
               <Panel
                 key={d.key}
                 critical={b === "vermelho"}
+                collapsible
+                defaultOpen={b !== "verde"}
                 title={d.label}
                 subtitle={`${def.source} · peso ${d.weight}%${
                   d.effectiveWeight !== d.weight && d.score !== null
@@ -512,7 +514,12 @@ export default async function ClientePage({
         </Panel>
       </div>
 
-      <Panel title="Metas vigentes" subtitle="Base das réguas A e B. Alteradas pelo GT ou no cadastro.">
+      <Panel
+        title="Metas vigentes"
+        subtitle="Base das réguas A e B. Alteradas pelo GT ou no cadastro."
+        collapsible
+        defaultOpen={false}
+      >
         <div className="grid gap-x-8 gap-y-2 px-4 py-4 sm:grid-cols-2 lg:grid-cols-3">
           {Object.entries(targets).length === 0 && (
             <span className="text-sm text-ink-400">Nenhuma meta cadastrada — sem meta não há régua.</span>

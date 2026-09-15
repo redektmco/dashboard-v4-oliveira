@@ -20,10 +20,13 @@ export default function ClientApproval({
   const [view, setView] = useState<View>("cards");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // Estado (não ref): o botão "Desfazer" precisa re-renderizar quando a
+  // pilha muda — ler `.current` durante o render não é seguro (nem
+  // garantidamente reativo) e o linter de hooks já marca isso como erro.
+  const [undoStack, setUndoStack] = useState<{ id: string; prev: PostStatus }[]>([]);
 
   const handle = "@" + project.igHandle;
 
-  const undoStack = useRef<{ id: string; prev: PostStatus }[]>([]);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const decided = posts.filter((p) => p.status !== "pending").length;
@@ -82,7 +85,7 @@ export default function ClientApproval({
   const decide = useCallback(
     (postId: string, status: Exclude<PostStatus, "pending">, feedback?: string) => {
       const post = posts.find((p) => p.id === postId);
-      undoStack.current.push({ id: postId, prev: post?.status ?? "pending" });
+      setUndoStack((prev) => [...prev, { id: postId, prev: post?.status ?? "pending" }]);
       applyStatus(postId, status, feedback);
       flashToast(status === "approved" ? "Aprovado" : "Reprovado");
     },
@@ -90,11 +93,12 @@ export default function ClientApproval({
   );
 
   const undo = useCallback(() => {
-    const last = undoStack.current.pop();
+    const last = undoStack[undoStack.length - 1];
     if (!last) return;
+    setUndoStack((prev) => prev.slice(0, -1));
     applyStatus(last.id, last.prev);
     setToast(null);
-  }, [applyStatus]);
+  }, [undoStack, applyStatus]);
 
   const detailPost = detailId ? posts.find((p) => p.id === detailId) : null;
 
@@ -145,7 +149,7 @@ export default function ClientApproval({
           onApprove={(id) => decide(id, "approved")}
           onReject={(id) => decide(id, "rejected")}
           onUndo={undo}
-          canUndo={undoStack.current.length > 0}
+          canUndo={undoStack.length > 0}
           allDone={total > 0 && pendingDeck.length === 0}
           approved={approved}
           rejected={rejected}
@@ -171,7 +175,7 @@ export default function ClientApproval({
       {toast && (
         <div className="toast" role="status">
           <span>{toast}</span>
-          {undoStack.current.length > 0 && (
+          {undoStack.length > 0 && (
             <button type="button" onClick={undo}>
               Desfazer
             </button>
@@ -226,8 +230,10 @@ function CardDeck({
 }) {
   const [drag, setDrag] = useState({ x: 0, y: 0 });
   const [leaving, setLeaving] = useState<null | "left" | "right">(null);
+  // Estado, não ref: usado para decidir a transição durante o render
+  // (sem transição enquanto o dedo arrasta o card, com transição ao soltar).
+  const [isDragging, setIsDragging] = useState(false);
   const start = useRef<{ x: number; y: number } | null>(null);
-  const dragging = useRef(false);
 
   const top = deck[0];
 
@@ -243,17 +249,18 @@ function CardDeck({
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (leaving) return;
-    dragging.current = true;
+    setIsDragging(true);
     start.current = { x: e.clientX, y: e.clientY };
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
   };
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!dragging.current || !start.current) return;
+    if (!start.current) return;
     setDrag({ x: e.clientX - start.current.x, y: e.clientY - start.current.y });
   };
   const onPointerUp = () => {
-    if (!dragging.current) return;
-    dragging.current = false;
+    if (!start.current) return;
+    start.current = null;
+    setIsDragging(false);
     if (!top) return;
     if (drag.x > SWIPE_THRESHOLD) commit("right", top.id);
     else if (drag.x < -SWIPE_THRESHOLD) commit("left", top.id);
@@ -322,7 +329,7 @@ function CardDeck({
               style={{
                 transform,
                 transition:
-                  isTop && dragging.current
+                  isTop && isDragging
                     ? "none"
                     : "transform 220ms var(--ease-out)",
                 zIndex: 10 - i,

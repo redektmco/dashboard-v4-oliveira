@@ -172,7 +172,12 @@ export function Sidebar({
   );
 }
 
-/** Topbar do desktop: onde estou + quem sou + ação rápida. */
+/**
+ * Topbar do desktop: onde estou + quem sou. Não duplica "Performance" e
+ * "Check-in" aqui — o rail lateral já os lista, e um atalho fixo e igual
+ * em toda página vira ação ambígua (às vezes aponta para a própria página
+ * em que você já está, ex.: o botão "Check-in" dentro de /account).
+ */
 export function Topbar({ user }: { user?: { name: string; isAdmin: boolean } }) {
   const path = usePathname();
   const here = currentLabel(path);
@@ -183,30 +188,20 @@ export function Topbar({ user }: { user?: { name: string; isAdmin: boolean } }) 
         <span className="text-ink-600">/</span>
         <span className="font-semibold text-ink-100">{here}</span>
       </div>
-      <div className="ml-auto flex items-center gap-2">
-        <Link href="/gt" className="btn btn-sm">
-          <Icon name="chart" size={14} />
-          Performance
-        </Link>
-        <Link href="/account" className="btn btn-sm btn-primary">
-          <Icon name="plus" size={14} />
-          Check-in
-        </Link>
-        {user && (
-          <div className="ml-2 flex items-center gap-2 border-l border-[var(--border-hair)] pl-3">
-            <span className="flex items-center gap-1.5 text-[13px] text-ink-300" title={user.isAdmin ? "Administrador" : undefined}>
-              {user.isAdmin && <Icon name="shield" size={13} className="text-v4-red" />}
-              {user.name}
-            </span>
-            <form action={signOut}>
-              <button className="btn btn-sm" title="Sair">
-                <Icon name="logout" size={14} />
-                Sair
-              </button>
-            </form>
-          </div>
-        )}
-      </div>
+      {user && (
+        <div className="ml-auto flex items-center gap-3">
+          <span className="flex items-center gap-1.5 text-[13px] text-ink-300" title={user.isAdmin ? "Administrador" : undefined}>
+            {user.isAdmin && <Icon name="shield" size={13} className="text-v4-red" />}
+            {user.name}
+          </span>
+          <form action={signOut}>
+            <button className="btn btn-sm" title="Sair">
+              <Icon name="logout" size={14} />
+              Sair
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
