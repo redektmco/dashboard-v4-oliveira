@@ -17,6 +17,30 @@ conteúdo**, integrado ao dashboard sob a aba **Social media** (`/social`).
 | Reels | 1 vídeo vertical 9:16 | card vertical com legenda; tela cheia |
 | Story | 1+ frames verticais 9:16 (imagem ou vídeo), aprovados como um conjunto | bandeja de Stories no topo do link + viewer em tela cheia no idioma do Instagram |
 
+### O link do cliente (`/a/<token>`)
+
+Quatro telas, uma tarefa cada — sem menu escondido e sem cabeçalho ocupando a
+dobra:
+
+| Tela | O que faz |
+| --- | --- |
+| **Início** | Quem pediu, quantas artes, o placar (aprovadas · reprovadas · pendentes) e um único botão: *Começar / Continuar / Revisar*. |
+| **Avaliar** | Uma arte por vez. Arrasta para o lado ou usa os botões grandes (Reprovar · Comentar · Aprovar) — todos com rótulo escrito. Desfazer fica ao lado. |
+| **Galeria** | Todas as artes em grade, filtráveis por situação. O coração aprova direto da grade. |
+| **Lista** | A mesma informação em texto, com a legenda e o comentário já enviado. |
+
+A troca é por uma barra flutuante (Início · Avaliar · Galeria · Lista) que
+some na tela de início. **Carrossel e Stories têm setas de verdade** nas
+laterais da arte (com contador e barras de progresso) — no card, na folha de
+detalhe e na prévia do painel; antes só existia o toque na metade certa da
+imagem, que ninguém descobria.
+
+No card de avaliação a arte entra **inteira** (`contain` sobre um fundo
+desfocado dela mesma) e o card assume a proporção do arquivo, entre 9:16 e
+1.91:1 — o cliente decide sobre o que vai ser publicado, não sobre um corte.
+A prévia fiel do feed do Instagram (com o mock de header, ações e legenda)
+fica na folha de detalhe, junto do campo de comentário e da decisão.
+
 **Stories no link do cliente:** a bandeja mostra um círculo por Story (gradiente = pendente,
 verde = aprovado, vermelho = reprovado). O viewer tem barra de progresso por frame, toque à
 direita avança, à esquerda volta, segurar pausa, arrastar para baixo fecha; setas/Esc no
@@ -95,8 +119,9 @@ menu do criativo. As colunas `ig_user_id`/`ig_access_token` seguem no schema (re
 | Planejamento | `src/app/social/planejamento/page.tsx` |
 | Workspace do projeto | `src/components/social/project-workspace.tsx` |
 | Cliente (swipe, guest) | `src/app/a/[token]/` + `src/components/social/client-approval.tsx` |
+| CSS do link do cliente | `src/components/social/client-approval.css` (escopo `.ap`) |
 | Decisão do cliente (API) | `src/app/api/g/[token]/decision/route.ts` |
-| CSS isolado | `src/app/social/approval.css` (`.sm-scope`) |
+| Tokens + mock do Instagram | `src/app/social/approval.css` (`.sm-scope`) |
 | Acesso/roles | `src/lib/auth.ts` (`canManageSocial`, `requireSocial`), role `social` |
 
 Migração forçada do schema: `npm run migrate:social`.

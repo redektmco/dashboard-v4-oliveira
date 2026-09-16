@@ -37,12 +37,15 @@ export function VerticalPreview({
   const frame = assets[Math.min(idx, assets.length - 1)];
   const isReels = format === "reels";
 
+  const many = assets.length > 1;
+  const go = (delta: number) => setIdx((i) => Math.min(Math.max(i + delta, 0), assets.length - 1));
+
   const onTap = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!interactive) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width;
-    if (assets.length > 1 && x < 0.3) setIdx((i) => Math.max(i - 1, 0));
-    else if (assets.length > 1 && x > 0.7) setIdx((i) => Math.min(i + 1, assets.length - 1));
+    if (many && x < 0.3) go(-1);
+    else if (many && x > 0.7) go(1);
     else onExpand?.();
   };
 
@@ -55,6 +58,30 @@ export function VerticalPreview({
           <div className="vcard__empty">sem mídia</div>
         )}
       </div>
+
+      {/* Setas: trocar de frame sem depender de acertar a borda certa. */}
+      {many && (
+        <>
+          <button
+            type="button"
+            className="vcard__nav vcard__nav--prev"
+            onClick={() => go(-1)}
+            disabled={idx === 0}
+            aria-label="Frame anterior"
+          >
+            <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></svg>
+          </button>
+          <button
+            type="button"
+            className="vcard__nav vcard__nav--next"
+            onClick={() => go(1)}
+            disabled={idx === assets.length - 1}
+            aria-label="Próximo frame"
+          >
+            <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
+          </button>
+        </>
+      )}
 
       <div className="vcard__top">
         {!isReels && (
@@ -71,7 +98,7 @@ export function VerticalPreview({
           <img className="story-avatar" src={avatarUrl} alt="" width={26} height={26} />
           <span className="vcard__handle">{handle}</span>
           <FormatTag badge={isReels ? "reels" : "story"} />
-          {assets.length > 1 && (
+          {many && (
             <span className="vcard__count">
               {idx + 1}/{assets.length}
             </span>
