@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "@/actions/auth";
+import type { Aviso } from "@/lib/repo";
 import { ActionMenu } from "./action-menu";
 import { Icon, type IconName } from "./icon";
 
@@ -77,80 +78,27 @@ const ROLE_LABEL: Record<string, string> = {
 
 type Perfil = { name: string; isAdmin: boolean; role: string };
 
-/* ------------------------------------------------------------------ */
-/* Preferência de menu recolhido                                       */
-/* ------------------------------------------------------------------ */
-/**
- * Vive no localStorage e é lida por `useSyncExternalStore`: o servidor não
- * conhece a preferência, então o snapshot do servidor é sempre "expandido" e
- * o React troca no hydrate sem divergência de marcação.
- */
-const COLLAPSE_KEY = "healthscore.sidebar.colapsado";
-
-const listeners = new Set<() => void>();
-
-function subscribeCollapsed(cb: () => void) {
-  listeners.add(cb);
-  window.addEventListener("storage", cb);
-  return () => {
-    listeners.delete(cb);
-    window.removeEventListener("storage", cb);
-  };
-}
-
-// Navegação privada e afins podem barrar o storage: cair para expandido.
-function readCollapsed() {
-  try {
-    return localStorage.getItem(COLLAPSE_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeCollapsed(v: boolean) {
-  try {
-    localStorage.setItem(COLLAPSE_KEY, v ? "1" : "0");
-  } catch {
-    /* preferência só não persiste */
-  }
-  listeners.forEach((l) => l());
-}
-
-function SideLink({
-  l,
-  collapsed,
-  path,
-  isAdmin,
-}: {
-  l: NavLink;
-  collapsed: boolean;
-  path: string;
-  isAdmin: boolean;
-}) {
+function SideLink({ l, path, isAdmin }: { l: NavLink; path: string; isAdmin: boolean }) {
   const active = isActive(l.href, path);
   const subs = (l.children ?? []).filter((c) => !c.admin || isAdmin);
-  const open = active && subs.length > 0 && !collapsed;
+  const open = active && subs.length > 0;
   return (
     <>
       <Link
         href={l.href}
-        title={collapsed ? `${l.label} — ${l.hint}` : l.hint}
+        title={l.hint}
         aria-label={l.label}
         aria-current={active ? "page" : undefined}
-        className={`side-link ${collapsed ? "justify-center !px-0" : ""}`}
+        className="side-link"
       >
         <Icon name={l.icon} size={18} stroke={1.75} />
-        {!collapsed && (
-          <>
-            <span className="min-w-0 flex-1 truncate">{l.label}</span>
-            {subs.length > 0 && (
-              <Icon
-                name={open ? "chevronDown" : "chevronRight"}
-                size={13}
-                className="shrink-0 text-ink-600"
-              />
-            )}
-          </>
+        <span className="min-w-0 flex-1 truncate">{l.label}</span>
+        {subs.length > 0 && (
+          <Icon
+            name={open ? "chevronDown" : "chevronRight"}
+            size={13}
+            className="shrink-0 text-ink-600"
+          />
         )}
       </Link>
       {open && (
@@ -179,35 +127,25 @@ function SideLink({
  * que ela ocupava virou área útil, e o caminho ("onde estou") passa a ser
  * dito pelo próprio cabeçalho da página.
  */
-export function Sidebar({ user }: { user: Perfil }) {
+export function Sidebar({ user, avisos }: { user: Perfil; avisos: Aviso[] }) {
   const path = usePathname();
-  const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false);
-  const toggle = () => writeCollapsed(!collapsed);
   const out = useSignOut();
+  const pendencias = avisos.reduce((a, v) => a + v.count, 0);
 
   return (
-    <aside
-      data-collapsed={collapsed ? "" : undefined}
-      className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-[var(--border-hair)] bg-black py-3.5 transition-[width] duration-200 ease-[var(--ease-out)] lg:flex ${
-        collapsed ? "w-[64px] px-2.5" : "w-[236px] px-3"
-      }`}
-    >
+    <aside className="sticky top-0 hidden h-screen w-[236px] shrink-0 flex-col border-r border-[var(--border-hair)] bg-black px-3 py-3.5 lg:flex">
       <Link
         href="/"
         title="Health Score — Oliveira &amp; Co"
-        className={`mb-3 flex items-center gap-2.5 border-b border-[var(--border-hair)] pb-3.5 ${
-          collapsed ? "justify-center px-0" : "px-1.5"
-        }`}
+        className="mb-3 flex items-center gap-2.5 border-b border-[var(--border-hair)] px-1.5 pb-3.5"
       >
         <Image src="/brand/v4-simbolo.webp" alt="V4 Company" width={26} height={26} priority />
-        {!collapsed && (
-          <span className="leading-tight">
-            <span className="block font-display text-[13px] font-bold tracking-tight text-ink-100">
-              Oliveira &amp; Co
-            </span>
-            <span className="eyebrow block">Health Score</span>
+        <span className="leading-tight">
+          <span className="block font-display text-[13px] font-bold tracking-tight text-ink-100">
+            Oliveira &amp; Co
           </span>
-        )}
+          <span className="eyebrow block">Health Score</span>
+        </span>
       </Link>
 
       <nav
@@ -215,45 +153,33 @@ export function Sidebar({ user }: { user: Perfil }) {
         aria-label="Navegação principal"
       >
         {MAIN.map((l) => (
-          <SideLink key={l.href} l={l} collapsed={collapsed} path={path} isAdmin={user.isAdmin} />
+          <SideLink key={l.href} l={l} path={path} isAdmin={user.isAdmin} />
         ))}
         <div className="my-2 h-px shrink-0 bg-[var(--border-hair)]" />
-        <SideLink l={SETTINGS} collapsed={collapsed} path={path} isAdmin={user.isAdmin} />
+        <SideLink l={SETTINGS} path={path} isAdmin={user.isAdmin} />
       </nav>
 
-      {/* Conta + recolher, no rodapé do rail. */}
-      <div
-        className={`mt-2 flex shrink-0 items-center gap-1 border-t border-[var(--border-hair)] pt-2.5 ${
-          collapsed ? "flex-col" : ""
-        }`}
-      >
+      {/* Conta + avisos, no rodapé do rail. */}
+      <div className="mt-2 flex shrink-0 items-center gap-1 border-t border-[var(--border-hair)] pt-2.5">
         <ActionMenu
           label={`Conta de ${user.name}`}
           trigger={
-            <span
-              className={`flex items-center gap-2 rounded-md py-1.5 text-left hover:bg-ink-850 ${
-                collapsed ? "justify-center px-0" : "w-full px-1.5"
-              }`}
-              title={user.name}
-            >
-              <Avatar name={user.name} size={collapsed ? 28 : 30} />
-              {!collapsed && (
-                <span className="min-w-0 flex-1 leading-tight">
-                  <span className="block truncate text-[12.5px] font-semibold text-ink-100">
-                    {user.name}
-                  </span>
-                  <span className="block truncate text-[11px] text-ink-500">
-                    {ROLE_LABEL[user.role] ?? user.role}
-                    {user.isAdmin ? " · admin" : ""}
-                  </span>
+            <span className="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left hover:bg-ink-850" title={user.name}>
+              <Avatar name={user.name} size={30} />
+              <span className="min-w-0 flex-1 leading-tight">
+                <span className="block truncate text-[12.5px] font-semibold text-ink-100">
+                  {user.name}
                 </span>
+                <span className="block truncate text-[11px] text-ink-500">
+                  {ROLE_LABEL[user.role] ?? user.role}
+                  {user.isAdmin ? " · admin" : ""}
+                </span>
+              </span>
+              {out.pending ? (
+                <span className="spinner" aria-hidden />
+              ) : (
+                <Icon name="chevronDown" size={13} className="shrink-0 text-ink-600" />
               )}
-              {!collapsed &&
-                (out.pending ? (
-                  <span className="spinner" aria-hidden />
-                ) : (
-                  <Icon name="chevronDown" size={13} className="shrink-0 text-ink-600" />
-                ))}
             </span>
           }
           items={[
@@ -268,18 +194,48 @@ export function Sidebar({ user }: { user: Perfil }) {
             { label: "Sair", icon: "logout", onSelect: out.run },
           ]}
         />
-        <button
-          type="button"
-          onClick={toggle}
-          aria-expanded={!collapsed}
-          title={collapsed ? "Expandir menu" : "Recolher menu"}
-          aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-500 transition-colors duration-[120ms] hover:bg-ink-850 hover:text-ink-100"
-        >
-          <Icon name={collapsed ? "chevronRight" : "chevronLeft"} size={16} stroke={2} />
-        </button>
+        <Avisos avisos={avisos} total={pendencias} />
       </div>
     </aside>
+  );
+}
+
+/**
+ * Sino do rail: o que a unidade está devendo agora (leitura vencida, número
+ * da semana em falta, plano de ação atrasado). Cada aviso leva para a tela
+ * onde ele se resolve — e o sino só ganha marcador quando há o que fazer.
+ */
+function Avisos({ avisos, total }: { avisos: Aviso[]; total: number }) {
+  return (
+    <ActionMenu
+      label={total ? `Avisos (${total})` : "Avisos"}
+      trigger={
+        <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-ink-400 hover:bg-ink-850 hover:text-ink-100">
+          <Icon name="bell" size={17} stroke={1.8} />
+          {total > 0 && (
+            <span
+              className="tnum absolute right-1 top-1 min-w-[15px] rounded-full bg-v4-red px-1 font-mono text-[9px] font-bold leading-[15px] text-white"
+              aria-hidden
+            >
+              {total > 99 ? "99+" : total}
+            </span>
+          )}
+        </span>
+      }
+      items={
+        avisos.length
+          ? [
+              { label: "Pendências da unidade", icon: "bell", disabled: true },
+              "separator",
+              ...avisos.map((a) => ({
+                label: `${a.count} ${a.label}`,
+                icon: a.id === "planos" ? ("flag" as const) : ("clock" as const),
+                href: a.href,
+              })),
+            ]
+          : [{ label: "Nada pendente por aqui", icon: "checkCircle", disabled: true }]
+      }
+    />
   );
 }
 

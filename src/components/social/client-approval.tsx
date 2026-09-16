@@ -30,6 +30,9 @@ type ToastAction = { label: string; run: () => void };
 
 /** Arrasto (em px) a partir do qual o card sai aprovado/reprovado. */
 const SWIPE_THRESHOLD = 110;
+/** Puxador do "arraste para começar" e a folga dele dentro da trilha. */
+const KNOB = 46;
+const CTA_PAD = 9;
 
 const STATUS_LABEL: Record<PostStatus, string> = {
   pending: "Pendente",
@@ -150,15 +153,9 @@ export default function ClientApproval({
       const post = posts.find((p) => p.id === postId);
       undoStack.current.push({ id: postId, prev: post?.status ?? "pending", prevFeedback: post?.feedback });
       applyStatus(postId, status, feedback);
-      const actions: ToastAction[] = [{ label: "Desfazer", run: undo }];
-      // Reprovou sem dizer o motivo: um toque para explicar à equipe.
-      if (status === "rejected" && !feedback)
-        actions.unshift({ label: "Comentar", run: () => setDetailId(postId) });
-      flashToast(
-        status === "approved" ? "Aprovado" : "Reprovado",
-        actions,
-        status === "rejected" && !feedback ? 6000 : 4000,
-      );
+      // O motivo da reprova é pedido de uma vez só, no popup do fim da
+      // avaliação — aqui basta poder voltar atrás.
+      flashToast(status === "approved" ? "Aprovado" : "Reprovado", [{ label: "Desfazer", run: undo }]);
     },
     [posts, applyStatus, undo, flashToast],
   );
@@ -343,7 +340,7 @@ function Home({
 }) {
   const fan = posts.slice(0, 3);
   const done = stats.total > 0 && stats.pending === 0;
-  const cta = stats.total === 0 ? "Aguardando artes" : done ? "Revisar avaliação" : stats.decided ? "Continuar" : "Começar";
+  const cta = stats.total === 0 ? "aguardando artes" : done ? "revisar" : stats.decided ? "continuar" : "começar";
 
   return (
     <main className="ap-home">
@@ -427,19 +424,7 @@ function Home({
       )}
 
       <div className="ap-home__foot">
-        <button type="button" className="ap-cta" onClick={onStart} disabled={stats.total === 0}>
-          <span className="ap-cta__icon">
-            <svg viewBox="0 0 24 24">
-              <path d="M19.5 4.5c-1.7-1.5-4.3-1.2-6 .5L12 6.5l-1.5-1.5c-1.7-1.7-4.3-2-6-.5-2 1.7-2.1 4.8-.2 6.7L12 20l7.7-8.8c1.9-1.9 1.8-5-.2-6.7z" />
-            </svg>
-          </span>
-          <span className="ap-cta__label">{cta}</span>
-          <span className="ap-cta__chev" aria-hidden>
-            <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
-            <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
-            <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
-          </span>
-        </button>
+        <SlideToStart label={cta} disabled={stats.total === 0} onDone={onStart} />
         {stats.total > 0 && (
           <button type="button" className="ap-link" onClick={onGrid}>
             Ver todas as {stats.total} artes em grade
@@ -447,6 +432,107 @@ function Home({
         )}
       </div>
     </main>
+  );
+}
+
+/**
+ * "Arraste para começar": o botão vermelho corre dentro da trilha e só
+ * entrega a tela de avaliação quando chega ao fim. É um gesto deliberado —
+ * o cliente entra na avaliação porque quis, não porque esbarrou no botão.
+ *
+ * Quem usa teclado ou leitor de tela não arrasta nada: o próprio puxador é
+ * um botão, e Enter/Espaço/→ completam o percurso.
+ */
+function SlideToStart({
+  label,
+  disabled = false,
+  onDone,
+}: {
+  label: string;
+  disabled?: boolean;
+  onDone: () => void;
+}) {
+  const track = useRef<HTMLDivElement>(null);
+  const origin = useRef(0);
+  const [x, setX] = useState(0);
+  const [span, setSpan] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [done, setDone] = useState(false);
+
+  // Curso do puxador = trilha - puxador - folga dos dois lados. Medido no
+  // layout (e a cada resize) porque o render não pode ler a ref.
+  useEffect(() => {
+    const el = track.current;
+    if (!el) return;
+    const measure = () => setSpan(Math.max(0, el.clientWidth - KNOB - CTA_PAD * 2));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const finish = useCallback(() => {
+    setDone(true);
+    setX(span);
+    setTimeout(onDone, 170);
+  }, [onDone, span]);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (disabled || done) return;
+    setDragging(true);
+    origin.current = e.clientX - x;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!dragging) return;
+    setX(Math.min(Math.max(e.clientX - origin.current, 0), span));
+  };
+  const onPointerUp = () => {
+    if (!dragging) return;
+    setDragging(false);
+    if (span > 0 && x >= span * 0.82) finish();
+    else setX(0);
+  };
+
+  const progress = span > 0 ? x / span : 0;
+
+  return (
+    <div
+      ref={track}
+      className={`ap-cta ${dragging ? "is-dragging" : ""} ${done ? "is-done" : ""}`}
+      data-disabled={disabled ? "" : undefined}
+    >
+      <span className="ap-cta__fill" style={{ transform: `scaleX(${done ? 1 : progress})` }} aria-hidden />
+      <button
+        type="button"
+        className="ap-cta__icon"
+        style={{ transform: `translateX(${x}px)`, transition: dragging ? "none" : "transform 220ms var(--ap-ease)" }}
+        disabled={disabled}
+        aria-label={`Arraste para ${label}`}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " " || e.key === "ArrowRight") {
+            e.preventDefault();
+            if (!disabled && !done) finish();
+          }
+        }}
+      >
+        <svg viewBox="0 0 24 24">
+          <path d="M19.5 4.5c-1.7-1.5-4.3-1.2-6 .5L12 6.5l-1.5-1.5c-1.7-1.7-4.3-2-6-.5-2 1.7-2.1 4.8-.2 6.7L12 20l7.7-8.8c1.9-1.9 1.8-5-.2-6.7z" />
+        </svg>
+      </button>
+      <span className="ap-cta__label" style={{ opacity: 1 - progress * 1.6 }}>
+        {disabled ? "Aguardando artes" : `Arraste para ${label}`}
+      </span>
+      <span className="ap-cta__chev" style={{ opacity: 1 - progress * 1.6 }} aria-hidden>
+        <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
+        <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
+        <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
+      </span>
+    </div>
   );
 }
 
@@ -636,12 +722,6 @@ function Deck({
           label="Reprovar"
           onClick={() => commit("left", top.id)}
           path={<path d="M18 6 6 18M6 6l12 12" />}
-        />
-        <ActionButton
-          kind="talk"
-          label="Comentar"
-          onClick={() => onComment(top.id)}
-          path={<path d="M21 11.5a8.5 8.5 0 0 1-12.3 7.6L3 21l1.9-5.7A8.5 8.5 0 1 1 21 11.5z" />}
         />
         <ActionButton
           kind="yes"
@@ -994,7 +1074,6 @@ function ListView({
 /* ============================ Navegação ============================ */
 
 const TABS: { id: Tab; label: string; path: React.ReactNode }[] = [
-  { id: "home", label: "Início", path: <path d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z" /> },
   { id: "deck", label: "Avaliar", path: <><rect x="6" y="3" width="12" height="15" rx="2.5" /><path d="M4 8v11a2 2 0 0 0 2 2h10" /></> },
   { id: "grid", label: "Galeria", path: <><rect x="3.5" y="3.5" width="7" height="7" rx="2" /><rect x="13.5" y="3.5" width="7" height="7" rx="2" /><rect x="3.5" y="13.5" width="7" height="7" rx="2" /><rect x="13.5" y="13.5" width="7" height="7" rx="2" /></> },
   { id: "list", label: "Lista", path: <path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" /> },

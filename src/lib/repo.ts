@@ -1,6 +1,6 @@
 import { all, insert, one, run, transaction } from "./db";
 import { newToken } from "./social/id";
-import { ritualWeekEnd } from "./week";
+import { currentRitualDate, ritualWeekEnd } from "./week";
 import { DIMENSIONS } from "./model/catalog";
 import { computeScore, DEFAULT_CONFIG, type ScoreConfig, type WeightMap } from "./model/scoring";
 import { insertDemoData, wipe } from "./seed";
@@ -773,6 +773,57 @@ export const listOpenPlans = () =>
      WHERE p.status IN ('aberto','em_andamento')
      ORDER BY p.due_date IS NULL, p.due_date`,
   );
+
+/**
+ * Avisos do rail: o que a unidade está devendo, agora. Três contagens
+ * baratas (um COUNT por tabela) em vez de recalcular a carteira inteira —
+ * isto roda em toda página que a moldura desenha.
+ */
+export type Aviso = { id: string; label: string; count: number; href: string };
+
+export async function avisos(): Promise<Aviso[]> {
+  const ref = currentRitualDate();
+  const [leitura, semana, planos] = await Promise.all([
+    one<{ n: number }>(
+      `SELECT count(*)::int AS n FROM clients c
+       WHERE c.active = 1
+         AND COALESCE(
+               (SELECT max(s.ref_date) FROM checkin_snapshots s WHERE s.client_id = c.id),
+               DATE '1970-01-01'
+             ) < current_date - 35`,
+    ),
+    one<{ n: number }>(
+      `SELECT count(*)::int AS n FROM clients c
+       WHERE c.active = 1
+         AND NOT EXISTS (
+           SELECT 1 FROM performance_snapshots p
+           WHERE p.client_id = c.id AND p.ref_date = ?::date
+         )`,
+      [ref],
+    ),
+    one<{ n: number }>(
+      `SELECT count(*)::int AS n FROM action_plans
+       WHERE status IN ('aberto','em_andamento')
+         AND due_date IS NOT NULL AND due_date < current_date`,
+    ),
+  ]);
+
+  return [
+    {
+      id: "checkin",
+      label: "contas sem check-in há mais de 35 dias",
+      count: leitura?.n ?? 0,
+      href: "/account",
+    },
+    {
+      id: "performance",
+      label: "contas sem o número da semana",
+      count: semana?.n ?? 0,
+      href: "/gt",
+    },
+    { id: "planos", label: "planos de ação vencidos", count: planos?.n ?? 0, href: "/" },
+  ].filter((a) => a.count > 0);
+}
 
 export const createPlan = (
   p: Omit<Plan, "id" | "created_at" | "closed_at" | "status" | "clickup_url">,
