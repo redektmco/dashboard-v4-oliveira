@@ -364,7 +364,10 @@
   gap: 10px;
 }
 
+/* Trilha do "arraste para começar". O puxador corre por dentro; a trilha
+   inteira é o alvo visual, e o rastro vermelho diz o quanto falta. */
 .ap-cta {
+  position: relative;
   width: 100%;
   display: flex;
   align-items: center;
@@ -375,26 +378,50 @@
   background: linear-gradient(180deg, #202025, #141417);
   color: var(--ap-fg);
   box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
-  transition: transform 160ms var(--ap-ease), border-color 160ms;
+  overflow: hidden;
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: border-color 160ms;
 }
-.ap-cta:hover:not(:disabled) {
+.ap-cta:hover {
   border-color: rgba(255, 255, 255, 0.3);
 }
-.ap-cta:active:not(:disabled) {
-  transform: scale(0.985);
-}
-.ap-cta:disabled {
+.ap-cta[data-disabled] {
   opacity: 0.5;
 }
+.ap-cta__fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  background: linear-gradient(90deg, rgba(229, 9, 20, 0.5), rgba(255, 122, 47, 0.12));
+  transition: transform 220ms var(--ap-ease);
+}
+.ap-cta.is-dragging .ap-cta__fill {
+  transition: none;
+}
 .ap-cta__icon {
+  position: relative;
+  z-index: 2;
   display: grid;
   place-items: center;
   width: 46px;
   height: 46px;
+  padding: 0;
+  border: 0;
   border-radius: 50%;
   background: var(--ap-hot);
   color: #fff;
   flex: 0 0 auto;
+  cursor: grab;
+  box-shadow: 0 6px 18px rgba(229, 9, 20, 0.45);
+}
+.ap-cta.is-dragging .ap-cta__icon {
+  cursor: grabbing;
+  transform-origin: center;
+}
+.ap-cta__icon:disabled {
+  cursor: default;
 }
 .ap-cta__icon svg {
   width: 21px;
@@ -403,15 +430,24 @@
   stroke: none;
 }
 .ap-cta__label {
+  position: relative;
+  z-index: 1;
   flex: 1;
   text-align: center;
-  font: 700 16px var(--ap-display);
+  font: 700 15px var(--ap-display);
   letter-spacing: -0.01em;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ap-cta__chev {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   color: var(--ap-fg-3);
+  pointer-events: none;
 }
 .ap-cta__chev svg {
   width: 15px;

@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { AppFrame } from "@/components/app-frame";
 import { FlashFromUrl, Toaster } from "@/components/toast";
 import { getSessionUser } from "@/lib/auth";
+import { avisos } from "@/lib/repo";
 
 /* Montserrat = tipo oficial da marca (display).
    Inter = substituição livre para Proxima Nova no corpo/UI.
@@ -50,6 +51,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // Sem sessão a única rota alcançável é /login, que não usa a moldura do app.
   const user = await getSessionUser();
   const perfil = user ? { name: user.name, isAdmin: Boolean(user.is_admin), role: user.role } : null;
+  // Os avisos do rail nunca podem derrubar a página: banco fora do ar vira
+  // sino vazio, não erro de layout.
+  const pendencias = user ? await avisos().catch(() => []) : [];
 
   return (
     <html
@@ -57,7 +61,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       className={`${montserrat.variable} ${inter.variable} ${jetbrains.variable}`}
     >
       <body className="flex min-h-screen">
-        {user && perfil ? <AppFrame user={perfil}>{children}</AppFrame> : children}
+        {user && perfil ? (
+          <AppFrame user={perfil} avisos={pendencias}>
+            {children}
+          </AppFrame>
+        ) : (
+          children
+        )}
         <Toaster />
         <Suspense fallback={null}>
           <FlashFromUrl />

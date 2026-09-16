@@ -46,6 +46,12 @@ const PATHS = {
   arrowLeft: <path d="M19 12H5M12 19l-7-7 7-7" />,
   check: <path d="M5 12l5 5L20 7" />,
   alert: <path d="M12 2 2 21h20L12 2zM12 9v5M12 18h.01" />,
+  bell: (
+    <>
+      <path d="M18 8a6 6 0 1 0-12 0c0 6-2 7-2 7h16s-2-1-2-7z" />
+      <path d="M13.7 20a2 2 0 0 1-3.4 0" />
+    </>
+  ),
   clock: (
     <>
       <circle cx="12" cy="12" r="9" />
