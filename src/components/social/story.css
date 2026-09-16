@@ -178,6 +178,51 @@
   color: #fff;
   cursor: pointer;
 }
+/* Setas de frame do card vertical (Story/Reels). */
+.vcard__nav {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  width: 36px;
+  height: 36px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  cursor: pointer;
+  transition: background 120ms, opacity 120ms, transform 120ms;
+}
+.vcard__nav--prev {
+  left: 8px;
+}
+.vcard__nav--next {
+  right: 8px;
+}
+.vcard__nav:hover:not(:disabled) {
+  background: rgba(229, 9, 20, 0.85);
+  border-color: transparent;
+}
+.vcard__nav:active:not(:disabled) {
+  transform: translateY(-50%) scale(0.92);
+}
+.vcard__nav:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+.vcard__nav svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .vcard--reels .vcard__expand {
   bottom: auto;
   top: 44px;

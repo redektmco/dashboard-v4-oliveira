@@ -5,7 +5,7 @@ import type { Asset } from "@/lib/social/types";
 import { MediaView } from "./media";
 
 /**
- * Mock fiel de post do Instagram no feed: header, mídia (com dots do
+ * Mock fiel de post do Instagram no feed: header, mídia (com setas e dots do
  * carrossel), linha de ações e a legenda com o @handle em negrito + "ver mais".
  */
 export default function InstagramPreview({
@@ -15,6 +15,7 @@ export default function InstagramPreview({
   avatarUrl = "/brand/v4-simbolo.webp",
   interactive = true,
   priority = false,
+  onExpand,
 }: {
   handle: string;
   assets: Asset[];
@@ -23,19 +24,22 @@ export default function InstagramPreview({
   interactive?: boolean;
   /** Carrega a mídia imediatamente (carta do topo). O resto entra sob demanda. */
   priority?: boolean;
+  /** Abre a arte em tela cheia; sem isto o botão de expandir não aparece. */
+  onExpand?: () => void;
 }) {
   const [idx, setIdx] = useState(0);
   const [expanded, setExpanded] = useState(false);
   const safeAssets = assets.length ? assets : [];
   const current = safeAssets[Math.min(idx, safeAssets.length - 1)];
+  const many = safeAssets.length > 1;
+
+  const go = (delta: number) =>
+    setIdx((i) => Math.min(Math.max(i + delta, 0), safeAssets.length - 1));
 
   const advance = (e: React.MouseEvent) => {
-    if (!interactive || safeAssets.length < 2) return;
+    if (!interactive || !many) return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const goNext = e.clientX - rect.left > rect.width / 2;
-    setIdx((i) =>
-      goNext ? Math.min(i + 1, safeAssets.length - 1) : Math.max(i - 1, 0),
-    );
+    go(e.clientX - rect.left > rect.width / 2 ? 1 : -1);
   };
 
   const captionIsLong = caption.length > 90 || caption.includes("\n");
@@ -71,17 +75,65 @@ export default function InstagramPreview({
         ) : (
           <div className="ig__placeholder">sem arte</div>
         )}
-        {safeAssets.length > 1 && (
-          <div className="ig__count">
-            {idx + 1}/{safeAssets.length}
-          </div>
+
+        {/* Setas de verdade: o carrossel não depende de adivinhar o toque. */}
+        {many && (
+          <>
+            <button
+              type="button"
+              className="ig__nav ig__nav--prev"
+              onClick={(e) => {
+                e.stopPropagation();
+                go(-1);
+              }}
+              disabled={idx === 0}
+              aria-label="Arte anterior"
+            >
+              <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></svg>
+            </button>
+            <button
+              type="button"
+              className="ig__nav ig__nav--next"
+              onClick={(e) => {
+                e.stopPropagation();
+                go(1);
+              }}
+              disabled={idx === safeAssets.length - 1}
+              aria-label="Próxima arte"
+            >
+              <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg>
+            </button>
+            <div className="ig__count">
+              {idx + 1}/{safeAssets.length}
+            </div>
+          </>
+        )}
+
+        {onExpand && (
+          <button
+            type="button"
+            className="ig__expand"
+            onClick={(e) => {
+              e.stopPropagation();
+              onExpand();
+            }}
+            aria-label="Ver em tela cheia"
+          >
+            <svg viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
+          </button>
         )}
       </div>
 
-      {safeAssets.length > 1 && (
+      {many && (
         <div className="ig__pager">
           {safeAssets.map((a, i) => (
-            <span key={a.id} className={i === idx ? "on" : ""} />
+            <button
+              key={a.id}
+              type="button"
+              className={i === idx ? "on" : ""}
+              onClick={() => setIdx(i)}
+              aria-label={`Ir para a arte ${i + 1}`}
+            />
           ))}
         </div>
       )}
