@@ -141,7 +141,7 @@ export function ClientsManager({ rows, users, isAdmin }: { rows: Row[]; users: U
 
             <div className="hidden lg:block">
               <TableScroll>
-                <table className="data-table">
+                <table className="data-table is-dense">
                   <thead>
                     <tr>
                       <th>Cliente</th>

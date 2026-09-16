@@ -13,7 +13,12 @@ import {
   Panel,
   ScoreBar,
   Sparkline,
+  Chip,
+  ChipSep,
   TableScroll,
+  Toolbar,
+  ToolbarLabel,
+  ToolbarRow,
   bandFg,
   brl,
 } from "./ui";
@@ -53,9 +58,6 @@ export function PortfolioTable({ rows }: { rows: Row[] }) {
   const [trend, setTrend] = useState<"todas" | "caindo" | "subindo">("todas");
   const [sort, setSort] = useState<SortKey>("risk");
   const [q, setQ] = useState("");
-  // Os filtros vivem recolhidos em toda tela: expostos ocupariam a faixa
-  // inteira acima da tabela e empurrariam a carteira para fora da dobra.
-  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
 
   const owners = useMemo(
     () => Array.from(new Set(rows.flatMap((r) => [r.gt, r.account]))).filter((o) => o !== "—").sort(),
@@ -87,46 +89,29 @@ export function PortfolioTable({ rows }: { rows: Row[] }) {
   }, [rows, band, conf, type, owner, trend, q, sort]);
 
   const mrrShown = filtered.reduce((a, r) => a + r.mrr, 0);
+  const porFiltro = useMemo(
+    () =>
+      filtered.reduce(
+        (acc, r) => {
+          if (r.band) acc[r.band] += 1;
+          return acc;
+        },
+        { vermelho: 0, amarelo: 0, verde: 0 } as Record<Band, number>,
+      ),
+    [filtered],
+  );
+  const porBanda = useMemo(
+    () =>
+      rows.reduce(
+        (acc, r) => {
+          if (r.band) acc[r.band] += 1;
+          return acc;
+        },
+        { vermelho: 0, amarelo: 0, verde: 0 } as Record<Band, number>,
+      ),
+    [rows],
+  );
 
-  // Um único descritor por filtro alimenta o painel recolhível — mesma lista
-  // em toda tela, sem como uma largura ganhar um filtro que a outra não tem.
-  const filtros: { label: string; value: string; onChange: (v: string) => void; padrao: string; options: [string, string][] }[] = [
-    {
-      label: "Banda",
-      value: band,
-      onChange: (v) => setBand(v as never),
-      padrao: "todas",
-      options: [["todas", "Todas as bandas"], ["vermelho", "Vermelho"], ["amarelo", "Amarelo"], ["verde", "Verde"]],
-    },
-    {
-      label: "Confiança",
-      value: conf,
-      onChange: (v) => setConf(v as never),
-      padrao: "todas",
-      options: [["todas", "Toda confiança"], ["alta", "Alta"], ["media", "Média"], ["baixa", "Baixa"]],
-    },
-    {
-      label: "Tipo",
-      value: type,
-      onChange: (v) => setType(v as never),
-      padrao: "todos",
-      options: [["todos", "Todos os tipos"], ["lead_gen", "Geração de Lead"], ["ecommerce", "E-commerce"], ["branding", "Branding"]],
-    },
-    {
-      label: "Responsável",
-      value: owner,
-      onChange: setOwner,
-      padrao: "todos",
-      options: [["todos", "GT / Account"], ...owners.map((o) => [o, o] as [string, string])],
-    },
-    {
-      label: "Tendência",
-      value: trend,
-      onChange: (v) => setTrend(v as never),
-      padrao: "todas",
-      options: [["todas", "Qualquer tendência"], ["caindo", "Caindo (7d)"], ["subindo", "Subindo (7d)"]],
-    },
-  ];
   const ordenacao: [string, string][] = [
     ["risk", "Risco"],
     ["score", "Score"],
@@ -135,8 +120,10 @@ export function PortfolioTable({ rows }: { rows: Row[] }) {
     ["renewal", "Renovação"],
     ["name", "Nome"],
   ];
-  // Com a gaveta fechada, o número é a única pista de que há filtro ativo.
-  const ativos = filtros.filter((f) => f.value !== f.padrao).length;
+  // Quantos recortes fogem do padrão — o que o botão "Limpar" apaga.
+  const ativos = [band !== "todas", conf !== "todas", type !== "todos", owner !== "todos", trend !== "todas"].filter(
+    Boolean,
+  ).length;
 
   const limpar = () => {
     setBand("todas");
@@ -151,60 +138,26 @@ export function PortfolioTable({ rows }: { rows: Row[] }) {
       title="Carteira detalhada"
       subtitle={`${filtered.length} de ${rows.length} contas · ${brl(mrrShown)} de MRR no filtro`}
       right={
-        <div className="relative w-full sm:w-auto">
-          <Icon
-            name="search"
-            size={15}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-500"
-          />
-          <input
-            className="field pl-9 sm:max-w-[200px]"
-            placeholder="Buscar cliente…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-        </div>
-      }
-    >
-      {/* ---- filtros: um controle só, desktop e celular ----
-          Antes o desktop mostrava os cinco selects sempre abertos, competindo
-          com a tabela; agora vivem atrás do botão "Filtros" (com o contador de
-          ativos), como já era no celular. Buscar e ordenar seguem sempre à mão
-          — são o que muda a leitura da lista, não o recorte dela. */}
-      <div className="border-b border-[var(--border-hair)]">
-        <div className="flex items-center gap-2 px-4 py-2.5">
-          <button
-            type="button"
-            onClick={() => setFiltrosAbertos((v) => !v)}
-            aria-expanded={filtrosAbertos}
-            className="btn btn-sm"
-          >
-            <Icon name="filter" size={14} />
-            Filtros
-            {ativos > 0 && (
-              <span className="tnum rounded-full bg-v4-red px-1.5 font-mono text-[10px] font-bold text-white">
-                {ativos}
-              </span>
-            )}
+        <div className="flex w-full items-center gap-2 sm:w-auto">
+          <label className="relative min-w-0 flex-1 sm:flex-none">
             <Icon
-              name="chevronDown"
-              size={13}
-              className={`transition-transform duration-200 ${filtrosAbertos ? "rotate-180" : ""}`}
+              name="search"
+              size={15}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-500"
             />
-          </button>
-          {/* Limpar à vista quando há filtro ativo — no desktop ao lado do
-              botão; no celular ele desce para dentro do painel aberto. */}
-          {ativos > 0 && (
-            <button type="button" onClick={limpar} className="btn btn-sm btn-ghost hidden sm:inline-flex">
-              <Icon name="x" size={13} />
-              Limpar {ativos}
-            </button>
-          )}
-          <label className="ml-auto flex min-w-0 items-center gap-1.5">
+            <span className="sr-only">Buscar cliente</span>
+            <input
+              className="field pl-9 sm:w-[190px]"
+              placeholder="Buscar cliente…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </label>
+          <label className="flex flex-none items-center gap-1.5">
             <Icon name="sort" size={14} className="shrink-0 text-ink-500" />
             <span className="sr-only">Ordenar</span>
             <select
-              className="field w-auto py-1.5 text-xs"
+              className="field w-auto"
               value={sort}
               onChange={(e) => setSort(e.target.value as SortKey)}
               aria-label="Ordenar"
@@ -217,34 +170,76 @@ export function PortfolioTable({ rows }: { rows: Row[] }) {
             </select>
           </label>
         </div>
-
-        {filtrosAbertos && (
-          <div className="grid grid-cols-2 gap-2.5 border-t border-[var(--border-hair)] px-4 py-3 sm:grid-cols-3 lg:grid-cols-5">
-            {filtros.map((f) => (
-              <label key={f.label} className="block">
-                <span className="label">{f.label}</span>
-                <select
-                  className="field mt-1"
-                  value={f.value}
-                  onChange={(e) => f.onChange(e.target.value)}
-                  aria-label={f.label}
-                >
-                  {f.options.map(([v, l]) => (
-                    <option key={v} value={v}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ))}
-            {ativos > 0 && (
-              <button type="button" onClick={limpar} className="btn btn-sm col-span-2 justify-center sm:hidden">
-                <Icon name="x" size={13} />
-                Limpar {ativos} filtro{ativos > 1 ? "s" : ""}
-              </button>
+      }
+    >
+      {/* ---- recortes: chips à vista, como num console ----
+          Os cinco selects moravam atrás de um botão "Filtros" porque, abertos,
+          empurravam a carteira para fora da dobra. Como chips eles cabem em
+          duas linhas de 30px, e o recorte ativo é legível sem abrir nada. */}
+      <div className="border-b border-[var(--border-hair)] px-3 py-2.5">
+        <Toolbar>
+          <ToolbarRow>
+            <ToolbarLabel>Banda</ToolbarLabel>
+            {([["todas", "Todas"], ["vermelho", "Vermelho"], ["amarelo", "Amarelo"], ["verde", "Verde"]] as const).map(
+              ([v, l]) => (
+                <Chip key={v} active={band === v} onClick={() => setBand(v as never)} count={v === "todas" ? undefined : porBanda[v as Band]}>
+                  {l}
+                </Chip>
+              ),
             )}
-          </div>
-        )}
+            <ChipSep />
+            <ToolbarLabel>7 dias</ToolbarLabel>
+            {([["todas", "Qualquer"], ["caindo", "Caindo"], ["subindo", "Subindo"]] as const).map(([v, l]) => (
+              <Chip key={v} active={trend === v} onClick={() => setTrend(v as never)}>
+                {l}
+              </Chip>
+            ))}
+          </ToolbarRow>
+
+          <ToolbarRow>
+            <ToolbarLabel>Tipo</ToolbarLabel>
+            {([["todos", "Todos"], ["lead_gen", "Lead Gen"], ["ecommerce", "E-commerce"], ["branding", "Branding"]] as const).map(
+              ([v, l]) => (
+                <Chip key={v} active={type === v} onClick={() => setType(v as never)}>
+                  {l}
+                </Chip>
+              ),
+            )}
+            <ChipSep />
+            <ToolbarLabel>Confiança</ToolbarLabel>
+            {([["todas", "Toda"], ["alta", "Alta"], ["media", "Média"], ["baixa", "Baixa"]] as const).map(([v, l]) => (
+              <Chip key={v} active={conf === v} onClick={() => setConf(v as never)}>
+                {l}
+              </Chip>
+            ))}
+            <ChipSep />
+            <label className="flex flex-none items-center gap-1.5">
+              <span className="chip-label">Responsável</span>
+              <select
+                className="field w-auto"
+                value={owner}
+                onChange={(e) => setOwner(e.target.value)}
+                aria-label="Responsável"
+              >
+                <option value="todos">GT / Account</option>
+                {owners.map((o) => (
+                  <option key={o} value={o}>
+                    {o}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {ativos > 0 && (
+              <>
+                <span className="spacer" />
+                <button type="button" onClick={limpar} className="chip">
+                  <Icon name="x" size={13} />
+                  Limpar {ativos}
+                </button>
+              </>
+            )}
+          </ToolbarRow>
+        </Toolbar>
       </div>
 
       {/* ---- cartões no celular ---- */}
@@ -325,8 +320,8 @@ export function PortfolioTable({ rows }: { rows: Row[] }) {
 
       {/* ---- tabela no desktop ---- */}
       <div className="hidden lg:block">
-      <TableScroll>
-        <table className="data-table">
+      <TableScroll tall>
+        <table className="data-table is-dense is-pinned">
           <thead>
             <tr>
               <th>Cliente</th>
@@ -416,6 +411,23 @@ export function PortfolioTable({ rows }: { rows: Row[] }) {
               </tr>
             )}
           </tbody>
+          {filtered.length > 0 && (
+            <tfoot>
+              <tr>
+                <td>
+                  TOTAL
+                  <span className="ml-1.5 text-[11px] font-semibold text-ink-400">
+                    {filtered.length} conta{filtered.length > 1 ? "s" : ""}
+                  </span>
+                </td>
+                <td colSpan={6} className="text-[11px] font-semibold text-ink-400">
+                  {porFiltro.vermelho} vermelho · {porFiltro.amarelo} amarelo · {porFiltro.verde} verde
+                </td>
+                <td className="tnum text-right">{brl(mrrShown)}</td>
+                <td />
+              </tr>
+            </tfoot>
+          )}
         </table>
       </TableScroll>
       </div>

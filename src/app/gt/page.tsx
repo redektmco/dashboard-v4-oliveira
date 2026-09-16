@@ -54,6 +54,8 @@ export default async function GtPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        icon="chart"
+        eyebrow="GT"
         title="Performance — jornada do GT"
         description={
           <>
@@ -152,7 +154,7 @@ export default async function GtPage() {
 
           <div className="hidden lg:block">
           <TableScroll>
-          <table className="data-table">
+          <table className="data-table is-dense">
             <thead>
               <tr>
                 <th>Cliente</th>

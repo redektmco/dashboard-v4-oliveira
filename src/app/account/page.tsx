@@ -45,6 +45,8 @@ export default async function AccountPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        icon="users"
+        eyebrow="Account"
         title="Check-in — jornada do Account"
         description="Registre logo depois da call, em 2–3 minutos. Você avalia o que percebeu na conversa — não aplica questionário no cliente. Cada nota vem da âncora, não da intuição."
       />
@@ -131,7 +133,7 @@ export default async function AccountPage() {
 
           <div className="hidden lg:block">
           <TableScroll>
-          <table className="data-table">
+          <table className="data-table is-dense">
             <thead>
               <tr>
                 <th>Cliente</th>

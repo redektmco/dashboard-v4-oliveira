@@ -12,7 +12,11 @@ export default async function ConfigLayout({ children }: { children: React.React
   const me = await requireUser();
   return (
     <div className="space-y-5">
-      <PageHeader title="Configurações" />
+      <PageHeader
+        icon="settings"
+        title="Configurações"
+        description="Cadastro da carteira, calibração do modelo, acesso do time e integrações."
+      />
       <ConfigNav isAdmin={Boolean(me.is_admin)} />
       <div className="space-y-5">{children}</div>
     </div>

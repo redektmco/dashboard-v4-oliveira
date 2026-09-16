@@ -8,25 +8,54 @@ import { signOut } from "@/actions/auth";
 import { ActionMenu } from "./action-menu";
 import { Icon, type IconName } from "./icon";
 
-type NavLink = { href: string; label: string; hint: string; icon: IconName };
+type SubLink = { href: string; label: string; admin?: boolean };
+type NavLink = { href: string; label: string; hint: string; icon: IconName; children?: SubLink[] };
 
 /**
  * Navegação principal = o que o time faz toda semana. Cadastro, calibração,
  * acesso e integrações são configuração: moram dentro de Configurações, com
  * sub-abas, em vez de competir com as jornadas no menu.
+ *
+ * Seções com `children` abrem sozinhas quando você está dentro delas — o
+ * segundo nível fica à vista no rail em vez de esperar a página carregar.
  */
 const MAIN: NavLink[] = [
   { href: "/", label: "Carteira", hint: "Saúde da carteira e triagem", icon: "grid" },
   { href: "/gt", label: "Performance", hint: "GT · ritual semanal", icon: "chart" },
   { href: "/account", label: "Check-in", hint: "Account · depois da call", icon: "users" },
-  { href: "/social", label: "Social media", hint: "Aprovação e calendário", icon: "image" },
-  { href: "/onboarding", label: "Onboarding", hint: "Portal de aprendizagem do time", icon: "book" },
+  {
+    href: "/social",
+    label: "Social media",
+    hint: "Aprovação e calendário",
+    icon: "image",
+    children: [
+      { href: "/social", label: "Projetos" },
+      { href: "/social/planejamento", label: "Planejamento" },
+    ],
+  },
+  {
+    href: "/onboarding",
+    label: "Onboarding",
+    hint: "Portal de aprendizagem do time",
+    icon: "book",
+    children: [
+      { href: "/onboarding", label: "Trilhas" },
+      { href: "/onboarding/admin", label: "Conteúdo", admin: true },
+    ],
+  },
 ];
 const SETTINGS: NavLink = {
   href: "/config",
   label: "Configurações",
   hint: "Clientes, calibração, usuários e integrações",
   icon: "settings",
+  children: [
+    { href: "/config", label: "Clientes" },
+    { href: "/config/calibracao", label: "Calibração" },
+    { href: "/config/usuarios", label: "Usuários", admin: true },
+    { href: "/config/integracoes", label: "Integrações", admin: true },
+    { href: "/config/modelo", label: "Modelo do score" },
+  ],
 };
 
 const isActive = (href: string, path: string) => (href === "/" ? path === "/" : path.startsWith(href));
@@ -87,48 +116,87 @@ function writeCollapsed(v: boolean) {
   listeners.forEach((l) => l());
 }
 
-function SideLink({ l, collapsed, path }: { l: NavLink; collapsed: boolean; path: string }) {
+function SideLink({
+  l,
+  collapsed,
+  path,
+  isAdmin,
+}: {
+  l: NavLink;
+  collapsed: boolean;
+  path: string;
+  isAdmin: boolean;
+}) {
   const active = isActive(l.href, path);
+  const subs = (l.children ?? []).filter((c) => !c.admin || isAdmin);
+  const open = active && subs.length > 0 && !collapsed;
   return (
-    <Link
-      href={l.href}
-      title={collapsed ? `${l.label} — ${l.hint}` : l.hint}
-      aria-label={l.label}
-      aria-current={active ? "page" : undefined}
-      className={`relative flex items-center rounded-md py-2 text-[13px] font-semibold transition-colors duration-[120ms] ${
-        collapsed ? "justify-center px-0" : "gap-2.5 px-2.5"
-      } ${
-        active
-          ? `bg-[rgba(229,9,20,0.10)] text-ink-100 before:absolute before:bottom-2 before:top-2 before:w-0.5 before:rounded-r before:bg-v4-red before:content-[''] ${
-              collapsed ? "before:-left-2.5" : "before:-left-3.5"
-            }`
-          : "text-ink-300 hover:bg-ink-850 hover:text-ink-100"
-      }`}
-    >
-      <Icon name={l.icon} size={18} stroke={1.75} />
-      {!collapsed && l.label}
-    </Link>
+    <>
+      <Link
+        href={l.href}
+        title={collapsed ? `${l.label} — ${l.hint}` : l.hint}
+        aria-label={l.label}
+        aria-current={active ? "page" : undefined}
+        className={`side-link ${collapsed ? "justify-center !px-0" : ""}`}
+      >
+        <Icon name={l.icon} size={18} stroke={1.75} />
+        {!collapsed && (
+          <>
+            <span className="min-w-0 flex-1 truncate">{l.label}</span>
+            {subs.length > 0 && (
+              <Icon
+                name={open ? "chevronDown" : "chevronRight"}
+                size={13}
+                className="shrink-0 text-ink-600"
+              />
+            )}
+          </>
+        )}
+      </Link>
+      {open && (
+        <div className="side-sub">
+          {subs.map((c) => (
+            <Link
+              key={c.href}
+              href={c.href}
+              aria-current={
+                (c.href === l.href ? path === c.href : path.startsWith(c.href)) ? "page" : undefined
+              }
+            >
+              {c.label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 
-/** Rail lateral persistente — padrão do BI da unidade. */
-export function Sidebar() {
+/**
+ * Rail lateral persistente — a espinha do console.
+ *
+ * A conta mora aqui embaixo, junto do botão de recolher: a faixa da topbar
+ * que ela ocupava virou área útil, e o caminho ("onde estou") passa a ser
+ * dito pelo próprio cabeçalho da página.
+ */
+export function Sidebar({ user }: { user: Perfil }) {
   const path = usePathname();
   const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false);
   const toggle = () => writeCollapsed(!collapsed);
+  const out = useSignOut();
 
   return (
     <aside
       data-collapsed={collapsed ? "" : undefined}
-      className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-[var(--border-hair)] bg-black py-4 transition-[width] duration-200 ease-[var(--ease-out)] lg:flex ${
-        collapsed ? "w-[68px] px-2.5" : "w-[228px] px-3.5"
+      className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-[var(--border-hair)] bg-black py-3.5 transition-[width] duration-200 ease-[var(--ease-out)] lg:flex ${
+        collapsed ? "w-[64px] px-2.5" : "w-[236px] px-3"
       }`}
     >
       <Link
         href="/"
         title="Health Score — Oliveira &amp; Co"
-        className={`mb-3.5 flex items-center gap-2.5 border-b border-[var(--border-hair)] pb-4 ${
-          collapsed ? "justify-center px-0" : "px-2"
+        className={`mb-3 flex items-center gap-2.5 border-b border-[var(--border-hair)] pb-3.5 ${
+          collapsed ? "justify-center px-0" : "px-1.5"
         }`}
       >
         <Image src="/brand/v4-simbolo.webp" alt="V4 Company" width={26} height={26} priority />
@@ -142,25 +210,73 @@ export function Sidebar() {
         )}
       </Link>
 
-      <nav className="flex flex-col gap-0.5" aria-label="Navegação principal">
+      <nav
+        className="-mr-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto pr-1"
+        aria-label="Navegação principal"
+      >
         {MAIN.map((l) => (
-          <SideLink key={l.href} l={l} collapsed={collapsed} path={path} />
+          <SideLink key={l.href} l={l} collapsed={collapsed} path={path} isAdmin={user.isAdmin} />
         ))}
+        <div className="my-2 h-px shrink-0 bg-[var(--border-hair)]" />
+        <SideLink l={SETTINGS} collapsed={collapsed} path={path} isAdmin={user.isAdmin} />
       </nav>
 
-      <div className="mt-auto space-y-1 border-t border-[var(--border-hair)] pt-3">
-        <SideLink l={SETTINGS} collapsed={collapsed} path={path} />
+      {/* Conta + recolher, no rodapé do rail. */}
+      <div
+        className={`mt-2 flex shrink-0 items-center gap-1 border-t border-[var(--border-hair)] pt-2.5 ${
+          collapsed ? "flex-col" : ""
+        }`}
+      >
+        <ActionMenu
+          label={`Conta de ${user.name}`}
+          trigger={
+            <span
+              className={`flex items-center gap-2 rounded-md py-1.5 text-left hover:bg-ink-850 ${
+                collapsed ? "justify-center px-0" : "w-full px-1.5"
+              }`}
+              title={user.name}
+            >
+              <Avatar name={user.name} size={collapsed ? 28 : 30} />
+              {!collapsed && (
+                <span className="min-w-0 flex-1 leading-tight">
+                  <span className="block truncate text-[12.5px] font-semibold text-ink-100">
+                    {user.name}
+                  </span>
+                  <span className="block truncate text-[11px] text-ink-500">
+                    {ROLE_LABEL[user.role] ?? user.role}
+                    {user.isAdmin ? " · admin" : ""}
+                  </span>
+                </span>
+              )}
+              {!collapsed &&
+                (out.pending ? (
+                  <span className="spinner" aria-hidden />
+                ) : (
+                  <Icon name="chevronDown" size={13} className="shrink-0 text-ink-600" />
+                ))}
+            </span>
+          }
+          items={[
+            {
+              label: user.name,
+              hint: `${ROLE_LABEL[user.role] ?? user.role}${user.isAdmin ? " · administrador" : ""}`,
+              icon: user.isAdmin ? "shield" : "users",
+              disabled: true,
+            },
+            "separator",
+            { label: "Configurações", icon: "settings", href: "/config" },
+            { label: "Sair", icon: "logout", onSelect: out.run },
+          ]}
+        />
         <button
           type="button"
           onClick={toggle}
           aria-expanded={!collapsed}
           title={collapsed ? "Expandir menu" : "Recolher menu"}
-          className={`flex w-full items-center rounded-md py-2 text-[12px] font-semibold text-ink-500 transition-colors duration-[120ms] hover:bg-ink-850 hover:text-ink-100 ${
-            collapsed ? "justify-center px-0" : "gap-2.5 px-2.5"
-          }`}
+          aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-500 transition-colors duration-[120ms] hover:bg-ink-850 hover:text-ink-100"
         >
           <Icon name={collapsed ? "chevronRight" : "chevronLeft"} size={16} stroke={2} />
-          {!collapsed && "Recolher menu"}
         </button>
       </div>
     </aside>
@@ -182,45 +298,6 @@ function Avatar({ name, size = 32 }: { name: string; size?: number }) {
 function useSignOut() {
   const [pending, start] = useTransition();
   return { pending, run: () => start(() => signOut()) };
-}
-
-/** Topbar do desktop: onde estou + quem sou. As ações vivem nas páginas. */
-export function Topbar({ user }: { user: Perfil }) {
-  const path = usePathname();
-  const here = currentLabel(path);
-  const out = useSignOut();
-  return (
-    <div className="sticky top-0 z-10 hidden items-center gap-3.5 border-b border-[var(--border-hair)] bg-[rgba(13,13,13,0.85)] px-7 py-3 backdrop-blur-xl lg:flex">
-      <div className="flex items-center gap-2 text-[13px] text-ink-400">
-        <span>Unidade Oliveira &amp; Co</span>
-        <span className="text-ink-600">/</span>
-        <span className="font-semibold text-ink-100">{here}</span>
-      </div>
-      <div className="ml-auto">
-        <ActionMenu
-          label={`Conta de ${user.name}`}
-          trigger={
-            <span className="flex items-center gap-2 rounded-full py-1 pl-1 pr-2.5 text-[13px] font-semibold text-ink-200 hover:bg-ink-850">
-              <Avatar name={user.name} size={28} />
-              {user.name}
-              {out.pending ? <span className="spinner" aria-hidden /> : <Icon name="chevronDown" size={14} className="text-ink-500" />}
-            </span>
-          }
-          items={[
-            {
-              label: user.name,
-              hint: `${ROLE_LABEL[user.role] ?? user.role}${user.isAdmin ? " · administrador" : ""}`,
-              icon: user.isAdmin ? "shield" : "users",
-              disabled: true,
-            },
-            "separator",
-            { label: "Configurações", icon: "settings", href: "/config" },
-            { label: "Sair", icon: "logout", onSelect: out.run },
-          ]}
-        />
-      </div>
-    </div>
-  );
 }
 
 /* ------------------------------------------------------------------ */
