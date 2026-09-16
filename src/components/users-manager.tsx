@@ -169,7 +169,7 @@ export function UsersManager({ users, meId, senhaPadrao }: { users: UserRow[]; m
             </CardList>
             <div className="hidden lg:block">
               <TableScroll>
-                <table className="data-table">
+                <table className="data-table is-dense">
                   <thead>
                     <tr>
                       <th>Nome</th>

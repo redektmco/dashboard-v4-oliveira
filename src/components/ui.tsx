@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Band, Confidence } from "@/lib/model/types";
-import { Icon } from "./icon";
+import { Icon, type IconName } from "./icon";
 
 /* Mapa de status do design system: saudável / em risco / crítico. */
 export const BAND_STYLE: Record<Band, { chip: string; fg: string; dot: string; label: string }> = {
@@ -293,8 +293,10 @@ export function Stat({
  * larga estica o `<main>` e a página inteira passa a rolar na
  * horizontal — o jeito mais rápido de quebrar um layout no celular.
  */
-export function TableScroll({ children }: { children: React.ReactNode }) {
-  return <div className="table-scroll">{children}</div>;
+export function TableScroll({ children, tall = false }: { children: React.ReactNode; tall?: boolean }) {
+  // `tall` limita a altura e liga o cabeçalho fixo: vale para a tabela longa
+  // (a carteira inteira), não para as listas de seis linhas.
+  return <div className={`table-scroll ${tall ? "table-scroll--tall" : ""}`}>{children}</div>;
 }
 
 /**
@@ -304,47 +306,140 @@ export function TableScroll({ children }: { children: React.ReactNode }) {
  */
 export function PageHeader({
   eyebrow,
+  icon,
   title,
   description,
   actions,
   back,
 }: {
   eyebrow?: string;
+  /** Ícone da seção, no quadrado vermelho à esquerda do título. */
+  icon?: IconName;
   title: string;
   description?: React.ReactNode;
   actions?: React.ReactNode;
   back?: { href: string; label: string };
 }) {
   return (
-    <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
-      <div className="min-w-0">
-        {back && (
-          <Link
-            href={back.href}
-            className="inline-flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-100"
+    <div className="flex flex-col gap-2.5 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between lg:gap-4">
+      <div className="flex min-w-0 items-center gap-3">
+        {icon && (
+          <span
+            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[rgba(229,9,20,0.28)] bg-[rgba(229,9,20,0.10)] text-v4-red sm:flex"
+            aria-hidden
           >
-            <Icon name="arrowLeft" size={12} />
-            {back.label}
-          </Link>
+            <Icon name={icon} size={18} stroke={1.9} />
+          </span>
         )}
-        {eyebrow && <span className="eyebrow block">{eyebrow}</span>}
-        <h1
-          className={`font-display text-[22px] font-bold leading-tight tracking-tight sm:text-[26px] lg:text-[28px] ${
-            back || eyebrow ? "mt-1.5" : ""
-          }`}
-        >
-          {title}
-        </h1>
-        {description && (
-          <p className="mt-1 max-w-3xl text-[13px] text-ink-400 sm:text-sm">{description}</p>
-        )}
+        <div className="min-w-0">
+          {back && (
+            <Link
+              href={back.href}
+              className="inline-flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-100"
+            >
+              <Icon name="arrowLeft" size={12} />
+              {back.label}
+            </Link>
+          )}
+          <h1
+            className={`truncate font-display text-[19px] font-bold leading-tight tracking-tight sm:text-[21px] ${
+              back ? "mt-1" : ""
+            }`}
+          >
+            {title}
+          </h1>
+          {/* Uma linha só de contexto, como o recorte de período de um BI:
+              de onde vem o número e de quando ele é. */}
+          {(eyebrow || description) && (
+            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] leading-snug text-ink-400">
+              {eyebrow && <span className="font-semibold text-ink-300">{eyebrow}</span>}
+              {eyebrow && description && (
+                <span className="hidden text-ink-600 sm:inline">·</span>
+              )}
+              {description}
+            </p>
+          )}
+        </div>
       </div>
       {actions && (
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:overflow-visible lg:px-0 lg:pb-0">
+        <div className="-mx-4 flex shrink-0 gap-2 overflow-x-auto px-4 pb-1 lg:mx-0 lg:overflow-visible lg:px-0 lg:pb-0">
           {actions}
         </div>
       )}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Barra de ferramentas (recortes)                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Faixa de filtros do console: uma ou mais linhas de chips roláveis, com as
+ * ações do lado direito. Quem decide o que é chip é a página — aqui só mora
+ * a régua (altura, densidade, rolagem sem barra).
+ */
+export function Toolbar({ children }: { children: React.ReactNode }) {
+  return <div className="toolbar">{children}</div>;
+}
+
+export function ToolbarRow({ children }: { children: React.ReactNode }) {
+  return <div className="toolbar-row">{children}</div>;
+}
+
+/** Rótulo curto antes de um grupo de chips ("PERÍODO", "TIME"). */
+export function ToolbarLabel({ children }: { children: React.ReactNode }) {
+  return <span className="chip-label">{children}</span>;
+}
+
+export function ChipSep() {
+  return <span className="chip-sep" aria-hidden />;
+}
+
+/**
+ * Chip de recorte: link quando o recorte mora na URL (`href`), botão quando
+ * é estado de tela (`onClick`), e texto quando é só rótulo.
+ */
+export function Chip({
+  href,
+  onClick,
+  active = false,
+  icon,
+  count,
+  children,
+  title,
+}: {
+  href?: string;
+  onClick?: () => void;
+  active?: boolean;
+  icon?: IconName;
+  count?: number;
+  children: React.ReactNode;
+  title?: string;
+}) {
+  const inner = (
+    <>
+      {icon && <Icon name={icon} size={13} stroke={1.9} />}
+      {children}
+      {count !== undefined && <span className="tnum text-[11px] opacity-70">{count}</span>}
+    </>
+  );
+  if (href)
+    return (
+      <Link href={href} className="chip" aria-current={active ? "page" : undefined} title={title}>
+        {inner}
+      </Link>
+    );
+  if (onClick)
+    return (
+      <button type="button" className="chip" aria-pressed={active} onClick={onClick} title={title}>
+        {inner}
+      </button>
+    );
+  return (
+    <span className="chip" data-active={active ? "" : undefined} title={title}>
+      {inner}
+    </span>
   );
 }
 

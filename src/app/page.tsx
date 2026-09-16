@@ -69,6 +69,7 @@ export default async function CarteiraPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        icon="grid"
         eyebrow="Unidade Oliveira & Co"
         title="Saúde da carteira"
         description={`Recompute de ${dateBR(at)} · ${rows.length} contas ativas · ordenado por risco`}
@@ -230,7 +231,7 @@ export default async function CarteiraPage() {
 
               <div className="hidden lg:block">
                 <TableScroll>
-                  <table className="data-table">
+                  <table className="data-table is-dense">
                     <thead>
                       <tr>
                         <th>Cliente</th>
@@ -304,7 +305,7 @@ export default async function CarteiraPage() {
 
               <div className="hidden lg:block">
                 <TableScroll>
-                  <table className="data-table">
+                  <table className="data-table is-dense">
                     <thead>
                       <tr>
                         <th>Cliente</th>

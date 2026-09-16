@@ -1236,6 +1236,311 @@ select,
   background: var(--color-v4-red);
 }
 
+/* =============================================================
+   CONSOLE (densidade de BI)
+   O painel deixou de ser "uma página com tabelas" e virou console:
+   a conta mora no rodapé da barra lateral (não numa topbar que come
+   uma faixa da tela), o cabeçalho da página é compacto, os recortes
+   viram chips numa barra de ferramentas e as tabelas ficam densas,
+   com cabeçalho fixo, primeira coluna presa e linha de total.
+   ============================================================= */
+
+/* ---------------- Barra de ferramentas / filtros ---------------- */
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px 8px;
+  border: 1px solid var(--border-hair);
+  border-radius: var(--radius-lg);
+  background: var(--color-ink-900);
+}
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.toolbar-row::-webkit-scrollbar {
+  display: none;
+}
+.toolbar-row > .spacer {
+  margin-left: auto;
+}
+
+.chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-ink-400);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+.chip:hover {
+  color: var(--color-ink-100);
+  background: var(--color-ink-850);
+}
+.chip[aria-pressed="true"],
+.chip[data-active],
+.chip[aria-current="page"] {
+  color: var(--color-ink-100);
+  background: var(--color-ink-800);
+  border-color: var(--border-strong);
+}
+.chip-sep {
+  flex: none;
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 5px;
+  background: var(--border-hair);
+}
+/* Campos que convivem com os chips: mesma altura, mesma densidade.
+   Precisa ser mais específico que `.field` — que, por viver fora das
+   camadas do Tailwind, vence utilitários como `h-[30px]`/`py-0`. */
+.toolbar .field {
+  height: 30px;
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  border-radius: var(--radius-md);
+}
+.toolbar select.field {
+  padding-right: 26px;
+  background-position: calc(100% - 13px) 55%, calc(100% - 8px) 55%;
+}
+.toolbar .field-search {
+  padding-left: 29px;
+}
+/* Campo de busca com ícone: o padding vem daqui porque `.field` mora fora
+   das camadas do Tailwind e venceria o utilitário `pl-9`. */
+.field.pl-9 {
+  padding-left: 2.25rem;
+}
+@media (pointer: coarse) {
+  /* No dedo o alvo cresce — a régua de 44px vale aqui também. */
+  .toolbar .field {
+    height: 38px;
+    min-height: 38px;
+    font-size: 16px;
+  }
+}
+
+.chip-label {
+  flex: none;
+  padding: 0 6px 0 2px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-ink-500);
+  white-space: nowrap;
+}
+
+/* ---------------- Abas de seção ---------------- */
+/* `.subnav` é a aba de rota (sublinhado vermelho). `.subnav--plain` é o
+   degrau de baixo: mesma régua, sem ícone e com peso menor. */
+.subnav--plain a,
+.subnav--plain button {
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 8px 10px;
+}
+.subnav button {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 12px;
+  background: none;
+  border: 0;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink-400);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.subnav button:hover {
+  color: var(--color-ink-100);
+}
+.subnav button[aria-selected="true"] {
+  color: var(--color-ink-100);
+}
+.subnav button[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--color-v4-red);
+}
+
+/* ---------------- Tabelas densas ---------------- */
+/* Cabeçalho fixo só vale dentro de um contêiner que rola na vertical
+   (`.table-scroll--tall`); nas tabelas curtas ele não tem o que fazer. */
+.table-scroll--tall {
+  max-height: min(62vh, 620px);
+  overflow-y: auto;
+}
+table.data-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--color-ink-900);
+}
+table.data-table.is-dense th {
+  padding: 0.5rem 0.7rem;
+}
+table.data-table.is-dense td {
+  padding: 0.5rem 0.7rem;
+  font-size: 12.5px;
+}
+/* Primeira coluna presa: o nome do cliente não some ao rolar as métricas. */
+table.data-table.is-pinned thead th:first-child {
+  z-index: 3;
+}
+table.data-table.is-pinned thead th:first-child,
+table.data-table.is-pinned tbody td:first-child {
+  position: sticky;
+  left: 0;
+  background: var(--color-ink-900);
+}
+table.data-table.is-pinned tbody tr:hover td:first-child {
+  background: var(--color-ink-850);
+}
+table.data-table.is-pinned thead th:first-child::after,
+table.data-table.is-pinned tbody td:first-child::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 1px;
+  background: var(--border-hair);
+}
+/* Linha de total, colada no rodapé da tabela. */
+table.data-table tfoot td {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--color-ink-850);
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 0;
+  font-weight: 700;
+  color: var(--color-ink-100);
+}
+/* Cabeçalho ordenável: a seta só aparece quando a coluna manda na ordem. */
+table.data-table th .sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+table.data-table th .sort:hover {
+  color: var(--color-ink-100);
+}
+table.data-table th .sort svg {
+  opacity: 0.35;
+}
+table.data-table th[aria-sort] .sort,
+table.data-table th[aria-sort] {
+  color: var(--color-ink-100);
+}
+table.data-table th[aria-sort] .sort svg {
+  opacity: 1;
+}
+/* Número que leva a algum lugar (ou que tem explicação atrás). */
+.metric {
+  border-bottom: 1px dotted currentColor;
+  padding-bottom: 1px;
+}
+
+/* ---------------- Barra lateral ---------------- */
+.side-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: var(--radius-md);
+  padding: 7px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink-300);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+.side-link:hover {
+  background: var(--color-ink-850);
+  color: var(--color-ink-100);
+}
+.side-link[aria-current="page"],
+.side-link[data-open] {
+  color: var(--color-ink-100);
+}
+.side-link[aria-current="page"] {
+  background: rgba(229, 9, 20, 0.1);
+}
+.side-link[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--color-v4-red);
+}
+/* Filhos da seção aberta, com a guia vertical do grupo. */
+.side-sub {
+  margin: 2px 0 6px 20px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border-hair);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.side-sub a {
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--color-ink-400);
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.side-sub a:hover {
+  color: var(--color-ink-100);
+}
+.side-sub a[aria-current="page"] {
+  color: var(--color-ink-100);
+  font-weight: 600;
+}
+
 /* Área de soltar arquivos do composer de Social media. */
 .dropzone {
   display: flex;

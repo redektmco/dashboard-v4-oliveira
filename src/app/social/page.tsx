@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { canManageSocial, requireUser } from "@/lib/auth";
 import { listClients } from "@/lib/repo";
 import { listArchivedProjects, listClientOrganic, listProjectSummaries } from "@/lib/social/db";
@@ -6,6 +5,7 @@ import { ClientLink, PageHeader, Stat, TableScroll } from "@/components/ui";
 import { Icon } from "@/components/icon";
 import { NewProjectButton } from "@/components/social/new-project-form";
 import { ProjectList } from "@/components/social/project-list";
+import { RouteTabs } from "@/components/tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -33,17 +33,20 @@ export default async function SocialPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        icon="image"
         title="Social media"
         description="Aprovação de posts, carrosséis, Reels e Stories pelo link do cliente, e o calendário do que foi aprovado."
         actions={
-          <>
-            <Link href="/social/planejamento" className="btn shrink-0">
-              <Icon name="calendar" size={14} />
-              Calendário
-            </Link>
-            {canManage && <NewProjectButton clients={clients.map((c) => ({ id: c.id, name: c.name }))} />}
-          </>
+          canManage ? <NewProjectButton clients={clients.map((c) => ({ id: c.id, name: c.name }))} /> : null
         }
+      />
+
+      <RouteTabs
+        items={[
+          { href: "/social", label: "Projetos", icon: "image", exact: true },
+          { href: "/social/planejamento", label: "Planejamento", icon: "calendar" },
+        ]}
+        label="Seções de Social media"
       />
 
       {/* Os quatro números que pedem ação, não inventário. */}
@@ -84,7 +87,7 @@ export default async function SocialPage() {
           </summary>
           <div className="border-t border-[var(--border-hair)]">
             <TableScroll>
-              <table className="data-table">
+              <table className="data-table is-dense">
                 <thead>
                   <tr>
                     <th>Cliente</th>
