@@ -64,7 +64,8 @@ export default async function GuestApprovalPage({
   const project = await getGuestProject(token);
   if (!project) notFound();
 
-  const posts = await listPosts(project.id);
+  // Rascunho é trabalho interno: o link do cliente só vê o que foi enviado.
+  const posts = (await listPosts(project.id)).filter((p) => p.status !== "draft");
 
   return (
     <ClientApproval

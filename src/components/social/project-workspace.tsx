@@ -2,28 +2,24 @@
 
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import type { Post, PostStatus, Project } from "@/lib/social/types";
+import type { Post, Project } from "@/lib/social/types";
 import InstagramPreview from "@/components/social/instagram-preview";
 import { Composer } from "@/components/social/composer";
 import { MediaView } from "@/components/social/media";
 import { StoryViewer } from "@/components/social/story-viewer";
 import { FormatTag } from "@/components/social/vertical-preview";
+import { ApprovalLinkModal } from "@/components/social/approval-link-modal";
+import { HistoryModal } from "@/components/social/history-modal";
 import { ActionMenu, type MenuItem } from "@/components/action-menu";
 import { ConfirmDialog, ImpactList, Modal } from "@/components/modal";
-import { Segmented } from "@/components/form-controls";
 import { toast } from "@/components/toast";
 import { Icon } from "@/components/icon";
 import { PageHeader } from "@/components/ui";
 import { formatBadge, isVertical } from "@/lib/social/media";
+import { STAGE, STAGE_ORDER, stageOf, type Stage } from "@/lib/social/stage";
 
 type ClientOpt = { id: number; name: string };
-type Filter = "all" | PostStatus;
-
-const STATUS: Record<PostStatus, { label: string; cls: string; dot: string }> = {
-  pending: { label: "Aguardando cliente", cls: "bg-ink-800 text-ink-300", dot: "bg-ink-400" },
-  approved: { label: "Aprovado", cls: "bg-verde-dim text-verde-fg", dot: "bg-verde" },
-  rejected: { label: "Reprovado", cls: "bg-vermelho-dim text-vermelho-fg", dot: "bg-vermelho" },
-};
+type Filter = "all" | Stage;
 
 /** ISO -> valor de <input type="datetime-local"> na hora local do navegador. */
 function toLocalInput(iso: string | null): string {
@@ -39,6 +35,11 @@ const fmtWhen = (iso: string | null) =>
     ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
     : "";
 
+const fmtDay = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "");
+};
+
 const noopSubscribe = () => () => {};
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
@@ -51,6 +52,13 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+/**
+ * Tela de Criativos do projeto: montar à esquerda, acompanhar à direita.
+ *
+ * As duas colunas existem porque o trabalho é um vaivém — sobe um criativo,
+ * confere na lista, corrige a legenda do que voltou reprovado, sobe o
+ * próximo. Empilhado, cada ida obrigava a rolar a página inteira.
+ */
 export default function ProjectWorkspace({
   project: initialProject,
   initialPosts,
@@ -64,13 +72,18 @@ export default function ProjectWorkspace({
   const [project, setProject] = useState(initialProject);
   const [posts, setPosts] = useState<Post[]>(initialPosts);
   const [filter, setFilter] = useState<Filter>("all");
+  const [query, setQuery] = useState("");
   const [copied, setCopied] = useState(false);
 
   // Diálogos
   const [viewing, setViewing] = useState<Post | null>(null);
-  const [editing, setEditing] = useState<Post | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draftCaption, setDraftCaption] = useState("");
+  const [savingCaption, setSavingCaption] = useState(false);
   const [scheduling, setScheduling] = useState<Post | null>(null);
   const [deleting, setDeleting] = useState<Post | null>(null);
+  const [history, setHistory] = useState<Post | null>(null);
+  const [sentCount, setSentCount] = useState<number | null>(null);
   const [projectDialog, setProjectDialog] = useState<null | "edit" | "archive" | "delete">(null);
 
   // A origem só existe no navegador; no servidor o link sai vazio e o React
@@ -80,22 +93,31 @@ export default function ProjectWorkspace({
 
   const handle = "@" + project.igHandle;
   const sorted = useMemo(() => [...posts].sort((a, b) => a.order - b.order), [posts]);
-  const counts = useMemo(
-    () => ({
-      all: posts.length,
-      pending: posts.filter((p) => p.status === "pending").length,
-      approved: posts.filter((p) => p.status === "approved").length,
-      rejected: posts.filter((p) => p.status === "rejected").length,
-    }),
-    [posts],
-  );
-  const visible = filter === "all" ? sorted : sorted.filter((p) => p.status === filter);
 
-  const copyLink = async () => {
+  const counts = useMemo(() => {
+    const base: Record<Stage, number> = { draft: 0, pending: 0, approved: 0, rejected: 0, changes: 0 };
+    for (const p of posts) base[stageOf(p)]++;
+    return base;
+  }, [posts]);
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return sorted.filter((p) => {
+      if (filter !== "all" && stageOf(p) !== filter) return false;
+      if (!q) return true;
+      const hay = `${p.caption} ${FormatText(p)} ${p.assets.map((a) => a.name).join(" ")}`;
+      return hay.toLowerCase().includes(q);
+    });
+  }, [sorted, filter, query]);
+
+  const copyLink = async (url = guestUrl, quiet = false) => {
     try {
-      await navigator.clipboard.writeText(guestUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
+      await navigator.clipboard.writeText(url);
+      if (quiet) toast("Link copiado.");
+      else {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+      }
     } catch {
       toast("Não foi possível copiar. Selecione o link e copie manualmente.", { tone: "error" });
     }
@@ -120,12 +142,64 @@ export default function ProjectWorkspace({
     }
   };
 
+  const run = (promise: Promise<string | null>) => void promise.then((e) => e && toast(e, { tone: "error" }));
+
+  const duplicate = async (p: Post) => {
+    try {
+      const { posts: next } = await api<{ posts: Post[] }>(`/api/social/posts/${p.id}/duplicate`, { method: "POST" });
+      setPosts(next);
+      toast("Criativo duplicado como rascunho.");
+    } catch (e) {
+      toast((e as Error).message, { tone: "error" });
+    }
+  };
+
+  const startEdit = (p: Post) => {
+    setEditing(p.id);
+    setDraftCaption(p.caption);
+  };
+
+  /**
+   * Salvar a legenda de um criativo já reprovado devolve ele para a fila do
+   * cliente: foi exatamente para isso que o ajuste foi pedido.
+   */
+  const saveCaption = async (p: Post) => {
+    setSavingCaption(true);
+    const back = stageOf(p) === "changes" || stageOf(p) === "rejected";
+    const err = await patchPost(
+      p,
+      back ? { caption: draftCaption, status: "pending" } : { caption: draftCaption },
+      back ? "Legenda atualizada · voltou para aprovação do cliente." : "Legenda atualizada.",
+    );
+    setSavingCaption(false);
+    if (err) toast(err, { tone: "error" });
+    else setEditing(null);
+  };
+
   const postMenu = (p: Post): MenuItem[] => {
+    const stage = stageOf(p);
     const items: MenuItem[] = [
-      { label: "Visualizar", icon: "image", onSelect: () => setViewing(p) },
-      { label: p.format === "story" ? "Editar observação" : "Editar legenda", icon: "message", onSelect: () => setEditing(p) },
+      { label: "Visualizar", icon: "eye", onSelect: () => setViewing(p) },
+      { label: p.format === "story" ? "Editar observação" : "Editar legenda", icon: "pencil", onSelect: () => startEdit(p) },
+      { label: "Duplicar", icon: "copy", hint: "Cria uma cópia em rascunho", onSelect: () => void duplicate(p) },
     ];
-    if (p.status === "approved") {
+
+    if (stage === "draft") {
+      items.push({
+        label: "Enviar para aprovação",
+        icon: "external",
+        onSelect: () => run(patchPost(p, { status: "pending" }, "Criativo enviado para aprovação.")),
+      });
+    } else if (stage !== "pending") {
+      items.push({
+        label: "Reenviar para aprovação",
+        icon: "refresh",
+        hint: "O cliente avalia de novo",
+        onSelect: () => run(patchPost(p, { status: "pending" }, "Criativo voltou para avaliação.")),
+      });
+    }
+
+    if (stage === "approved") {
       items.push({
         label: p.scheduledAt ? "Alterar data no calendário" : "Definir data no calendário",
         icon: "calendar",
@@ -133,19 +207,24 @@ export default function ProjectWorkspace({
       });
       items.push(
         p.publishStatus === "published"
-          ? { label: "Desmarcar publicado", icon: "refresh", onSelect: () => void patchPost(p, { published: false }, "Voltou para o planejamento.").then((e) => e && toast(e, { tone: "error" })) }
-          : { label: "Marcar como publicado", icon: "check", onSelect: () => void patchPost(p, { published: true }, "Marcado como publicado.").then((e) => e && toast(e, { tone: "error" })) },
+          ? { label: "Desmarcar publicado", icon: "refresh", onSelect: () => run(patchPost(p, { published: false }, "Voltou para o planejamento.")) }
+          : { label: "Marcar como publicado", icon: "check", onSelect: () => run(patchPost(p, { published: true }, "Marcado como publicado.")) },
       );
     }
-    if (p.status !== "pending") {
+
+    items.push({ label: "Copiar link de aprovação", icon: "link", onSelect: () => void copyLink(guestUrl, true) });
+    items.push({ label: "Ver histórico de revisões", icon: "clock", onSelect: () => setHistory(p) });
+
+    if (stage !== "draft") {
       items.push({
-        label: "Voltar para pendente",
-        icon: "refresh",
-        hint: "O cliente avalia de novo",
-        onSelect: () => void patchPost(p, { status: "pending" }, "Criativo voltou para avaliação.").then((e) => e && toast(e, { tone: "error" })),
+        label: "Voltar para rascunho",
+        icon: "lock",
+        hint: "Sai do link do cliente",
+        onSelect: () => run(patchPost(p, { status: "draft" }, "Criativo voltou para rascunho.")),
       });
     }
-    items.push("separator", { label: "Excluir criativo", icon: "x", danger: true, onSelect: () => setDeleting(p) });
+
+    items.push("separator", { label: "Excluir criativo", icon: "trash", danger: true, onSelect: () => setDeleting(p) });
     return items;
   };
 
@@ -156,6 +235,11 @@ export default function ProjectWorkspace({
     "separator",
     { label: "Arquivar projeto", icon: "lock", hint: "Some das listas e o link para de abrir", onSelect: () => setProjectDialog("archive") },
     { label: "Excluir projeto", icon: "x", danger: true, onSelect: () => setProjectDialog("delete") },
+  ];
+
+  const chips: { id: Filter; label: string; n: number; dot?: string }[] = [
+    { id: "all", label: "Todos", n: posts.length },
+    ...STAGE_ORDER.map((s) => ({ id: s as Filter, label: STAGE[s].chip, n: counts[s], dot: STAGE[s].dot })),
   ];
 
   return (
@@ -175,144 +259,228 @@ export default function ProjectWorkspace({
         }
       />
 
-      {/* Link do cliente: a única coisa que o time precisa daqui é copiar e mandar. */}
+      {/* O placar e o link: os três números que pedem ação e o que o time
+          precisa mandar para o cliente, lado a lado. */}
       <section className="panel flex flex-col gap-3 px-4 py-3.5 sm:px-5 lg:flex-row lg:items-center">
-        <div className="min-w-0 lg:w-[220px] lg:shrink-0">
-          <div className="text-[13px] font-semibold text-ink-100">Link de aprovação do cliente</div>
-          <div className="text-[12px] text-ink-500">Sem login · o cliente aprova pelo celular</div>
+        <div className="flex flex-wrap gap-2">
+          {(["pending", "approved", "rejected"] as Stage[]).map((s) => (
+            <div
+              key={s}
+              className="flex items-center gap-2.5 rounded-lg border border-[var(--border-hair)] bg-ink-950 px-3.5 py-2"
+            >
+              <span className={`h-[7px] w-[7px] rounded-full ${STAGE[s].dot}`} />
+              <div className="leading-tight">
+                <div className="tnum font-display text-[17px] font-semibold text-ink-100">
+                  {s === "rejected" ? counts.rejected + counts.changes : counts[s]}
+                </div>
+                <div className="text-[11px] text-ink-400">{STAGE[s].chip}</div>
+              </div>
+            </div>
+          ))}
         </div>
-        <div className="flex min-w-0 flex-1 gap-2">
+
+        <div className="flex min-w-0 flex-1 gap-2 lg:justify-end">
           <input
-            className="field min-w-0 flex-1 font-mono text-[12px]"
+            className="field min-w-0 flex-1 font-mono text-[12px] lg:max-w-[340px]"
             readOnly
             value={guestUrl}
             onFocus={(e) => e.currentTarget.select()}
             aria-label="Link de aprovação"
           />
-          <button type="button" className={`btn shrink-0 ${copied ? "" : "btn-primary"}`} onClick={copyLink}>
-            <Icon name={copied ? "check" : "layers"} size={14} />
-            {copied ? "Copiado" : "Copiar"}
+          <button type="button" className={`btn shrink-0 ${copied ? "" : "btn-primary"}`} onClick={() => void copyLink()}>
+            <Icon name={copied ? "check" : "copy"} size={14} />
+            {copied ? "Copiado" : "Copiar link"}
           </button>
         </div>
-        <div className="flex shrink-0 items-center gap-3 text-[12px] text-ink-400">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-ink-400" />
-            <b className="tnum text-ink-100">{counts.pending}</b> aguardando
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-verde" />
-            <b className="tnum text-ink-100">{counts.approved}</b> aprovados
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-vermelho" />
-            <b className="tnum text-ink-100">{counts.rejected}</b> reprovados
-          </span>
+      </section>
+
+      <div className="grid items-start gap-5 xl:grid-cols-2">
+        {/* Montar: fica grudado no topo enquanto a lista rola. */}
+        <div className="xl:sticky xl:top-4">
+          <Composer
+            projectId={project.id}
+            handle={handle}
+            onCreated={setPosts}
+            onSent={(n) => setSentCount(n)}
+          />
         </div>
-      </section>
 
-      <Composer projectId={project.id} handle={handle} onCreated={setPosts} />
+        {/* Acompanhar. */}
+        <section className="panel overflow-hidden">
+          <header className="flex flex-col gap-3 border-b border-[var(--border-hair)] px-4 py-3.5 sm:px-5">
+            <div className="flex items-center gap-2">
+              <div className="relative min-w-0 flex-1">
+                <Icon name="search" size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-500" />
+                <input
+                  className="field w-full pl-9"
+                  type="search"
+                  placeholder="Buscar por legenda, formato ou arquivo"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  aria-label="Buscar criativos"
+                />
+              </div>
+            </div>
 
-      <section className="panel">
-        <header className="flex flex-col gap-3 border-b border-[var(--border-hair)] px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-          <h2 className="font-display text-[16px] font-semibold text-ink-100">Criativos no projeto</h2>
-          {posts.length > 0 && (
-            <Segmented
-              size="sm"
-              label="Filtrar por status"
-              value={filter}
-              onChange={setFilter}
-              options={[
-                { value: "all", label: `Todos · ${counts.all}` },
-                { value: "pending", label: `Aguardando · ${counts.pending}` },
-                { value: "approved", label: `Aprovados · ${counts.approved}` },
-                { value: "rejected", label: `Reprovados · ${counts.rejected}` },
-              ]}
-            />
-          )}
-        </header>
+            <div className="flex flex-wrap gap-1.5">
+              {chips.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setFilter(c.id)}
+                  aria-pressed={filter === c.id}
+                  className={`inline-flex h-[30px] items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-semibold transition ${
+                    filter === c.id
+                      ? "border-[var(--border-strong)] bg-ink-800 text-ink-100"
+                      : "border-[var(--border-hair)] text-ink-300 hover:text-ink-100"
+                  }`}
+                >
+                  {c.dot && <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />}
+                  {c.label}
+                  <span className="tnum font-mono text-[11px] text-ink-400">{c.n}</span>
+                </button>
+              ))}
+            </div>
+          </header>
 
-        {posts.length === 0 ? (
-          <div className="px-5 py-10 text-center">
-            <Icon name="image" size={28} className="mx-auto text-ink-600" />
-            <p className="mt-2 text-sm font-semibold text-ink-200">Nenhum criativo ainda</p>
-            <p className="mt-1 text-[13px] text-ink-500">Envie o primeiro acima — ele aparece no link do cliente na hora.</p>
-          </div>
-        ) : visible.length === 0 ? (
-          <p className="px-5 py-8 text-center text-[13px] text-ink-500">Nenhum criativo com esse status.</p>
-        ) : (
-          <ul className="divide-y divide-[var(--border-hair)]">
-            {visible.map((p) => {
-              const st = STATUS[p.status];
-              const vertical = isVertical(p);
-              return (
-                <li key={p.id} className="flex items-start gap-3 px-4 py-3 sm:px-5">
-                  <button
-                    type="button"
-                    onClick={() => setViewing(p)}
-                    className={`relative shrink-0 overflow-hidden rounded-md bg-black ring-1 ring-[var(--border-hair)] transition hover:ring-ink-500 ${
-                      vertical ? "h-[80px] w-[45px]" : "h-[60px] w-[60px]"
-                    }`}
-                    aria-label="Visualizar criativo"
+          {posts.length === 0 ? (
+            <div className="px-5 py-12 text-center">
+              <Icon name="image" size={28} className="mx-auto text-ink-600" />
+              <p className="mt-2 text-sm font-semibold text-ink-200">Nenhum criativo ainda</p>
+              <p className="mt-1 text-[13px] text-ink-500">Monte o primeiro ao lado — ao enviar, ele aparece no link do cliente na hora.</p>
+            </div>
+          ) : visible.length === 0 ? (
+            <p className="px-5 py-12 text-center text-[13px] text-ink-500">Nenhum criativo neste filtro.</p>
+          ) : (
+            <ul className="divide-y divide-[var(--border-hair)]">
+              {visible.map((p) => {
+                const stage = stageOf(p);
+                const st = STAGE[stage];
+                const vertical = isVertical(p);
+                const isEditing = editing === p.id;
+                return (
+                  <li
+                    key={p.id}
+                    className={`px-4 py-3.5 sm:px-5 ${st.urgent ? "shadow-[inset_2px_0_0_var(--color-v4-red)]" : ""}`}
                   >
-                    {p.assets[0] && <MediaView asset={p.assets[0]} sizes="80px" />}
-                    {p.assets.length > 1 && (
-                      <span className="absolute bottom-0.5 right-0.5 rounded bg-black/70 px-1 font-mono text-[9px] text-white">
-                        {p.assets.length}
-                      </span>
-                    )}
-                  </button>
+                    <div className="flex items-start gap-3.5">
+                      <button
+                        type="button"
+                        onClick={() => setViewing(p)}
+                        className={`relative shrink-0 overflow-hidden rounded-md bg-black ring-1 ring-[var(--border-hair)] transition hover:ring-ink-500 ${
+                          vertical ? "h-[66px] w-[38px]" : "h-[58px] w-[58px]"
+                        }`}
+                        aria-label="Visualizar criativo"
+                      >
+                        {p.assets[0] && <MediaView asset={p.assets[0]} sizes="80px" />}
+                        {p.assets.length > 1 && (
+                          <span className="tnum absolute bottom-0.5 right-0.5 rounded bg-black/75 px-1 font-mono text-[9px] text-white">
+                            {p.assets.length}
+                          </span>
+                        )}
+                      </button>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <FormatTag badge={formatBadge(p)} />
-                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.cls}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />
-                        {st.label}
-                      </span>
-                      {p.status === "approved" && (
-                        <button
-                          type="button"
-                          onClick={() => setScheduling(p)}
-                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                            p.publishStatus === "published"
-                              ? "bg-verde-dim text-verde-fg"
-                              : p.scheduledAt
-                                ? "bg-amarelo-dim text-amarelo-fg"
-                                : "bg-ink-850 text-ink-400 hover:text-ink-100"
-                          }`}
-                        >
-                          <Icon name="calendar" size={11} />
-                          {p.publishStatus === "published"
-                            ? `Publicado ${fmtWhen(p.publishedAt)}`
-                            : p.scheduledAt
-                              ? fmtWhen(p.scheduledAt)
-                              : "Sem data"}
-                        </button>
-                      )}
-                    </div>
-                    <p className="mt-1 line-clamp-1 text-[13px] text-ink-300">
-                      {p.caption ? p.caption.replace(/\n/g, " ") : <span className="text-ink-600">— sem legenda —</span>}
-                    </p>
-                    {p.feedback && (
-                      <p className="mt-1.5 flex items-start gap-1.5 rounded-md bg-ink-950 px-2.5 py-1.5 text-[12.5px] text-ink-200">
-                        <Icon name="message" size={12} className="mt-0.5 shrink-0 text-ink-400" />
-                        <span>
-                          <span className="font-semibold text-ink-400">Cliente: </span>
-                          {p.feedback}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <FormatTag badge={formatBadge(p)} />
+                          <span className="tnum font-mono text-[11px] text-ink-500">
+                            {p.assets.length} {p.format === "reels" ? "vídeo" : p.assets.length > 1 ? "mídias" : "mídia"} ·{" "}
+                            {fmtDay(p.createdAt)}
+                          </span>
+                          {stage === "approved" && (
+                            <button
+                              type="button"
+                              onClick={() => setScheduling(p)}
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                p.publishStatus === "published"
+                                  ? "bg-verde-dim text-verde-fg"
+                                  : p.scheduledAt
+                                    ? "bg-amarelo-dim text-amarelo-fg"
+                                    : "bg-ink-850 text-ink-400 hover:text-ink-100"
+                              }`}
+                            >
+                              <Icon name="calendar" size={11} />
+                              {p.publishStatus === "published"
+                                ? `Publicado ${fmtWhen(p.publishedAt)}`
+                                : p.scheduledAt
+                                  ? fmtWhen(p.scheduledAt)
+                                  : "Sem data"}
+                            </button>
+                          )}
+                        </div>
+
+                        {isEditing ? (
+                          <div className="mt-2 flex flex-col gap-2">
+                            <textarea
+                              className="field min-h-[76px] border-v4-red text-[13px]"
+                              value={draftCaption}
+                              maxLength={2200}
+                              autoFocus
+                              disabled={savingCaption}
+                              onChange={(e) => setDraftCaption(e.target.value)}
+                            />
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-primary"
+                                onClick={() => void saveCaption(p)}
+                                disabled={savingCaption}
+                                aria-busy={savingCaption}
+                              >
+                                {savingCaption && <span className="spinner" aria-hidden />}
+                                {st.urgent ? "Salvar e voltar para revisão" : "Salvar"}
+                              </button>
+                              <button type="button" className="btn btn-sm" onClick={() => setEditing(null)} disabled={savingCaption}>
+                                Cancelar
+                              </button>
+                              <span className="tnum ml-auto font-mono text-[11px] text-ink-500">{draftCaption.length}/2200</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="mt-1 line-clamp-2 text-[13px] leading-relaxed text-ink-200">
+                            {p.caption ? p.caption.replace(/\n/g, " ") : <span className="text-ink-600">— sem legenda —</span>}
+                          </p>
+                        )}
+
+                        {p.feedback && !isEditing && (
+                          <div className="mt-2 flex gap-2 rounded-lg border border-vermelho/25 bg-vermelho-dim px-2.5 py-2">
+                            <Icon name="message" size={13} className="mt-0.5 shrink-0 text-vermelho-fg" />
+                            <div className="min-w-0">
+                              <div className="text-[10.5px] font-semibold uppercase tracking-[0.04em] text-vermelho-fg">
+                                Comentário do cliente
+                              </div>
+                              <p className="mt-0.5 text-[12.5px] leading-relaxed text-ink-200">{p.feedback}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${st.badge}`}>
+                          {st.label}
                         </span>
-                      </p>
-                    )}
-                  </div>
-
-                  <ActionMenu items={postMenu(p)} label="Ações do criativo" />
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+                        <ActionMenu items={postMenu(p)} label="Ações do criativo" />
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      </div>
 
       {/* ---------- diálogos ---------- */}
+      <ApprovalLinkModal
+        open={sentCount !== null}
+        onClose={() => setSentCount(null)}
+        url={guestUrl}
+        count={sentCount ?? 1}
+        clientName={project.clientName}
+      />
+
+      <HistoryModal post={history} onClose={() => setHistory(null)} />
+
       {viewing && isVertical(viewing) && (
         <StoryViewer
           items={[{ id: viewing.id, format: viewing.format, assets: viewing.assets, caption: viewing.caption || undefined, status: viewing.status }]}
@@ -335,11 +503,6 @@ export default function ProjectWorkspace({
         )}
       </Modal>
 
-      <CaptionDialog
-        post={editing}
-        onClose={() => setEditing(null)}
-        onSave={(p, caption) => patchPost(p, { caption }, "Legenda atualizada.")}
-      />
       <ScheduleDialog
         post={scheduling}
         onClose={() => setScheduling(null)}
@@ -418,7 +581,7 @@ export default function ProjectWorkspace({
         <p>Apaga o projeto, todos os criativos e as mídias no armazenamento. O link do cliente deixa de existir.</p>
         <ImpactList
           items={[
-            { label: "criativo(s) e suas decisões", count: counts.all },
+            { label: "criativo(s) e suas decisões", count: posts.length },
             { label: "aprovado(s) — inclusive os já no calendário", count: counts.approved },
           ]}
         />
@@ -428,67 +591,10 @@ export default function ProjectWorkspace({
   );
 }
 
-/* ---------------- Editar legenda ---------------- */
-function CaptionDialog({
-  post,
-  onClose,
-  onSave,
-}: {
-  post: Post | null;
-  onClose: () => void;
-  onSave: (p: Post, caption: string) => Promise<string | null>;
-}) {
-  return (
-    <Modal
-      open={Boolean(post)}
-      onClose={onClose}
-      title={post?.format === "story" ? "Editar observação" : "Editar legenda"}
-      description={post && post.status !== "pending" ? "O criativo já foi avaliado — a decisão do cliente continua valendo." : undefined}
-    >
-      {post && <CaptionForm key={post.id} post={post} onClose={onClose} onSave={onSave} />}
-    </Modal>
-  );
-}
-
-function CaptionForm({
-  post,
-  onClose,
-  onSave,
-}: {
-  post: Post;
-  onClose: () => void;
-  onSave: (p: Post, caption: string) => Promise<string | null>;
-}) {
-  const [value, setValue] = useState(post.caption);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  return (
-    <form
-      onSubmit={async (e) => {
-        e.preventDefault();
-        setBusy(true);
-        const err = await onSave(post, value);
-        setBusy(false);
-        if (err) setError(err);
-        else onClose();
-      }}
-    >
-      <textarea className="field min-h-[160px]" value={value} maxLength={2200} onChange={(e) => setValue(e.target.value)} autoFocus />
-      <div className="mt-1 flex justify-between text-[11px] text-ink-500">
-        <span>{error && <span className="font-semibold text-vermelho-fg">{error}</span>}</span>
-        <span className="tnum">{value.length}/2200</span>
-      </div>
-      <div className="modal-actions">
-        <button type="button" className="btn" onClick={onClose} disabled={busy}>
-          Cancelar
-        </button>
-        <button type="submit" className="btn btn-primary" disabled={busy || value === post.caption} aria-busy={busy}>
-          {busy && <span className="spinner" aria-hidden />}
-          {busy ? "Salvando…" : "Salvar"}
-        </button>
-      </div>
-    </form>
-  );
+/** Texto do formato usado na busca ("carrossel", "reels"…). */
+function FormatText(p: Post): string {
+  const b = formatBadge(p);
+  return b === "post" ? "post" : b === "carousel" ? "carrossel" : b === "reels" ? "reels" : "stories";
 }
 
 /* ---------------- Data no calendário ---------------- */

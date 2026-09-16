@@ -5,7 +5,17 @@
 // formatos verticais (Reels e Stories).
 // ============================================================
 
-export type PostStatus = "pending" | "approved" | "rejected";
+/**
+ * Estado de aprovação do criativo.
+ *  - draft: rascunho do time. Existe no painel, ainda não foi para o link do
+ *    cliente — é o que "Salvar rascunho" grava.
+ *  - pending: enviado, aguardando a decisão do cliente.
+ *  - approved / rejected: o cliente decidiu.
+ *
+ * "Ajustes solicitados" não é um estado próprio: é `rejected` com comentário
+ * do cliente (reprovar pedindo mudança). Ver `stageOf` em ./stage.
+ */
+export type PostStatus = "draft" | "pending" | "approved" | "rejected";
 
 /**
  * Formato do criativo, como o Instagram o publica.

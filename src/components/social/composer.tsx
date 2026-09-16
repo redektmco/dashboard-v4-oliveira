@@ -7,9 +7,8 @@ import { MediaView } from "./media";
 import { StoryViewer, type StoryItem } from "./story-viewer";
 import { FormatIcon, VerticalPreview } from "./vertical-preview";
 import { Icon } from "@/components/icon";
-import { Segmented } from "@/components/form-controls";
-import { toast } from "@/components/toast";
 import { matchCaptionsToFiles, parseBatchCaptions } from "@/lib/social/batch";
+import { toast } from "@/components/toast";
 import {
   FORMAT_ACCEPT_ATTR,
   MULTIPART_FROM_BYTES,
@@ -34,29 +33,41 @@ type Item = {
   width?: number;
   height?: number;
   duration?: number;
-  caption: string;
   state: ItemState;
   progress: number; // 0..1
   error?: string;
   url?: string; // no Blob, depois do upload
 };
 
+/** Um criativo do modo lote: arquivos agrupados à mão, com legenda própria. */
+type Group = { id: string; caption: string; keys: string[] };
+
+/** De onde uma miniatura está sendo arrastada. */
+type Zone = "single" | "loose" | string; // string = id de um grupo
+
 const CONCURRENCY = 3;
+const CAPTION_MAX = 2200; // limite do Instagram
+
+const FORMAT_CARDS: { value: PostFormat; label: string; hint: string }[] = [
+  { value: "feed", label: "Post/Carrossel", hint: "4:5 · até 20" },
+  { value: "reels", label: "Reels", hint: "9:16 · vídeo" },
+  { value: "story", label: "Stories", hint: "9:16 · sequência" },
+];
 
 const FORMAT_COPY: Record<PostFormat, { single: string; batch: string; drop: string }> = {
   feed: {
     single: "Uma arte vira post; várias viram um carrossel, na ordem da lista.",
-    batch: "Cada arte vira um post separado, com a própria legenda.",
+    batch: "Cada grupo vira um post ou carrossel, com a própria legenda.",
     drop: "Imagens (JPG, PNG, WebP) ou vídeo",
   },
   reels: {
     single: "Um vídeo vertical 9:16 com legenda.",
-    batch: "Cada vídeo vira um Reels separado, com a própria legenda.",
+    batch: "Cada grupo vira um Reels — um vídeo por grupo.",
     drop: "Vídeo vertical 9:16 (MP4, MOV ou WebM)",
   },
   story: {
     single: "Os arquivos formam uma sequência de Stories, avaliada como um conjunto.",
-    batch: "Cada arquivo vira um Story separado, avaliado individualmente.",
+    batch: "Cada grupo vira uma sequência de Stories separada.",
     drop: "Imagens ou vídeos verticais 9:16",
   },
 };
@@ -111,6 +122,8 @@ function uploadErrorMessage(e: unknown): string {
   return msg.length < 140 ? msg : "Falha no envio deste arquivo.";
 }
 
+const newGroup = (): Group => ({ id: crypto.randomUUID(), caption: "", keys: [] });
+
 /**
  * Envio de criativos para aprovação.
  *
@@ -118,27 +131,39 @@ function uploadErrorMessage(e: unknown): string {
  * com progresso por arquivo. Um arquivo com problema não derruba os outros:
  * ele fica marcado com o motivo e pode ser reenviado sozinho. Cada criativo
  * leva uma chave de idempotência, então reenviar depois de uma falha nunca
- * duplica o que já entrou. Nada vai para o cliente antes do clique em
- * "Enviar para aprovação" — até lá é só pré-visualização local.
+ * duplica o que já entrou.
+ *
+ * Dois modos: "Individual" monta um criativo só (a ordem das miniaturas é a
+ * ordem do carrossel / da sequência); "Em lote" deixa arrastar os arquivos
+ * para grupos, e cada grupo vira um criativo com a própria legenda.
+ *
+ * Nada vai para o cliente antes do clique em "Criar e enviar" — "Salvar
+ * rascunho" grava no painel sem publicar no link.
  */
 export function Composer({
   projectId,
   handle,
   onCreated,
+  onSent,
 }: {
   projectId: string;
   handle: string;
+  /** Lista de criativos devolvida pelo servidor depois de gravar. */
   onCreated: (posts: Post[]) => void;
+  /** Quantos criativos foram efetivamente enviados ao link do cliente. */
+  onSent?: (count: number) => void;
 }) {
   const [format, setFormat] = useState<PostFormat>("feed");
   const [mode, setMode] = useState<Mode>("single");
   const [items, setItems] = useState<Item[]>([]);
+  const [groups, setGroups] = useState<Group[]>([newGroup(), newGroup()]);
   const [caption, setCaption] = useState("");
-  const [bulk, setBulk] = useState("");
   const [sending, setSending] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
   const [viewer, setViewer] = useState<number | null>(null);
   const [over, setOver] = useState(false);
+  const [laneOver, setLaneOver] = useState<string | null>(null);
+  const [bulk, setBulk] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const aborters = useRef(new Map<string, AbortController>());
   const itemsRef = useRef(items);
@@ -188,7 +213,6 @@ export function Composer({
         previewUrl: URL.createObjectURL(file),
         kind: kindOfType(contentType) ?? "image",
         contentType,
-        caption: "",
         state: err ? "error" : "ready",
         progress: 0,
         error: err ?? undefined,
@@ -209,24 +233,16 @@ export function Composer({
     URL.revokeObjectURL(it.previewUrl);
     if (it.state === "uploaded" && it.url) void cleanup([it.url]);
     setItems((list) => list.filter((i) => i.key !== key));
-  };
-
-  const move = (key: string, delta: -1 | 1) => {
-    setItems((list) => {
-      const i = list.findIndex((x) => x.key === key);
-      const j = i + delta;
-      if (i < 0 || j < 0 || j >= list.length) return list;
-      const next = [...list];
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    });
+    setGroups((gs) => gs.map((g) => ({ ...g, keys: g.keys.filter((k) => k !== key) })));
   };
 
   const reset = () => {
     items.forEach((i) => URL.revokeObjectURL(i.previewUrl));
     setItems([]);
+    setGroups([newGroup(), newGroup()]);
     setCaption("");
     setBulk("");
+    setSummary(null);
     if (inputRef.current) inputRef.current.value = "";
   };
 
@@ -243,12 +259,59 @@ export function Composer({
     );
   };
 
-  const applyBulk = () => {
-    const blocks = parseBatchCaptions(bulk);
-    const matched = matchCaptionsToFiles(blocks, items.map((i) => i.file.name));
-    setItems((list) => list.map((i, idx) => ({ ...i, caption: matched[idx] || i.caption })));
-    toast(`${matched.filter(Boolean).length} legenda(s) aplicada(s).`, { tone: "info" });
+  /* ------------------------- arrastar e soltar ------------------------- */
+
+  const dragged = useRef<{ key: string; from: Zone } | null>(null);
+
+  const onDragStart = (key: string, from: Zone) => (e: React.DragEvent) => {
+    dragged.current = { key, from };
+    e.dataTransfer.effectAllowed = "move";
+    // Firefox só inicia o arrasto se houver algum dado no transfer.
+    e.dataTransfer.setData("text/plain", key);
   };
+
+  /**
+   * Move a miniatura para `to`, opcionalmente antes de `beforeKey`. No modo
+   * individual reordena a própria lista; no lote troca de grupo.
+   */
+  const moveTo = (to: Zone, beforeKey?: string) => {
+    const drag = dragged.current;
+    dragged.current = null;
+    setLaneOver(null);
+    if (!drag || (drag.key === beforeKey && drag.from === to)) return;
+
+    if (to === "single") {
+      setItems((list) => {
+        const from = list.findIndex((i) => i.key === drag.key);
+        if (from < 0) return list;
+        const next = list.slice();
+        const [moved] = next.splice(from, 1);
+        const at = beforeKey ? next.findIndex((i) => i.key === beforeKey) : -1;
+        next.splice(at < 0 ? next.length : at, 0, moved);
+        return next;
+      });
+      return;
+    }
+
+    setGroups((gs) =>
+      gs.map((g) => {
+        // Sai de onde estava…
+        const keys = g.keys.filter((k) => k !== drag.key);
+        if (g.id !== to) return keys.length === g.keys.length ? g : { ...g, keys };
+        // …e entra no destino, na posição solta.
+        const at = beforeKey ? keys.indexOf(beforeKey) : -1;
+        const next = keys.slice();
+        next.splice(at < 0 ? next.length : at, 0, drag.key);
+        return { ...g, keys: next };
+      }),
+    );
+  };
+
+  const byKey = useMemo(() => new Map(items.map((i) => [i.key, i])), [items]);
+  const grouped = useMemo(() => new Set(groups.flatMap((g) => g.keys)), [groups]);
+  const loose = useMemo(() => items.filter((i) => !grouped.has(i.key)), [items, grouped]);
+
+  /* ----------------------------- envio ----------------------------- */
 
   async function cleanup(urls: string[]) {
     await fetch("/api/social/upload", {
@@ -315,7 +378,9 @@ export function Composer({
 
   type Result = { clientKey: string | null; status: "created" | "duplicate" | "error"; error?: string };
 
-  const createPosts = async (payload: { clientKey: string; format: PostFormat; caption: string; assets: Omit<Asset, "id">[] }[]) => {
+  const createPosts = async (
+    payload: { clientKey: string; format: PostFormat; caption: string; status: "draft" | "pending"; assets: Omit<Asset, "id">[] }[],
+  ) => {
     const res = await fetch(`/api/social/projects/${projectId}/posts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -337,96 +402,96 @@ export function Composer({
     }
   };
 
-  const send = async () => {
-    let pendingItems = items.filter((i) => i.state !== "done" && !(i.state === "error" && !i.url && rejectReason(i.file, format)));
-    if (!pendingItems.length) return;
+  /**
+   * Os criativos que este composer vai gravar, já na forma final: um por
+   * criativo no individual, um por grupo não-vazio no lote.
+   */
+  const plan = useMemo((): { items: Item[]; caption: string }[] => {
+    const usable = (list: Item[]) => list.filter((i) => i.state !== "done" && !rejectReason(i.file, format));
+    if (mode === "single") {
+      const list = usable(items);
+      return list.length ? [{ items: list, caption }] : [];
+    }
+    return groups
+      .map((g) => ({ items: usable(g.keys.map((k) => byKey.get(k)!).filter(Boolean)), caption: g.caption }))
+      .filter((g) => g.items.length > 0);
+  }, [mode, items, groups, caption, byKey, format]);
+
+  /** Envia (ou guarda) o que está montado. `asDraft` não toca no link do cliente. */
+  const submit = async (asDraft: boolean) => {
+    if (!plan.length) {
+      setSummary(mode === "batch" ? "Monte ao menos um grupo com arquivos." : "Adicione ao menos um arquivo.");
+      return;
+    }
+    if (format === "reels" && plan.some((p) => p.items.length !== 1)) {
+      setSummary("Reels é um vídeo por criativo. Deixe um arquivo em cada grupo.");
+      return;
+    }
+
     setSending(true);
     setSummary(null);
     try {
-      if (mode === "single") {
-        const groupKey = await sha(`${format}|${pendingItems.map((i) => fileSig(i.file)).join("||")}`);
-        if ((await existingKeys([groupKey])).has(groupKey)) {
-          toast("Esse criativo já está no projeto — nada foi enviado de novo.", { tone: "info" });
-          pendingItems.forEach((i) => URL.revokeObjectURL(i.previewUrl));
-          setItems([]);
-          setCaption("");
-          return;
-        }
-      } else {
-        const keyed = await Promise.all(pendingItems.map(async (i) => [i.key, await sha(`${format}|${fileSig(i.file)}`)] as const));
-        const already = await existingKeys(keyed.map(([, k]) => k));
-        const skip = new Set(keyed.filter(([, k]) => already.has(k)).map(([key]) => key));
-        if (skip.size) {
-          toast(`${skip.size} arquivo(s) já estavam no projeto e foram ignorados.`, { tone: "info" });
-          setItems((list) => list.filter((i) => !skip.has(i.key)));
-          pendingItems = pendingItems.filter((i) => !skip.has(i.key));
-          if (!pendingItems.length) return;
-        }
-      }
-
-      const urls = await uploadAll(pendingItems);
-
-      if (mode === "single") {
-        // Um criativo com todas as mídias: só cria se todas subiram.
-        const failed = pendingItems.filter((i) => !urls.has(i.key));
-        if (failed.length) {
-          setSummary(`${failed.length} arquivo(s) não subiram. Reenvie ou remova para continuar — os que já subiram não sobem de novo.`);
-          return;
-        }
-        const clientKey = await sha(`${format}|${pendingItems.map((i) => fileSig(i.file)).join("||")}`);
-        const { results, posts } = await createPosts([
-          { clientKey, format, caption, assets: pendingItems.map((i) => toAsset(i, urls.get(i.key)!)) },
-        ]);
-        const r = results[0];
-        if (r?.status === "error") {
-          setSummary(r.error ?? "Não foi possível criar o criativo.");
-          return;
-        }
-        onCreated(posts);
-        if (r?.status === "duplicate") {
-          // Corrida: outro envio criou o mesmo criativo enquanto este subia.
-          void cleanup(pendingItems.map((i) => urls.get(i.key)!).filter(Boolean));
-          toast("Esse criativo já estava no projeto — nada foi duplicado.", { tone: "info" });
-        } else toast("Enviado para aprovação.");
-        pendingItems.forEach((i) => URL.revokeObjectURL(i.previewUrl));
-        setItems([]);
-        setCaption("");
-        if (inputRef.current) inputRef.current.value = "";
+      // Uma chave por criativo: o conjunto de arquivos, no formato escolhido.
+      const keys = await Promise.all(
+        plan.map((p) => sha(`${format}|${p.items.map((i) => fileSig(i.file)).join("||")}`)),
+      );
+      const already = await existingKeys(keys);
+      const fresh = plan.map((p, i) => ({ ...p, clientKey: keys[i] })).filter((p) => !already.has(p.clientKey));
+      const skipped = plan.length - fresh.length;
+      if (skipped) toast(`${skipped} criativo(s) já estavam no projeto e foram ignorados.`, { tone: "info" });
+      if (!fresh.length) {
+        reset();
         return;
       }
 
-      // Lote: cada arquivo que subiu vira um criativo, na ordem da lista.
-      const ready = pendingItems.filter((i) => urls.has(i.key));
-      const keyed = await Promise.all(ready.map(async (i) => ({ item: i, clientKey: await sha(`${format}|${fileSig(i.file)}`) })));
+      const urls = await uploadAll(fresh.flatMap((p) => p.items));
+
+      // Um criativo só sai inteiro: se faltou mídia, ele fica para o reenvio.
+      const ready = fresh.filter((p) => p.items.every((i) => urls.has(i.key)));
+      const incomplete = fresh.length - ready.length;
+      if (!ready.length) {
+        setSummary(
+          "Nenhum criativo ficou completo — veja o motivo em cada arquivo e reenvie. O que já subiu não sobe de novo.",
+        );
+        return;
+      }
+
+      const { results, posts } = await createPosts(
+        ready.map((p) => ({
+          clientKey: p.clientKey,
+          format,
+          caption: p.caption,
+          status: asDraft ? ("draft" as const) : ("pending" as const),
+          assets: p.items.map((i) => toAsset(i, urls.get(i.key)!)),
+        })),
+      );
+      onCreated(posts);
+
       let created = 0;
       let dup = 0;
-      if (keyed.length) {
-        const { results, posts } = await createPosts(
-          keyed.map(({ item, clientKey }) => ({ clientKey, format, caption: item.caption, assets: [toAsset(item, urls.get(item.key)!)] })),
+      const failures: string[] = [];
+      results.forEach((r, idx) => {
+        if (r.status === "created") created++;
+        else if (r.status === "duplicate") {
+          dup++;
+          void cleanup(ready[idx].items.map((i) => urls.get(i.key)!).filter(Boolean));
+        } else if (r.error) failures.push(r.error);
+      });
+
+      if (failures.length || incomplete) {
+        setSummary(
+          `${created + dup} de ${plan.length} gravados. ${failures[0] ?? "Alguns arquivos não subiram."} ` +
+            "Os que já subiram não sobem de novo — clique de novo para reenviar só o que falta.",
         );
-        results.forEach((r, idx) => {
-          const it = keyed[idx]?.item;
-          if (!it) return;
-          if (r.status === "error") patch(it.key, { state: "error", error: r.error });
-          else {
-            if (r.status === "created") created++;
-            else {
-              dup++;
-              void cleanup([urls.get(it.key)!]);
-            }
-            patch(it.key, { state: "done" });
-          }
-        });
-        onCreated(posts);
-      }
-      const failed = pendingItems.length - created - dup;
-      if (!failed) {
-        toast(`${created} criativo(s) enviado(s) para aprovação${dup ? ` · ${dup} já existia(m)` : ""}.`);
-        pendingItems.forEach((i) => URL.revokeObjectURL(i.previewUrl));
-        setItems((list) => list.filter((i) => i.state !== "done"));
       } else {
-        setSummary(`${created + dup} de ${pendingItems.length} enviados. ${failed} com problema — veja o motivo em cada um e reenvie só esses.`);
-        setItems((list) => list.filter((i) => i.state !== "done"));
+        const label = created === 1 ? "criativo" : "criativos";
+        toast(
+          asDraft
+            ? `${created} ${label} salvos como rascunho.`
+            : `${created} ${label} enviados para aprovação${dup ? ` · ${dup} já existia(m)` : ""}.`,
+        );
+        if (!asDraft && created) onSent?.(created);
+        reset();
       }
     } catch (e) {
       // Falha ao criar (rede/servidor): as mídias já estão no Blob e o
@@ -437,25 +502,40 @@ export function Composer({
     }
   };
 
-  const cancel = () => {
-    aborters.current.forEach((a) => a.abort());
+  const cancel = () => aborters.current.forEach((a) => a.abort());
+
+  /**
+   * Preenche as legendas dos grupos a partir de um texto colado. `[arquivo]`
+   * casa pelo nome do primeiro arquivo do grupo; o resto entra na ordem dos
+   * grupos. Escrever dez legendas no editor e colar de uma vez é mais rápido
+   * do que digitar campo a campo.
+   */
+  const applyBulk = () => {
+    const firstNames = groups.map((g) => byKey.get(g.keys[0])?.file.name ?? "");
+    const matched = matchCaptionsToFiles(parseBatchCaptions(bulk), firstNames);
+    setGroups((gs) => gs.map((g, i) => (matched[i] ? { ...g, caption: matched[i] } : g)));
+    const n = matched.filter(Boolean).length;
+    toast(n ? `${n} legenda(s) aplicada(s).` : "Nenhuma legenda casou com os grupos.", { tone: n ? "info" : "error" });
   };
+
+  /* ----------------------------- derivados ----------------------------- */
 
   const active = useMemo(() => items.filter((i) => !rejectReason(i.file, format)), [items, format]);
   const invalid = items.length - active.length;
-  // Um criativo único não sai com arquivo faltando: o carrossel/sequência
-  // precisa ser exatamente o que o time montou.
-  const blockedByInvalid = mode === "single" && invalid > 0;
   const totalBytes = active.reduce((a, i) => a + i.file.size, 0);
   const sentBytes = active.reduce((a, i) => a + i.file.size * (i.state === "uploaded" || i.state === "done" ? 1 : i.progress), 0);
   const overall = totalBytes ? sentBytes / totalBytes : 0;
-  const retryable = items.some((i) => i.state === "error" && !rejectReason(i.file, format));
-  const sendable = active.filter((i) => i.state !== "done").length;
   const vertical = format !== "feed";
+  const nCreatives = plan.length;
+
+  const aspectWarnings = useMemo(
+    () => active.map((i) => aspectWarning(format, i)).filter((w): w is string => Boolean(w)),
+    [active, format],
+  );
 
   const previewAssets: Asset[] = useMemo(
     () =>
-      active.map((i) => ({
+      (mode === "single" ? active : (plan[0]?.items ?? [])).map((i) => ({
         id: i.key,
         url: i.previewUrl,
         name: i.file.name,
@@ -464,270 +544,371 @@ export function Composer({
         width: i.width,
         height: i.height,
       })),
-    [active],
+    [mode, active, plan],
   );
 
-  const viewerItems: StoryItem[] = useMemo(() => {
-    if (mode === "single") return [{ id: "draft", format, assets: previewAssets, caption: format === "reels" ? caption : undefined }];
-    return previewAssets.map((a, idx) => ({
-      id: a.id,
-      format,
-      assets: [a],
-      caption: format === "reels" ? active[idx]?.caption : undefined,
-    }));
-  }, [mode, format, previewAssets, caption, active]);
+  const previewCaption = mode === "single" ? caption : (plan[0]?.caption ?? "");
+
+  const viewerItems: StoryItem[] = useMemo(
+    () => [{ id: "draft", format, assets: previewAssets, caption: format === "reels" ? previewCaption : undefined }],
+    [format, previewAssets, previewCaption],
+  );
 
   const copy = FORMAT_COPY[format];
-  const buttonLabel =
-    mode === "single"
-      ? "Enviar para aprovação"
-      : `Enviar ${sendable || ""} ${format === "story" ? "Story" : format === "reels" ? "Reels" : "post"}${sendable === 1 || format === "reels" ? "" : "s"} para aprovação`;
+  const ctaLabel = sending
+    ? `Enviando… ${Math.round(overall * 100)}%`
+    : nCreatives > 1
+      ? `Criar ${nCreatives} e enviar`
+      : "Criar e enviar para aprovação";
+
+  /* ------------------------------ miniatura ------------------------------ */
+
+  /** Miniatura arrastável: a ordem que se vê aqui é a ordem publicada. */
+  const Thumb = ({
+    it,
+    index,
+    zone,
+    size = "md",
+  }: {
+    it: Item;
+    index: number;
+    zone: Zone;
+    size?: "sm" | "md";
+  }) => {
+    const rejected = Boolean(rejectReason(it.file, format));
+    const box = size === "sm" ? "h-[52px] w-[42px]" : "h-[78px] w-[62px]";
+    return (
+      <div
+        draggable={!sending}
+        onDragStart={onDragStart(it.key, zone)}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          moveTo(zone, it.key);
+        }}
+        className={`group relative shrink-0 overflow-hidden rounded-md bg-black ring-1 ring-[var(--border-strong)] ${box} ${
+          sending ? "" : "cursor-grab active:cursor-grabbing"
+        } ${rejected ? "ring-vermelho" : "hover:ring-ink-500"}`}
+        title={it.error ? `${it.file.name} — ${it.error}` : it.file.name}
+      >
+        {rejected ? (
+          <span className="absolute inset-0 grid place-items-center text-vermelho-fg">
+            <Icon name="alert" size={14} />
+          </span>
+        ) : (
+          <MediaView asset={{ url: it.previewUrl, name: it.file.name, kind: it.kind }} />
+        )}
+
+        <span className="tnum absolute left-1 top-1 rounded bg-black/75 px-1 font-mono text-[9px] leading-[14px] text-white">
+          {index + 1}
+        </span>
+
+        {!sending && (
+          <button
+            type="button"
+            onClick={() => remove(it.key)}
+            className="absolute right-0.5 top-0.5 grid h-[18px] w-[18px] place-items-center rounded bg-black/75 text-ink-300 opacity-0 transition hover:bg-v4-red hover:text-white group-hover:opacity-100 focus-visible:opacity-100"
+            aria-label={`Remover ${it.file.name}`}
+          >
+            <Icon name="x" size={11} />
+          </button>
+        )}
+
+        {(it.state === "uploading" || it.state === "uploaded") && (
+          <span className="absolute inset-x-0 bottom-0 h-[3px] bg-black/60">
+            <i className="block h-full bg-v4-red transition-[width]" style={{ width: `${Math.round(it.progress * 100)}%` }} />
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  /* ------------------------------- render ------------------------------- */
 
   return (
-    <section className="panel">
-      <header className="flex flex-col gap-3 border-b border-[var(--border-hair)] px-4 py-3.5 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h2 className="font-display text-[16px] font-semibold text-ink-100">Novo criativo</h2>
-          <p className="mt-0.5 text-[12.5px] text-ink-400">{copy[mode]}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Segmented
-            label="Formato"
-            value={format}
-            onChange={changeFormat}
-            options={[
-              { value: "feed", label: <><FormatIcon badge="post" /> Post / Carrossel</> },
-              { value: "reels", label: <><FormatIcon badge="reels" /> Reels</> },
-              { value: "story", label: <><FormatIcon badge="story" /> Stories</> },
-            ]}
-          />
-          <Segmented
-            label="Quantidade"
-            value={mode}
-            onChange={(m) => !sending && setMode(m)}
-            options={[
-              { value: "single", label: "Um criativo" },
-              { value: "batch", label: "Em lote" },
-            ]}
-          />
+    <section className="panel flex flex-col">
+      <header className="flex items-center justify-between gap-3 border-b border-[var(--border-hair)] px-4 py-3.5 sm:px-5">
+        <h2 className="font-display text-[16px] font-semibold text-ink-100">Novo criativo</h2>
+        <div className="flex rounded-full border border-[var(--border-hair)] bg-ink-950 p-0.5">
+          {(["single", "batch"] as Mode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => !sending && setMode(m)}
+              aria-pressed={mode === m}
+              className={`h-[26px] rounded-full px-3 text-[12px] font-semibold transition ${
+                mode === m ? "bg-v4-red text-white" : "text-ink-400 hover:text-ink-100"
+              }`}
+            >
+              {m === "single" ? "Individual" : "Em lote"}
+            </button>
+          ))}
         </div>
       </header>
 
-      <div className="grid gap-5 px-4 py-4 sm:px-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="min-w-0 space-y-3">
-          <label
-            className="dropzone"
-            data-over={over ? "" : undefined}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setOver(true);
-            }}
-            onDragLeave={() => setOver(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setOver(false);
-              void addFiles(Array.from(e.dataTransfer.files));
-            }}
-          >
-            <Icon name="image" size={22} className="text-ink-400" />
-            <span className="text-[13.5px] font-semibold text-ink-100">
-              Arraste os arquivos ou <span className="text-v4-red">escolha no computador</span>
-            </span>
-            <span className="text-[12px] text-ink-500">{copy.drop} · imagem até 30 MB, vídeo até 500 MB</span>
-            <input
-              ref={inputRef}
-              type="file"
-              className="sr-only"
-              multiple={!(format === "reels" && mode === "single")}
-              accept={FORMAT_ACCEPT_ATTR[format]}
-              disabled={sending}
-              onChange={(e) => {
-                void addFiles(Array.from(e.target.files ?? []));
-                e.target.value = "";
-              }}
-            />
-          </label>
-
-          {items.length > 0 && (
-            <ul className="divide-y divide-[var(--border-hair)] overflow-hidden rounded-lg border border-[var(--border-hair)]">
-              {items.map((it, idx) => {
-                const warn = !it.error ? aspectWarning(format, it) : null;
-                const rejected = Boolean(rejectReason(it.file, format));
-                return (
-                  <li key={it.key} className="flex gap-3 bg-ink-950/40 px-3 py-2.5">
-                    <div
-                      className={`relative shrink-0 overflow-hidden rounded-md bg-black ${vertical ? "h-[72px] w-[41px]" : "h-14 w-14"}`}
-                    >
-                      {rejected ? (
-                        <span className="absolute inset-0 grid place-items-center text-vermelho-fg">
-                          <Icon name="alert" size={16} />
-                        </span>
-                      ) : (
-                        <MediaView asset={{ url: it.previewUrl, name: it.file.name, kind: it.kind }} />
-                      )}
-                      {!rejected && it.kind === "video" && (
-                        <span className="absolute bottom-0.5 right-0.5 rounded bg-black/70 px-1 font-mono text-[9px] text-white">
-                          {it.duration ? `${Math.round(it.duration)}s` : "vídeo"}
-                        </span>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="tnum shrink-0 font-mono text-[11px] text-ink-500">{idx + 1}</span>
-                        <span className="min-w-0 truncate text-[13px] font-medium text-ink-100" title={it.file.name}>
-                          {it.file.name}
-                        </span>
-                        <span className="tnum shrink-0 text-[11px] text-ink-500">{fmtMB(it.file.size)}</span>
-                      </div>
-                      {it.state === "error" ? (
-                        <p className="mt-1 flex items-start gap-1.5 text-[12px] font-medium text-vermelho-fg">
-                          <Icon name="alert" size={12} className="mt-0.5 shrink-0" />
-                          {it.error}
-                        </p>
-                      ) : it.state === "uploading" || it.state === "uploaded" || it.state === "done" ? (
-                        <div className="mt-1.5 flex items-center gap-2">
-                          <div className={`progress-bar flex-1 ${it.state !== "uploading" ? "is-done" : ""}`}>
-                            <i style={{ width: `${Math.round(it.progress * 100)}%` }} />
-                          </div>
-                          <span className="tnum w-16 text-right text-[11px] text-ink-400">
-                            {it.state === "uploading" ? `${Math.round(it.progress * 100)}%` : it.state === "done" ? "enviado" : "na nuvem"}
-                          </span>
-                        </div>
-                      ) : warn ? (
-                        <p className="mt-1 text-[12px] text-amarelo-fg">{warn}</p>
-                      ) : (
-                        <p className="mt-1 text-[12px] text-ink-500">
-                          {it.width && it.height ? `${it.width}×${it.height}` : it.kind === "video" ? "vídeo" : "imagem"} · pronto
-                        </p>
-                      )}
-                      {mode === "batch" && format !== "story" && !rejected && (
-                        <textarea
-                          className="field mt-2 min-h-[38px] resize-y py-1.5 text-[12.5px]"
-                          rows={1}
-                          placeholder="Legenda deste post…"
-                          value={it.caption}
-                          disabled={sending || it.state === "done"}
-                          onChange={(e) => patch(it.key, { caption: e.target.value })}
-                        />
-                      )}
-                    </div>
-                    <div className="flex shrink-0 flex-col items-center gap-0.5">
-                      {mode === "single" && items.length > 1 && (
-                        <>
-                          <button type="button" className="menu-trigger menu-trigger--sm" onClick={() => move(it.key, -1)} disabled={sending || idx === 0} aria-label="Mover para cima">
-                            <Icon name="chevronDown" size={14} className="rotate-180" />
-                          </button>
-                          <button type="button" className="menu-trigger menu-trigger--sm" onClick={() => move(it.key, 1)} disabled={sending || idx === items.length - 1} aria-label="Mover para baixo">
-                            <Icon name="chevronDown" size={14} />
-                          </button>
-                        </>
-                      )}
-                      <button type="button" className="menu-trigger menu-trigger--sm" onClick={() => remove(it.key)} aria-label={`Remover ${it.file.name}`}>
-                        <Icon name="x" size={14} />
-                      </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-
-          {mode === "single" && format !== "story" && (
-            <label className="block">
-              <span className="label">Legenda</span>
-              <textarea
-                className="field mt-1 min-h-[96px]"
-                placeholder="Escreva a legenda do post…"
-                value={caption}
-                maxLength={2200}
-                disabled={sending}
-                onChange={(e) => setCaption(e.target.value)}
-              />
-            </label>
-          )}
-          {mode === "single" && format === "story" && (
-            <label className="block">
-              <span className="label">Observação para o cliente (opcional)</span>
-              <textarea
-                className="field mt-1 min-h-[60px]"
-                placeholder="Ex.: o link do sticker vai para a página da promoção."
-                value={caption}
-                maxLength={2200}
-                disabled={sending}
-                onChange={(e) => setCaption(e.target.value)}
-              />
-            </label>
-          )}
-
-          {mode === "batch" && format !== "story" && items.length > 1 && (
-            <details className="rounded-lg border border-[var(--border-hair)] px-3 py-2 text-[13px]">
-              <summary className="cursor-pointer font-semibold text-ink-300">Colar legendas em bloco</summary>
-              <p className="mt-2 text-[12px] text-ink-500">
-                Use <code className="font-mono">[arquivo.jpg]</code> antes da legenda para casar pelo nome, ou separe
-                com <code className="font-mono">---</code> para casar na ordem da lista.
-              </p>
-              <textarea
-                className="field mt-2 min-h-[110px] font-mono text-[12px]"
-                value={bulk}
-                onChange={(e) => setBulk(e.target.value)}
-                placeholder={"[arte-01.jpg]\nLegenda do primeiro post.\n\n---\n\n[arte-02.png]\nLegenda do segundo."}
-              />
-              <button type="button" className="btn btn-sm mt-2" onClick={applyBulk} disabled={!bulk.trim()}>
-                Aplicar às artes
-              </button>
-            </details>
-          )}
-
-          {summary && (
-            <p className="flex items-start gap-2 rounded-lg bg-amarelo-dim px-3 py-2 text-[13px] font-medium text-amarelo-fg" role="status">
-              <Icon name="alert" size={14} className="mt-0.5 shrink-0" />
-              {summary}
-            </p>
-          )}
-
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={send}
-              disabled={sending || sendable === 0 || blockedByInvalid}
-              title={blockedByInvalid ? "Remova os arquivos com problema para enviar." : undefined}
-              aria-busy={sending}
-            >
-              {sending && <span className="spinner" aria-hidden />}
-              {sending ? `Enviando… ${Math.round(overall * 100)}%` : retryable ? "Reenviar os que falharam" : buttonLabel}
-            </button>
-            {sending ? (
-              <button type="button" className="btn btn-ghost" onClick={cancel}>
-                Cancelar envio
-              </button>
-            ) : (
-              items.length > 0 && (
-                <button type="button" className="btn btn-ghost" onClick={reset}>
-                  Descartar
+      <div className="flex flex-col gap-4 px-4 py-4 sm:px-5">
+        {/* Formato primeiro: ele decide o que o dropzone aceita. */}
+        <div>
+          <span className="label">Formato</span>
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            {FORMAT_CARDS.map((f) => {
+              const on = format === f.value;
+              return (
+                <button
+                  key={f.value}
+                  type="button"
+                  onClick={() => changeFormat(f.value)}
+                  aria-pressed={on}
+                  className={`flex flex-col items-start gap-1 rounded-lg border px-2.5 py-2.5 text-left transition ${
+                    on
+                      ? "border-v4-red bg-v4-red/10 text-ink-100"
+                      : "border-[var(--border-strong)] bg-ink-850 text-ink-300 hover:bg-ink-800 hover:text-ink-100"
+                  }`}
+                >
+                  <FormatIcon badge={f.value === "feed" ? "post" : f.value === "reels" ? "reels" : "story"} />
+                  <span className="text-[12.5px] font-semibold leading-tight">{f.label}</span>
+                  <span className="text-[11px] text-ink-400">{f.hint}</span>
                 </button>
-              )
-            )}
-            {blockedByInvalid && !sending && (
-              <span className="text-[12px] font-medium text-vermelho-fg">Remova os arquivos com problema para enviar.</span>
-            )}
-            {active.length > 0 && !sending && !blockedByInvalid && (
-              <span className="text-[12px] text-ink-500">
-                {active.length} arquivo(s) · {fmtMB(totalBytes)}
-              </span>
-            )}
+              );
+            })}
           </div>
-          {sending && (
-            <div className="progress-bar" aria-label="Progresso do envio">
-              <i style={{ width: `${Math.round(overall * 100)}%` }} />
-            </div>
-          )}
         </div>
 
-        {/* Pré-visualização: exatamente o que o cliente vai ver. */}
-        <aside className="min-w-0">
+        <label
+          className="dropzone"
+          data-over={over ? "" : undefined}
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (!dragged.current) setOver(true);
+          }}
+          onDragLeave={() => setOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setOver(false);
+            if (dragged.current) return; // reordenação, não arquivo novo
+            void addFiles(Array.from(e.dataTransfer.files));
+          }}
+        >
+          <Icon name="upload" size={24} className="text-ink-400" />
+          <span className="text-[13.5px] font-semibold text-ink-100">
+            Arraste os arquivos aqui ou <span className="text-v4-red">selecione do computador</span>
+          </span>
+          <span className="text-[12px] text-ink-500">{copy.drop} · imagem até 30 MB, vídeo até 500 MB</span>
+          <input
+            ref={inputRef}
+            type="file"
+            className="sr-only"
+            multiple={!(format === "reels" && mode === "single")}
+            accept={FORMAT_ACCEPT_ATTR[format]}
+            disabled={sending}
+            onChange={(e) => {
+              void addFiles(Array.from(e.target.files ?? []));
+              e.target.value = "";
+            }}
+          />
+        </label>
+
+        {invalid > 0 && (
+          <p className="flex items-start gap-2 text-[12px] font-medium text-vermelho-fg">
+            <Icon name="alert" size={13} className="mt-0.5 shrink-0" />
+            {invalid} arquivo(s) fora das regras deste formato. Remova ou troque o formato para continuar.
+          </p>
+        )}
+
+        {/* Proporção fora do formato não impede o envio — mas o cliente vai
+            ver o corte, então o aviso aparece antes, não depois. */}
+        {aspectWarnings.length > 0 && (
+          <p className="flex items-start gap-2 text-[12px] text-amarelo-fg">
+            <Icon name="alert" size={13} className="mt-0.5 shrink-0" />
+            <span>
+              {aspectWarnings[0]}
+              {aspectWarnings.length > 1 && ` (+${aspectWarnings.length - 1} com o mesmo problema)`}
+            </span>
+          </p>
+        )}
+
+        {/* ---------------------- modo individual ---------------------- */}
+        {mode === "single" && (
+          <>
+            {items.length > 0 && (
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  moveTo("single");
+                }}
+              >
+                <div className="mb-2 flex items-baseline justify-between">
+                  <span className="label">
+                    {format === "story" ? "Ordem da sequência" : format === "reels" ? "Vídeo" : "Ordem do carrossel"}
+                  </span>
+                  <button type="button" className="text-[11.5px] text-ink-400 hover:text-ink-100" onClick={reset} disabled={sending}>
+                    Limpar
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {items.map((it, i) => (
+                    <Thumb key={it.key} it={it} index={i} zone="single" />
+                  ))}
+                </div>
+                {items.length > 1 && (
+                  <p className="mt-2 text-[11.5px] text-ink-500">
+                    Arraste as miniaturas para reordenar. A ordem vira a sequência publicada.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <label className="block">
+              <span className="flex items-baseline justify-between">
+                <span className="label">{format === "story" ? "Observação para o cliente (opcional)" : "Legenda"}</span>
+                <span className="tnum font-mono text-[11px] text-ink-500">
+                  {caption.length}/{CAPTION_MAX.toLocaleString("pt-BR")}
+                </span>
+              </span>
+              <textarea
+                className="field mt-1 min-h-[96px]"
+                placeholder={
+                  format === "story"
+                    ? "Ex.: o link do sticker vai para a página da promoção."
+                    : "Escreva a legenda que vai junto com o criativo. Hashtags no fim."
+                }
+                value={caption}
+                maxLength={CAPTION_MAX}
+                disabled={sending}
+                onChange={(e) => setCaption(e.target.value)}
+              />
+            </label>
+          </>
+        )}
+
+        {/* ------------------------- modo lote ------------------------- */}
+        {mode === "batch" && (
+          <div className="flex flex-col gap-3">
+            <div>
+              <div className="mb-2 flex items-baseline justify-between">
+                <span className="label">Arquivos soltos · {loose.length}</span>
+                <button type="button" className="text-[11.5px] text-ink-400 hover:text-ink-100" onClick={reset} disabled={sending}>
+                  Limpar
+                </button>
+              </div>
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  // Sair de todos os grupos = voltar a ficar solto.
+                  const drag = dragged.current;
+                  dragged.current = null;
+                  setLaneOver(null);
+                  if (drag) setGroups((gs) => gs.map((g) => ({ ...g, keys: g.keys.filter((k) => k !== drag.key) })));
+                }}
+                className="flex min-h-[58px] flex-wrap content-start gap-1.5 rounded-lg border border-dashed border-[var(--border-strong)] bg-ink-950 p-2"
+              >
+                {loose.map((it, i) => (
+                  <Thumb key={it.key} it={it} index={i} zone="loose" size="sm" />
+                ))}
+                {!loose.length && (
+                  <p className="px-1 py-3.5 text-[11.5px] text-ink-500">
+                    {items.length ? "Todos os arquivos já estão agrupados." : "Solte arquivos acima para começar."}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {groups.map((g, gi) => {
+              const list = g.keys.map((k) => byKey.get(k)!).filter(Boolean);
+              return (
+                <div
+                  key={g.id}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (laneOver !== g.id) setLaneOver(g.id);
+                  }}
+                  onDragLeave={() => setLaneOver((v) => (v === g.id ? null : v))}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    moveTo(g.id);
+                  }}
+                  className={`rounded-lg border p-3 transition ${
+                    laneOver === g.id ? "border-v4-red bg-v4-red/5" : "border-[var(--border-strong)] bg-ink-850"
+                  }`}
+                >
+                  <div className="mb-2 flex items-center gap-2">
+                    <Icon name="grip" size={14} className="text-ink-500" />
+                    <span className="text-[12.5px] font-semibold text-ink-100">Criativo {gi + 1}</span>
+                    <span className="tnum font-mono text-[11px] text-ink-400">
+                      {list.length ? `${list.length} ${format === "reels" ? "vídeo" : "arquivo"}${list.length > 1 ? "s" : ""}` : "vazio"}
+                    </span>
+                    {groups.length > 1 && (
+                      <button
+                        type="button"
+                        className="ml-auto text-ink-500 transition hover:text-v4-red"
+                        onClick={() => setGroups((gs) => gs.filter((x) => x.id !== g.id))}
+                        aria-label={`Remover criativo ${gi + 1}`}
+                        disabled={sending}
+                      >
+                        <Icon name="x" size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex min-h-[52px] flex-wrap content-start gap-1.5">
+                    {list.map((it, i) => (
+                      <Thumb key={it.key} it={it} index={i} zone={g.id} size="sm" />
+                    ))}
+                    {!list.length && <p className="px-1 py-4 text-[11.5px] text-ink-500">Solte arquivos aqui</p>}
+                  </div>
+                  <input
+                    type="text"
+                    className="field mt-2 py-1.5 text-[12.5px]"
+                    placeholder="Legenda deste criativo"
+                    value={g.caption}
+                    maxLength={CAPTION_MAX}
+                    disabled={sending}
+                    onChange={(e) =>
+                      setGroups((gs) => gs.map((x) => (x.id === g.id ? { ...x, caption: e.target.value } : x)))
+                    }
+                  />
+                </div>
+              );
+            })}
+
+            <button
+              type="button"
+              className="flex h-9 items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--border-strong)] text-[12.5px] font-semibold text-ink-300 transition hover:bg-ink-850 hover:text-ink-100"
+              onClick={() => setGroups((gs) => [...gs, newGroup()])}
+              disabled={sending}
+            >
+              <Icon name="plus" size={14} />
+              Novo grupo
+            </button>
+
+            {groups.filter((g) => g.keys.length).length > 1 && (
+              <details className="rounded-lg border border-[var(--border-hair)] px-3 py-2 text-[13px]">
+                <summary className="cursor-pointer font-semibold text-ink-300">Colar legendas em bloco</summary>
+                <p className="mt-2 text-[12px] text-ink-500">
+                  Use <code className="font-mono">[arquivo.jpg]</code> antes da legenda para casar pelo primeiro
+                  arquivo do grupo, ou separe com <code className="font-mono">---</code> para casar na ordem dos
+                  grupos.
+                </p>
+                <textarea
+                  className="field mt-2 min-h-[110px] font-mono text-[12px]"
+                  value={bulk}
+                  onChange={(e) => setBulk(e.target.value)}
+                  placeholder={"[arte-01.jpg]\nLegenda do primeiro criativo.\n\n---\n\nLegenda do segundo."}
+                />
+                <button type="button" className="btn btn-sm mt-2" onClick={applyBulk} disabled={!bulk.trim()}>
+                  Aplicar aos grupos
+                </button>
+              </details>
+            )}
+          </div>
+        )}
+
+        {/* Prévia: exatamente o que o cliente vai ver. */}
+        <div>
           <div className="mb-2 flex items-center justify-between">
-            <span className="label">Pré-visualização</span>
+            <span className="label">Prévia</span>
             {vertical && previewAssets.length > 0 && (
               <button type="button" className="text-[12px] font-semibold text-v4-red hover:underline" onClick={() => setViewer(0)}>
                 Assistir em tela cheia
@@ -735,39 +916,72 @@ export function Composer({
             )}
           </div>
           {previewAssets.length === 0 ? (
-            <div className={`grid place-items-center rounded-xl border border-dashed border-[var(--border-strong)] text-center text-[12px] text-ink-500 ${vertical ? "aspect-[9/16]" : "aspect-[4/5]"}`}>
-              <span className="px-6">A prévia aparece aqui assim que você escolher os arquivos.</span>
+            <div className="grid place-items-center rounded-lg border border-dashed border-[var(--border-strong)] bg-ink-950 px-6 py-8 text-center text-[12px] text-ink-500">
+              A prévia aparece aqui assim que você escolher os arquivos.
             </div>
           ) : (
             <div className="mx-auto max-w-[300px]">
-            <div className="sm-scope">
-              {vertical ? (
-                <VerticalPreview
-                  key={`${format}-${mode}`}
-                  format={format}
-                  assets={mode === "single" ? previewAssets : previewAssets.slice(0, 1)}
-                  caption={mode === "single" ? caption : active[0]?.caption}
-                  handle={handle}
-                  onExpand={() => setViewer(0)}
-                />
-              ) : (
-                <InstagramPreview
-                  handle={handle}
-                  assets={mode === "single" ? previewAssets : previewAssets.slice(0, 1)}
-                  caption={mode === "single" ? caption : (active[0]?.caption ?? "")}
-                />
+              <div className="sm-scope">
+                {vertical ? (
+                  <VerticalPreview
+                    key={`${format}-${mode}`}
+                    format={format}
+                    assets={previewAssets}
+                    caption={previewCaption}
+                    handle={handle}
+                    onExpand={() => setViewer(0)}
+                  />
+                ) : (
+                  <InstagramPreview handle={handle} assets={previewAssets} caption={previewCaption} />
+                )}
+              </div>
+              {nCreatives > 1 && (
+                <p className="mt-2 text-center text-[11.5px] text-ink-500">Mostrando o 1º de {nCreatives} criativos.</p>
               )}
-              {mode === "batch" && previewAssets.length > 1 && (
-                <p className="mt-2 text-center text-[11.5px] text-ink-500">
-                  Mostrando o 1º de {previewAssets.length}.{" "}
-                  {vertical ? "Em tela cheia você passa por todos." : "Cada arte vira um post."}
-                </p>
-              )}
-            </div>
             </div>
           )}
-        </aside>
+        </div>
+
+        {summary && (
+          <p className="flex items-start gap-2 rounded-lg bg-amarelo-dim px-3 py-2 text-[13px] font-medium text-amarelo-fg" role="status">
+            <Icon name="alert" size={14} className="mt-0.5 shrink-0" />
+            {summary}
+          </p>
+        )}
+
+        {sending && (
+          <div className="progress-bar" aria-label="Progresso do envio">
+            <i style={{ width: `${Math.round(overall * 100)}%` }} />
+          </div>
+        )}
       </div>
+
+      <footer className="flex flex-wrap items-center gap-2 rounded-b-xl border-t border-[var(--border-hair)] bg-ink-850 px-4 py-3.5 sm:px-5">
+        <button
+          type="button"
+          className="btn btn-primary flex-1"
+          onClick={() => void submit(false)}
+          disabled={sending || !nCreatives}
+          aria-busy={sending}
+        >
+          {sending ? <span className="spinner" aria-hidden /> : <Icon name="check" size={15} />}
+          {ctaLabel}
+        </button>
+        {sending ? (
+          <button type="button" className="btn btn-ghost" onClick={cancel}>
+            Cancelar envio
+          </button>
+        ) : (
+          <button type="button" className="btn" onClick={() => void submit(true)} disabled={!nCreatives}>
+            Salvar rascunho
+          </button>
+        )}
+        {!sending && active.length > 0 && (
+          <span className="text-[11.5px] text-ink-500">
+            {active.length} arquivo(s) · {fmtMB(totalBytes)}
+          </span>
+        )}
+      </footer>
 
       {viewer !== null && viewerItems[0]?.assets.length ? (
         <StoryViewer items={viewerItems} startIndex={viewer} handle={handle} onClose={() => setViewer(null)} />

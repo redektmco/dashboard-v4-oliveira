@@ -30,6 +30,8 @@ const IMAGE_MS = 6000;
 const HOLD_MS = 200;
 
 const STATUS_TEXT: Record<PostStatus, string> = {
+  // O viewer também roda no painel, onde rascunho existe.
+  draft: "Rascunho",
   pending: "Aguardando avaliação",
   approved: "Aprovado",
   rejected: "Reprovado",

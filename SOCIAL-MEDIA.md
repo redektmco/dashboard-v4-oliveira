@@ -3,10 +3,28 @@
 Módulo de **aprovação de criativos (post, carrossel, Reels e Stories) + planejamento de
 conteúdo**, integrado ao dashboard sob a aba **Social media** (`/social`).
 
-> Status: código integrado, build OK. O schema novo (colunas `format` e `client_key` em
-> `sm_posts`) é aplicado sozinho no primeiro boot depois do deploy (`SCHEMA_VERSION`).
+> Status: código integrado, build OK. O schema novo é aplicado sozinho no primeiro boot
+> depois do deploy (`SCHEMA_VERSION`) — hoje isso cobre as colunas `format` e `client_key` e
+> a liberação de `status = 'draft'` em `sm_posts`.
 
 ---
+
+## 0. Estados do criativo
+
+O banco guarda quatro (`sm_posts.status`); a tela de Criativos mostra cinco:
+
+| Estado | Guardado como | O que significa |
+| --- | --- | --- |
+| Rascunho | `draft` | Montado pelo time, **fora** do link do cliente. É o que "Salvar rascunho" grava. |
+| Aguardando | `pending` | No link, esperando a decisão. |
+| Aprovado | `approved` | O cliente aprovou. |
+| Ajustes solicitados | `rejected` **com** comentário | Reprovou dizendo o que mudar — retrabalho guiado. |
+| Reprovado | `rejected` **sem** comentário | Cai fora, sem conversa. |
+
+"Ajustes" não é coluna nova: é leitura de `rejected + feedback` (`src/lib/social/stage.ts`).
+Separar os dois é o que faz a fila de trabalho ter sentido. Rascunho não aparece no link do
+cliente, não conta no placar do projeto nem no orgânico por cliente, e a rota de decisão do
+guest responde 404 para ele.
 
 ## 1. Formatos
 
@@ -48,10 +66,23 @@ desktop. Aprovar/Reprovar (com comentário apontando o frame) ficam no rodapé. 
 pendente **não passa sozinho** para o próximo — o viewer para no último frame esperando a
 decisão. O relógio do frame só anda depois de a mídia carregar.
 
-**No painel:** o composer tem Formato (Post/Carrossel · Reels · Stories) × Quantidade
-(Um criativo · Em lote). "Um criativo" junta os arquivos num carrossel ou numa sequência de
-Stories; "Em lote" cria um criativo por arquivo. Tudo tem pré-visualização (inclusive tela
-cheia) **antes** de "Enviar para aprovação" — só nesse clique o criativo vai para o link.
+**No painel** (`/social/projetos/<id>`, duas colunas: montar à esquerda, acompanhar à
+direita): o composer tem Formato (Post/Carrossel · Reels · Stories) × modo
+(**Individual** · **Em lote**).
+
+- **Individual** monta um criativo só. As miniaturas são arrastáveis e **a ordem delas é a
+  ordem publicada** do carrossel / da sequência de Stories.
+- **Em lote** dá uma bandeja de "arquivos soltos" e raias ("Criativo 1", "Criativo 2", …).
+  Arrasta-se arquivo entre a bandeja e as raias; **cada raia vira um criativo** com a própria
+  legenda. Substitui o antigo "um criativo por arquivo", que não deixava montar dois
+  carrosséis num envio só. "Colar legendas em bloco" continua existindo e agora preenche as
+  legendas das raias (`[arquivo]` casa pelo primeiro arquivo do grupo, `---` casa na ordem).
+
+Tudo tem pré-visualização (inclusive tela cheia) **antes** de gravar. Dois botões: "Criar e
+enviar para aprovação" (vai para o link na hora) e "Salvar rascunho" (fica só no painel).
+Ao enviar, abre a folha com o **QR code** do link, copiar e WhatsApp — o QR é gerado no
+cliente (`src/lib/qr.ts`, nível M, versões 1–10, sem dependência) e é um QR de verdade: a
+câmera do celular abre o link.
 
 ## 2. Upload (por que o lote quebrava e como funciona agora)
 
@@ -86,8 +117,13 @@ menu do criativo. As colunas `ig_user_id`/`ig_access_token` seguem no schema (re
 
 - Projeto: editar (título, cliente, @), arquivar (sai das listas, do calendário e o link do
   cliente para de abrir), **restaurar** em Social media › Arquivados, excluir (digitando o nome).
-- Criativo: visualizar, editar legenda/observação, data no calendário, marcar publicado,
-  voltar para pendente, excluir.
+- Criativo: visualizar, **editar legenda na própria linha** (salvar um reprovado devolve ele
+  para a fila do cliente), **duplicar** (cópia em rascunho, reaproveitando as mesmas mídias),
+  enviar/reenviar para aprovação, copiar link, **ver histórico de revisões**, data no
+  calendário, marcar publicado, voltar para rascunho, excluir.
+- A lista tem busca (legenda, formato ou nome de arquivo) e chips por estado com contagem.
+- Duplicar compartilha as mídias com o original de propósito; excluir só apaga do Blob o
+  arquivo que nenhum outro criativo referencia (`orphanUrls` em `src/lib/social/db.ts`).
 
 ## 5. Verificações em produção
 
@@ -112,6 +148,10 @@ menu do criativo. As colunas `ig_user_id`/`ig_access_token` seguem no schema (re
 | Token de upload / limpeza | `src/app/api/social/upload/route.ts` |
 | Criação de criativos (JSON) | `src/app/api/social/projects/[id]/posts/route.ts` |
 | Composer | `src/components/social/composer.tsx` |
+| Estágio (5 estados na tela) | `src/lib/social/stage.ts` |
+| Folha do link + QR | `src/components/social/approval-link-modal.tsx`, `src/lib/qr.ts` |
+| Histórico de revisões | `src/components/social/history-modal.tsx` |
+| Duplicar criativo | `src/app/api/social/posts/[id]/duplicate/route.ts` |
 | Viewer de Stories | `src/components/social/story-viewer.tsx` (+ `story-nav.ts`, `story.css`) |
 | Card vertical / bandeja / etiqueta | `src/components/social/vertical-preview.tsx` |
 | Notificação da equipe | `src/lib/social/notify.ts` (env `SOCIAL_NOTIFY_WEBHOOK`) |

@@ -6,7 +6,7 @@ import type { PostStatus } from "@/lib/social/types";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-const STATUSES: PostStatus[] = ["pending", "approved", "rejected"];
+const STATUSES: PostStatus[] = ["draft", "pending", "approved", "rejected"];
 
 async function guard() {
   const u = await getSessionUser();
@@ -30,7 +30,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
     const status = body.status as PostStatus;
     const now = new Date().toISOString();
     patch.status = status;
-    patch.decidedAt = status === "pending" ? null : now;
+    patch.decidedAt = status === "pending" || status === "draft" ? null : now;
     patch.history = [...post.history, { status, at: now, by: "admin" as const }];
     if (status !== "rejected") patch.feedback = null;
     // Ao tirar de aprovado, a data sai do calendário.

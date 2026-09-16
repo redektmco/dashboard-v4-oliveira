@@ -28,6 +28,10 @@ export async function POST(req: Request, { params }: Ctx) {
   const post = await getPost(postId);
   if (!post || post.projectId !== project.id)
     return NextResponse.json({ error: "Criativo não encontrado." }, { status: 404 });
+  // Rascunho nunca foi para o link: não existe decisão a tomar sobre ele, e
+  // responder 404 evita confirmar que o id existe.
+  if (post.status === "draft")
+    return NextResponse.json({ error: "Criativo não encontrado." }, { status: 404 });
 
   const now = new Date().toISOString();
   const updated = await updatePost(postId, {

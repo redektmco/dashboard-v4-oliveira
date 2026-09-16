@@ -17,6 +17,8 @@ type ItemIn = {
   format?: unknown;
   caption?: unknown;
   assets?: unknown;
+  /** "draft" guarda no painel; qualquer outra coisa vai para o link. */
+  status?: unknown;
 };
 
 type ItemResult =
@@ -56,7 +58,8 @@ function parseItem(projectId: string, raw: ItemIn): NewPost | string {
 
   const clientKey = typeof raw.clientKey === "string" && raw.clientKey ? raw.clientKey.slice(0, 120) : null;
   const caption = typeof raw.caption === "string" ? raw.caption.slice(0, 2200) : ""; // limite do IG
-  return { id: newId("pst_"), projectId, format, caption, assets, clientKey };
+  const status = raw.status === "draft" ? ("draft" as const) : ("pending" as const);
+  return { id: newId("pst_"), projectId, format, caption, assets, clientKey, status };
 }
 
 /**

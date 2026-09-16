@@ -5,6 +5,7 @@
 // as linhas (snake_case) para o domínio camelCase de ./types.
 // ============================================================
 import { all, one, run } from "../db";
+import { newId } from "./id";
 import type {
   Asset,
   DecisionEvent,
@@ -150,7 +151,7 @@ export async function deleteProject(id: string): Promise<string[]> {
   const rows = await all<{ assets: Asset[] }>("SELECT assets FROM sm_posts WHERE project_id = ?", [id]);
   // Posts caem junto por ON DELETE CASCADE.
   await run("DELETE FROM sm_projects WHERE id = ?", [id]);
-  return rows.flatMap((r) => (Array.isArray(r.assets) ? r.assets.map((a) => a.url) : []));
+  return orphanUrls(rows.flatMap((r) => (Array.isArray(r.assets) ? r.assets.map((a) => a.url) : [])));
 }
 
 /* ------------------------------- posts -------------------------------- */
@@ -224,6 +225,8 @@ export type NewPost = {
   assets: Asset[];
   /** Chave de idempotência do navegador: reenvio não duplica. */
   clientKey: string | null;
+  /** "draft" guarda sem mostrar ao cliente; "pending" já entra no link. */
+  status: Extract<PostStatus, "draft" | "pending">;
 };
 
 /**
@@ -237,7 +240,7 @@ export async function createPosts(posts: NewPost[]): Promise<Set<string>> {
   const values = posts
     .map(
       (_, i) =>
-        `(?, ?, (SELECT COALESCE(MAX(ord), -1) + ${i + 1} FROM sm_posts WHERE project_id = ?), ?, ?, ?::jsonb, ?)`,
+        `(?, ?, (SELECT COALESCE(MAX(ord), -1) + ${i + 1} FROM sm_posts WHERE project_id = ?), ?, ?, ?::jsonb, ?, ?)`,
     )
     .join(", ");
   const params = posts.flatMap((p) => [
@@ -248,9 +251,10 @@ export async function createPosts(posts: NewPost[]): Promise<Set<string>> {
     p.caption,
     JSON.stringify(p.assets),
     p.clientKey,
+    p.status,
   ]);
   const rows = await all<{ id: string }>(
-    `INSERT INTO sm_posts (id, project_id, ord, format, caption, assets, client_key)
+    `INSERT INTO sm_posts (id, project_id, ord, format, caption, assets, client_key, status)
      VALUES ${values}
      ON CONFLICT (project_id, client_key) WHERE client_key IS NOT NULL DO NOTHING
      RETURNING id`,
@@ -309,13 +313,53 @@ export async function updatePost(
   return getPost(id);
 }
 
-/** Exclui o post e devolve as URLs das mídias para limpar o Blob. */
+/**
+ * Das URLs dadas, quais nenhum post ainda referencia. Duplicar um criativo
+ * reaproveita as mesmas mídias: sem este filtro, excluir a cópia levaria
+ * junto a arte do original.
+ */
+async function orphanUrls(urls: string[]): Promise<string[]> {
+  if (!urls.length) return [];
+  const rows = await all<{ url: string }>(
+    `SELECT DISTINCT a->>'url' AS url
+       FROM sm_posts p, jsonb_array_elements(p.assets) a
+      WHERE a->>'url' = ANY(?)`,
+    [urls],
+  );
+  const stillUsed = new Set(rows.map((r) => r.url));
+  return [...new Set(urls)].filter((u) => !stillUsed.has(u));
+}
+
+/** Exclui o post e devolve as URLs das mídias que ficaram sem dono. */
 export async function deletePost(id: string): Promise<string[]> {
   const rows = await all<{ assets: Asset[] }>(
     "DELETE FROM sm_posts WHERE id = ? RETURNING assets",
     [id],
   );
-  return rows.flatMap((r) => (Array.isArray(r.assets) ? r.assets.map((a) => a.url) : []));
+  const urls = rows.flatMap((r) => (Array.isArray(r.assets) ? r.assets.map((a) => a.url) : []));
+  return orphanUrls(urls);
+}
+
+/**
+ * Copia o criativo como rascunho no mesmo projeto: mesma mídia, mesma
+ * legenda, decisão zerada. Serve para refazer uma variação sem subir tudo de
+ * novo. As mídias são compartilhadas de propósito — `deletePost` só limpa o
+ * Blob quando a última cópia sai.
+ */
+export async function duplicatePost(id: string): Promise<Post | null> {
+  const src = await getPost(id);
+  if (!src) return null;
+  const copy: NewPost = {
+    id: newId("pst_"),
+    projectId: src.projectId,
+    format: src.format,
+    caption: src.caption,
+    assets: src.assets,
+    clientKey: null,
+    status: "draft",
+  };
+  const created = await createPosts([copy]);
+  return created.has(copy.id) ? getPost(copy.id) : null;
 }
 
 /** Contagem de decisões de um projeto — usada para saber quando o cliente terminou. */
@@ -330,7 +374,7 @@ export async function countByStatus(projectId: string): Promise<{
             COUNT(*) FILTER (WHERE status = 'pending')::int AS pending,
             COUNT(*) FILTER (WHERE status = 'approved')::int AS approved,
             COUNT(*) FILTER (WHERE status = 'rejected')::int AS rejected
-     FROM sm_posts WHERE project_id = ?`,
+     FROM sm_posts WHERE project_id = ? AND status <> 'draft'`,
     [projectId],
   );
   return r ?? { total: 0, pending: 0, approved: 0, rejected: 0 };
@@ -339,19 +383,22 @@ export async function countByStatus(projectId: string): Promise<{
 /* --------------------------- dashboard de orgânico -------------------------- */
 
 export type ProjectSummary = Project & {
+  /** Criativos no link do cliente — rascunho não conta. */
   total: number;
   approved: number;
   rejected: number;
   pending: number;
+  draft: number;
   scheduled: number;
   published: number;
 };
 
 const SUMMARY_COUNTS = `
-  COUNT(po.id)::int AS total,
+  COUNT(po.id) FILTER (WHERE po.status <> 'draft')::int AS total,
   COUNT(po.id) FILTER (WHERE po.status = 'approved')::int AS approved,
   COUNT(po.id) FILTER (WHERE po.status = 'rejected')::int AS rejected,
   COUNT(po.id) FILTER (WHERE po.status = 'pending')::int AS pending,
+  COUNT(po.id) FILTER (WHERE po.status = 'draft')::int AS draft,
   COUNT(po.id) FILTER (WHERE po.publish_status = 'scheduled')::int AS scheduled,
   COUNT(po.id) FILTER (WHERE po.publish_status = 'published')::int AS published`;
 
@@ -373,6 +420,7 @@ export async function listProjectSummaries(): Promise<ProjectSummary[]> {
     approved: r.approved,
     rejected: r.rejected,
     pending: r.pending,
+    draft: r.draft,
     scheduled: r.scheduled,
     published: r.published,
   }));
@@ -396,7 +444,7 @@ export async function listClientOrganic(): Promise<ClientOrganic[]> {
     `SELECT p.client_id AS "clientId",
             COALESCE(c.name, p.client_name) AS "clientName",
             COUNT(DISTINCT p.id)::int AS projects,
-            COUNT(po.id)::int AS total,
+            COUNT(po.id) FILTER (WHERE po.status <> 'draft')::int AS total,
             COUNT(po.id) FILTER (WHERE po.status = 'approved')::int AS approved,
             COUNT(po.id) FILTER (WHERE po.status = 'rejected')::int AS rejected,
             COUNT(po.id) FILTER (WHERE po.status = 'pending')::int AS pending,

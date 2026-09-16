@@ -276,7 +276,7 @@ CREATE TABLE IF NOT EXISTS sm_posts (
   caption TEXT NOT NULL DEFAULT '',
   assets JSONB NOT NULL DEFAULT '[]'::jsonb,
   status TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending','approved','rejected')),
+    CHECK (status IN ('draft','pending','approved','rejected')),
   decided_at TIMESTAMPTZ,
   feedback TEXT,
   history JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -375,6 +375,12 @@ ALTER TABLE sm_posts DROP CONSTRAINT IF EXISTS sm_posts_format_check;
 ALTER TABLE sm_posts ADD CONSTRAINT sm_posts_format_check
   CHECK (format IN ('feed','reels','story'));
 
+-- Rascunho: criativo montado pelo time que ainda nao foi para o link do
+-- cliente. So sai de 'draft' quando alguem clica em enviar para aprovacao.
+ALTER TABLE sm_posts DROP CONSTRAINT IF EXISTS sm_posts_status_check;
+ALTER TABLE sm_posts ADD CONSTRAINT sm_posts_status_check
+  CHECK (status IN ('draft','pending','approved','rejected'));
+
 -- Chave de idempotencia gerada no navegador por arquivo enviado: reenviar o
 -- mesmo lote depois de uma falha parcial nao duplica o criativo.
 ALTER TABLE sm_posts ADD COLUMN IF NOT EXISTS client_key TEXT;
@@ -417,7 +423,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_leads_dedup
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-09-14.onboarding";
+export const SCHEMA_VERSION = "2026-09-16.criativos-rascunho";
 
 let migrated = false;
 
