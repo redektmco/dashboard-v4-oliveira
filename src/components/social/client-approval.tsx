@@ -35,6 +35,9 @@ const KNOB = 46;
 const CTA_PAD = 9;
 
 const STATUS_LABEL: Record<PostStatus, string> = {
+  // Rascunho nunca chega aqui (a página filtra antes), mas o mapa é total
+  // para o dia em que um estado novo aparecer sem ninguém lembrar desta tela.
+  draft: "Pendente",
   pending: "Pendente",
   approved: "Aprovado",
   rejected: "Reprovado",
