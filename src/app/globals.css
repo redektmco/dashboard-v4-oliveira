@@ -796,6 +796,42 @@ select,
   background: linear-gradient(90deg, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.35) 55%, transparent 100%);
 }
 
+/* Capa do cliente na grade de Social media > Projetos. Mesma ideia do
+   banner da categoria: arte externa (Blob) exibida com proporção fixa e
+   `object-fit: cover`, então nunca distorce. Sem arte, monograma com as
+   iniciais sobre superfície sólida — a marca não usa gradiente. */
+.sm-thumb {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: var(--color-ink-850);
+}
+.sm-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.sm-thumb-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-600);
+}
+/* Selo do cliente na trilha do segundo degrau (quadrado, pequeno). */
+.sm-thumb--badge {
+  aspect-ratio: 1;
+  width: 40px;
+  flex: none;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-hair);
+}
+
 /* Facade do player de vídeo: só a capa até o clique — o iframe pesado
    entra sob demanda (lazy), preservando o LCP da página da aula. */
 .ob-video {

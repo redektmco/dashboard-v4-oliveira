@@ -7,17 +7,12 @@ import { ActionMenu, type MenuItem } from "@/components/action-menu";
 import { ConfirmDialog, ImpactList } from "@/components/modal";
 import { toast } from "@/components/toast";
 import { Icon } from "@/components/icon";
-import type { Project } from "@/lib/social/types";
+import type { ProjectCard } from "@/lib/social/clients";
 
-export type ProjectRow = Pick<Project, "id" | "title" | "clientName" | "igHandle" | "guestToken" | "createdAt"> & {
-  total: number;
-  pending: number;
-  approved: number;
-  rejected: number;
-  scheduled: number;
-};
+/** Como a tela é desenhada: grade de cartões ou lista densa. */
+export type BoardView = "grade" | "lista";
 
-async function patchProject(id: string, body: Record<string, unknown>) {
+export async function patchProject(id: string, body: Record<string, unknown>) {
   const res = await fetch(`/api/social/projects/${id}`, {
     method: body.__delete ? "DELETE" : "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -29,24 +24,50 @@ async function patchProject(id: string, body: Record<string, unknown>) {
   }
 }
 
-const dateBR = (s: string) => new Date(s).toLocaleDateString("pt-BR");
+export const dateBR = (s: string) => new Date(s).toLocaleDateString("pt-BR");
 
-/** Lista de projetos ativos com ações no ⋯, e a gaveta de arquivados com restaurar. */
+/**
+ * O placar em chips — o mesmo vocabulário no cartão do cliente e no do
+ * planejamento, para o número dizer a mesma coisa nos dois degraus.
+ */
+export function Scoreboard({
+  p,
+  empty = "sem criativos",
+}: {
+  p: Pick<ProjectCard, "total" | "pending" | "rejected" | "approved" | "scheduled">;
+  empty?: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold">
+      {p.total === 0 && <span className="text-ink-500">{empty}</span>}
+      {p.pending > 0 && <span className="rounded-full bg-ink-800 px-2 py-0.5 text-ink-300">{p.pending} aguardando</span>}
+      {p.rejected > 0 && <span className="rounded-full bg-vermelho-dim px-2 py-0.5 text-vermelho-fg">{p.rejected} a refazer</span>}
+      {p.approved > 0 && <span className="rounded-full bg-verde-dim px-2 py-0.5 text-verde-fg">{p.approved} aprovados</span>}
+      {p.scheduled > 0 && <span className="rounded-full bg-amarelo-dim px-2 py-0.5 text-amarelo-fg">{p.scheduled} no calendário</span>}
+    </div>
+  );
+}
+
+/**
+ * Os planejamentos de um cliente — o segundo degrau da aba Projetos. Cada
+ * projeto é um link de aprovação; as ações secundárias ficam no ⋯.
+ *
+ * Em grade o cartão inteiro é clicável: o link cobre o cartão (`inset-0`) e o
+ * ⋯ fica acima dele, porque botão dentro de link é HTML inválido.
+ */
 export function ProjectList({
   projects,
-  archived,
   canManage,
+  view,
 }: {
-  projects: ProjectRow[];
-  archived: Pick<Project, "id" | "title" | "clientName" | "createdAt">[];
+  projects: ProjectCard[];
   canManage: boolean;
+  view: BoardView;
 }) {
   const router = useRouter();
-  const [dialog, setDialog] = useState<{ kind: "archive" | "delete"; p: ProjectRow } | null>(null);
-  const [showArchived, setShowArchived] = useState(false);
-  const [restoring, setRestoring] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "archive" | "delete"; p: ProjectCard } | null>(null);
 
-  const copyLink = async (p: ProjectRow) => {
+  const copyLink = async (p: ProjectCard) => {
     try {
       await navigator.clipboard.writeText(`${window.location.origin}/a/${p.guestToken}`);
       toast("Link do cliente copiado.");
@@ -55,7 +76,7 @@ export function ProjectList({
     }
   };
 
-  const menu = (p: ProjectRow): MenuItem[] => [
+  const menu = (p: ProjectCard): MenuItem[] => [
     { label: "Abrir projeto", icon: "arrowUp", href: `/social/projetos/${p.id}` },
     { label: "Copiar link do cliente", icon: "layers", onSelect: () => void copyLink(p) },
     { label: "Abrir link do cliente", icon: "external", href: `/a/${p.guestToken}`, external: true },
@@ -68,41 +89,32 @@ export function ProjectList({
       : []),
   ];
 
-  const restore = async (id: string) => {
-    setRestoring(id);
-    try {
-      await patchProject(id, { archived: false });
-      toast("Projeto restaurado.");
-      router.refresh();
-    } catch (e) {
-      toast((e as Error).message, { tone: "error" });
-    } finally {
-      setRestoring(null);
-    }
-  };
-
   return (
-    <section className="panel">
-      <header className="flex items-center justify-between gap-3 border-b border-[var(--border-hair)] px-4 py-3.5 sm:px-5">
-        <div>
-          <h2 className="font-display text-[16px] font-semibold text-ink-100">Projetos</h2>
-          <p className="mt-0.5 text-[12.5px] text-ink-400">{projects.length} ativos · um link de aprovação por projeto</p>
-        </div>
-        {archived.length > 0 && (
-          <button type="button" className="btn btn-sm btn-ghost" onClick={() => setShowArchived((v) => !v)} aria-expanded={showArchived}>
-            <Icon name="lock" size={13} />
-            Arquivados ({archived.length})
-          </button>
-        )}
-      </header>
-
-      {projects.length === 0 ? (
-        <div className="px-5 py-10 text-center">
-          <Icon name="image" size={28} className="mx-auto text-ink-600" />
-          <p className="mt-2 text-sm font-semibold text-ink-200">Nenhum projeto ativo</p>
-          <p className="mt-1 text-[13px] text-ink-500">
-            {canManage ? "Crie o primeiro em “Novo projeto” — o link do cliente sai na hora." : "Assim que o time de social criar um projeto, ele aparece aqui."}
-          </p>
+    <>
+      {view === "grade" ? (
+        <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 sm:px-5 xl:grid-cols-3">
+          {projects.map((p) => (
+            <div
+              key={p.id}
+              className="panel relative flex flex-col transition-colors duration-[120ms] hover:border-[var(--border-strong)]"
+            >
+              <Link href={`/social/projetos/${p.id}`} className="absolute inset-0 z-[1]">
+                <span className="sr-only">Abrir {p.title}</span>
+              </Link>
+              <div className="flex items-start justify-between gap-2 px-3.5 pb-1 pt-3">
+                <h3 className="min-w-0 font-display text-[14.5px] font-semibold leading-snug text-ink-100">{p.title}</h3>
+                <div className="relative z-[2] -mr-1 -mt-0.5">
+                  <ActionMenu items={menu(p)} label={`Ações de ${p.title}`} size="sm" />
+                </div>
+              </div>
+              <div className="truncate px-3.5 text-[12px] text-ink-400">
+                @{p.igHandle} · {dateBR(p.createdAt)}
+              </div>
+              <div className="px-3.5 pb-3.5 pt-2.5">
+                <Scoreboard p={p} />
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <ul className="divide-y divide-[var(--border-hair)]">
@@ -112,53 +124,17 @@ export function ProjectList({
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-semibold text-ink-100">{p.title}</div>
                   <div className="truncate text-[12.5px] text-ink-400">
-                    {p.clientName} · @{p.igHandle} · {dateBR(p.createdAt)}
+                    @{p.igHandle} · {dateBR(p.createdAt)}
                   </div>
                 </div>
-                <div className="hidden shrink-0 items-center gap-1.5 text-[11px] font-semibold sm:flex">
-                  {p.total === 0 && <span className="text-ink-500">sem criativos</span>}
-                  {p.pending > 0 && <span className="rounded-full bg-ink-800 px-2 py-0.5 text-ink-300">{p.pending} aguardando</span>}
-                  {p.rejected > 0 && <span className="rounded-full bg-vermelho-dim px-2 py-0.5 text-vermelho-fg">{p.rejected} a refazer</span>}
-                  {p.approved > 0 && <span className="rounded-full bg-verde-dim px-2 py-0.5 text-verde-fg">{p.approved} aprovados</span>}
-                  {p.scheduled > 0 && <span className="rounded-full bg-amarelo-dim px-2 py-0.5 text-amarelo-fg">{p.scheduled} no calendário</span>}
+                <div className="hidden shrink-0 sm:block">
+                  <Scoreboard p={p} />
                 </div>
               </Link>
               <ActionMenu items={menu(p)} label={`Ações de ${p.title}`} />
             </li>
           ))}
         </ul>
-      )}
-
-      {showArchived && archived.length > 0 && (
-        <div className="border-t border-[var(--border-hair)] bg-ink-950/50">
-          <div className="px-4 pb-1 pt-3 sm:px-5">
-            <span className="label">Arquivados</span>
-          </div>
-          <ul className="divide-y divide-[var(--border-hair)]">
-            {archived.map((p) => (
-              <li key={p.id} className="flex items-center gap-3 px-4 py-2.5 sm:px-5">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13.5px] font-medium text-ink-300">{p.title}</div>
-                  <div className="truncate text-[12px] text-ink-500">
-                    {p.clientName} · {dateBR(p.createdAt)}
-                  </div>
-                </div>
-                {canManage && (
-                  <button
-                    type="button"
-                    className="btn btn-sm"
-                    onClick={() => restore(p.id)}
-                    disabled={restoring === p.id}
-                    aria-busy={restoring === p.id}
-                  >
-                    {restoring === p.id ? <span className="spinner" aria-hidden /> : <Icon name="refresh" size={13} />}
-                    Restaurar
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
       )}
 
       <ConfirmDialog
@@ -209,6 +185,63 @@ export function ProjectList({
         />
         <p className="text-[12.5px] text-ink-500">Se a ideia é só tirar da frente, prefira arquivar.</p>
       </ConfirmDialog>
-    </section>
+    </>
+  );
+}
+
+/** Gaveta de arquivados, com restaurar. Recebe só os projetos do recorte visível. */
+export function ArchivedDrawer({
+  archived,
+  canManage,
+}: {
+  archived: { id: string; title: string; clientName: string; createdAt: string }[];
+  canManage: boolean;
+}) {
+  const router = useRouter();
+  const [restoring, setRestoring] = useState<string | null>(null);
+
+  const restore = async (id: string) => {
+    setRestoring(id);
+    try {
+      await patchProject(id, { archived: false });
+      toast("Projeto restaurado.");
+      router.refresh();
+    } catch (e) {
+      toast((e as Error).message, { tone: "error" });
+    } finally {
+      setRestoring(null);
+    }
+  };
+
+  return (
+    <div className="border-t border-[var(--border-hair)] bg-ink-950/50">
+      <div className="px-4 pb-1 pt-3 sm:px-5">
+        <span className="label">Arquivados</span>
+      </div>
+      <ul className="divide-y divide-[var(--border-hair)]">
+        {archived.map((p) => (
+          <li key={p.id} className="flex items-center gap-3 px-4 py-2.5 sm:px-5">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[13.5px] font-medium text-ink-300">{p.title}</div>
+              <div className="truncate text-[12px] text-ink-500">
+                {p.clientName} · {dateBR(p.createdAt)}
+              </div>
+            </div>
+            {canManage && (
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => restore(p.id)}
+                disabled={restoring === p.id}
+                aria-busy={restoring === p.id}
+              >
+                {restoring === p.id ? <span className="spinner" aria-hidden /> : <Icon name="refresh" size={13} />}
+                Restaurar
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

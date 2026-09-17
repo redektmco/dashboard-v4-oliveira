@@ -4,8 +4,9 @@ Módulo de **aprovação de criativos (post, carrossel, Reels e Stories) + plane
 conteúdo**, integrado ao dashboard sob a aba **Social media** (`/social`).
 
 > Status: código integrado, build OK. O schema novo é aplicado sozinho no primeiro boot
-> depois do deploy (`SCHEMA_VERSION`) — hoje isso cobre as colunas `format` e `client_key` e
-> a liberação de `status = 'draft'` em `sm_posts`.
+> depois do deploy (`SCHEMA_VERSION`) — hoje isso cobre as colunas `format` e `client_key`,
+> a liberação de `status = 'draft'` em `sm_posts` e a tabela `sm_client_covers` (capa por
+> cliente na grade de Projetos).
 
 ---
 
@@ -84,6 +85,37 @@ Ao enviar, abre a folha com o **QR code** do link, copiar e WhatsApp — o QR é
 cliente (`src/lib/qr.ts`, nível M, versões 1–10, sem dependência) e é um QR de verdade: a
 câmera do celular abre o link.
 
+## 1.5. A aba Projetos: primeiro o cliente, depois o planejamento
+
+A aba `/social` › **Projetos** era uma lista única de projetos. Com vários clientes na
+carteira, responder "o que está pendente na Padaria Estrela?" virava leitura linha por
+linha. Agora a tela tem dois degraus:
+
+| Degrau | O que mostra |
+| --- | --- |
+| **Clientes** | Um cartão por cliente, com **capa**, @, quantos planejamentos e o placar somado (aguardando · a refazer · aprovados · no calendário). |
+| **Planejamentos** | Ao abrir o cliente, os projetos dele — com as mesmas ações no ⋯ (abrir, copiar/abrir o link, arquivar, excluir) e os arquivados **daquele** cliente na gaveta. |
+
+Cada degrau tem **Grade** (cartões) ou **Lista** (densa, como antes). A escolha é de quem
+usa: fica no navegador (`localStorage`, lida por `useSyncExternalStore` — no servidor vale a
+grade e o React troca no hydrate, sem efeito nem render em cascata). A busca do primeiro
+degrau acha por nome do cliente, @ ou título de um planejamento.
+
+**Quem é "um cliente":** cliente da carteira agrupa por id (`c:<id>`), então renomear não
+quebra o vínculo nem perde a capa; projeto avulso (sem linha na carteira) agrupa pelo nome
+normalizado (`n:padaria estrela`) — caixa, acento e espaço dobrado caem no mesmo cartão. É a
+chave de `sm_client_covers`. Ver `src/lib/social/clients.ts`, que é puro e tem teste.
+
+**Capa:** só quem opera Social media troca. A imagem sobe direto ao Blob
+(`/api/social/upload` com `{ cover: true }` → pasta `social/clientes/`, só imagem, até 8 MB)
+e a URL é gravada por `PUT /api/social/clients/cover`, que confirma ser uma URL do nosso
+store antes de aceitar — sem isso qualquer URL cairia na tela do painel. Trocar ou remover
+apaga a arte anterior do Blob, para não deixar órfão. Sem capa, o cartão mostra o monograma
+com as iniciais do cliente (a marca não usa gradiente).
+
+O relatório **Orgânico por cliente**, no pé da página, continua onde estava — ele soma a
+carteira inteira, inclusive o que a grade não mostra por estar arquivado.
+
 ## 2. Upload (por que o lote quebrava e como funciona agora)
 
 **Causa do erro no lote:** o upload mandava todos os arquivos numa única requisição
@@ -115,6 +147,7 @@ menu do criativo. As colunas `ig_user_id`/`ig_access_token` seguem no schema (re
 
 ## 4. Gestão
 
+- Cliente (na grade de Projetos): enviar, trocar ou remover a **capa**.
 - Projeto: editar (título, cliente, @), arquivar (sai das listas, do calendário e o link do
   cliente para de abrir), **restaurar** em Social media › Arquivados, excluir (digitando o nome).
 - Criativo: visualizar, **editar legenda na própria linha** (salvar um reprovado devolve ele
@@ -140,7 +173,7 @@ menu do criativo. As colunas `ig_user_id`/`ig_access_token` seguem no schema (re
 
 | Peça | Caminho |
 | --- | --- |
-| Tabelas (DDL) | `src/lib/db/index.ts` (`sm_projects`, `sm_posts`) |
+| Tabelas (DDL) | `src/lib/db/index.ts` (`sm_projects`, `sm_posts`, `sm_client_covers`) |
 | Repositório | `src/lib/social/db.ts` |
 | Tipos | `src/lib/social/types.ts` |
 | Regras de mídia (cliente+servidor) | `src/lib/social/media.ts` |
@@ -155,7 +188,10 @@ menu do criativo. As colunas `ig_user_id`/`ig_access_token` seguem no schema (re
 | Viewer de Stories | `src/components/social/story-viewer.tsx` (+ `story-nav.ts`, `story.css`) |
 | Card vertical / bandeja / etiqueta | `src/components/social/vertical-preview.tsx` |
 | Notificação da equipe | `src/lib/social/notify.ts` (env `SOCIAL_NOTIFY_WEBHOOK`) |
-| Lista de projetos | `src/app/social/page.tsx` + `src/components/social/project-list.tsx` |
+| Aba Projetos (cliente › planejamento) | `src/app/social/page.tsx` + `src/components/social/client-board.tsx` |
+| Planejamentos de um cliente | `src/components/social/project-list.tsx` |
+| Agrupamento por cliente (puro) | `src/lib/social/clients.ts` |
+| Capa do cliente | `src/components/social/client-cover.tsx`, `src/app/api/social/clients/cover/route.ts` |
 | Planejamento | `src/app/social/planejamento/page.tsx` |
 | Workspace do projeto | `src/components/social/project-workspace.tsx` |
 | Cliente (swipe, guest) | `src/app/a/[token]/` + `src/components/social/client-approval.tsx` |

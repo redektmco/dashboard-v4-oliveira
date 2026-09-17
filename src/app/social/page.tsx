@@ -1,10 +1,15 @@
 import { canManageSocial, requireUser } from "@/lib/auth";
 import { listClients } from "@/lib/repo";
-import { listArchivedProjects, listClientOrganic, listProjectSummaries } from "@/lib/social/db";
+import {
+  listArchivedProjects,
+  listClientCovers,
+  listClientOrganic,
+  listProjectSummaries,
+} from "@/lib/social/db";
 import { ClientLink, PageHeader, Stat, TableScroll } from "@/components/ui";
 import { Icon } from "@/components/icon";
 import { NewProjectButton } from "@/components/social/new-project-form";
-import { ProjectList } from "@/components/social/project-list";
+import { ClientBoard } from "@/components/social/client-board";
 import { RouteTabs } from "@/components/tabs";
 
 export const dynamic = "force-dynamic";
@@ -13,10 +18,11 @@ export default async function SocialPage() {
   const me = await requireUser();
   const canManage = canManageSocial(me);
 
-  const [projects, archived, organic, clients] = await Promise.all([
+  const [projects, archived, organic, covers, clients] = await Promise.all([
     listProjectSummaries(),
     listArchivedProjects(),
     listClientOrganic(),
+    listClientCovers(),
     canManage ? listClients() : Promise.resolve([]),
   ]);
 
@@ -57,10 +63,13 @@ export default async function SocialPage() {
         <Stat label="No calendário" value={totals.agendados} tone="amarelo" hint="aprovados com data" />
       </div>
 
-      <ProjectList
+      {/* Primeiro o cliente, depois o planejamento — ver ClientBoard. */}
+      <ClientBoard
         canManage={canManage}
+        covers={covers}
         projects={projects.map((p) => ({
           id: p.id,
+          clientId: p.clientId,
           title: p.title,
           clientName: p.clientName,
           igHandle: p.igHandle,
@@ -72,7 +81,13 @@ export default async function SocialPage() {
           rejected: p.rejected,
           scheduled: p.scheduled,
         }))}
-        archived={archived.map((p) => ({ id: p.id, title: p.title, clientName: p.clientName, createdAt: p.createdAt }))}
+        archived={archived.map((p) => ({
+          id: p.id,
+          clientId: p.clientId,
+          title: p.title,
+          clientName: p.clientName,
+          createdAt: p.createdAt,
+        }))}
       />
 
       {/* Relatório, não tarefa: fechado por padrão para não disputar a atenção. */}
