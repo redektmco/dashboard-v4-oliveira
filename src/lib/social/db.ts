@@ -459,6 +459,43 @@ export async function listClientOrganic(): Promise<ClientOrganic[]> {
   );
 }
 
+/* --------------------------- capa por cliente --------------------------- */
+
+/**
+ * Capas da grade da aba Projetos, por chave de cliente (ver
+ * `clientKeyOf` em ./clients). Uma linha por cliente que tem arte —
+ * quem não tem cai no monograma, então a tabela costuma ser pequena e
+ * vale trazer inteira em vez de uma consulta por cartão.
+ */
+export async function listClientCovers(): Promise<Record<string, string>> {
+  const rows = await all<{ client_key: string; image_url: string }>(
+    "SELECT client_key, image_url FROM sm_client_covers",
+  );
+  return Object.fromEntries(rows.map((r) => [r.client_key, r.image_url]));
+}
+
+export async function getClientCover(key: string): Promise<string | null> {
+  const r = await one<{ image_url: string }>(
+    "SELECT image_url FROM sm_client_covers WHERE client_key = ?",
+    [key],
+  );
+  return r?.image_url ?? null;
+}
+
+export async function setClientCover(key: string, imageUrl: string, userId: number | null) {
+  await run(
+    `INSERT INTO sm_client_covers (client_key, image_url, updated_by, updated_at)
+     VALUES (?, ?, ?, now())
+     ON CONFLICT (client_key) DO UPDATE
+       SET image_url = excluded.image_url, updated_by = excluded.updated_by, updated_at = now()`,
+    [key, imageUrl, userId],
+  );
+}
+
+export async function clearClientCover(key: string) {
+  await run("DELETE FROM sm_client_covers WHERE client_key = ?", [key]);
+}
+
 /* ------------------------------ agendamento ------------------------------ */
 
 export type ScheduledPost = Post & {

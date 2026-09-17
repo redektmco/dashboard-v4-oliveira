@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { canManageSocial, getSessionUser } from "@/lib/auth";
 import { getProject } from "@/lib/social/db";
+import { COVER_FOLDER, MAX_COVER_BYTES } from "@/lib/social/clients";
 import { IMAGE_TYPES, MAX_VIDEO_BYTES, VIDEO_TYPES } from "@/lib/social/media";
 import { deleteAssets, isOwnBlobUrl, isStorageConfigured } from "@/lib/social/storage";
 
@@ -12,6 +13,10 @@ import { deleteAssets, isOwnBlobUrl, isStorageConfigured } from "@/lib/social/st
  *
  * O token só sai para quem opera Social media, só para a pasta do projeto
  * (`social/<projectId>/...`) e só para imagem/vídeo dentro do limite.
+ *
+ * A capa do cliente (grade da aba Projetos) usa o mesmo caminho com
+ * `{ cover: true }`: pasta própria (`social/clientes/...`), só imagem e um
+ * limite menor — é thumb, não mídia de criativo.
  */
 export async function POST(req: Request) {
   if (!isStorageConfigured())
@@ -31,7 +36,19 @@ export async function POST(req: Request) {
       request: req,
       onBeforeGenerateToken: async (pathname, clientPayload) => {
         if (!user || !canManageSocial(user)) throw new Error("Sem permissão para enviar mídias.");
-        const { projectId } = JSON.parse(clientPayload || "{}") as { projectId?: string };
+        const { projectId, cover } = JSON.parse(clientPayload || "{}") as {
+          projectId?: string;
+          cover?: boolean;
+        };
+        if (cover) {
+          if (!pathname.startsWith(`social/${COVER_FOLDER}/`)) throw new Error("Destino inválido.");
+          return {
+            allowedContentTypes: IMAGE_TYPES,
+            maximumSizeInBytes: MAX_COVER_BYTES,
+            addRandomSuffix: true,
+            tokenPayload: JSON.stringify({ cover: true, userId: user.id }),
+          };
+        }
         if (!projectId || !(await getProject(projectId))) throw new Error("Projeto não encontrado.");
         if (!pathname.startsWith(`social/${projectId}/`)) throw new Error("Destino inválido.");
         return {

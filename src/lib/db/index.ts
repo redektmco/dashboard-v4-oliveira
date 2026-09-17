@@ -293,6 +293,18 @@ CREATE INDEX IF NOT EXISTS idx_sm_posts_project ON sm_posts (project_id, ord);
 CREATE INDEX IF NOT EXISTS idx_sm_posts_due
   ON sm_posts (publish_status, scheduled_at);
 
+-- Capa do cliente na aba Social media > Projetos: a visualizacao em grade
+-- mostra uma imagem por cliente. A chave e a mesma que agrupa a tela
+-- ('c:<client_id>' para cliente da carteira, 'n:<nome normalizado>' para
+-- projeto avulso) — ver src/lib/social/clients.ts. Fica fora da tabela
+-- clients de proposito: projeto avulso nao tem linha na carteira.
+CREATE TABLE IF NOT EXISTS sm_client_covers (
+  client_key TEXT PRIMARY KEY,
+  image_url TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- =====================================================================
 -- Onboarding / LMS interno — portal de aprendizagem do novo funcionário.
 -- Hierarquia categoria > módulo > aula; progresso individual por usuário.
@@ -423,7 +435,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_leads_dedup
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-09-16.criativos-rascunho";
+export const SCHEMA_VERSION = "2026-09-17.social-por-cliente";
 
 let migrated = false;
 

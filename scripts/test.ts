@@ -19,6 +19,14 @@ import { aspectWarning, formatBadge, rejectReason } from "../src/lib/social/medi
 import { matchCaptionsToFiles, parseBatchCaptions } from "../src/lib/social/batch";
 import { isOwnBlobUrl } from "../src/lib/social/storage";
 import { navReducer, type Nav } from "../src/components/social/story-nav";
+import {
+  clientKeyOf,
+  groupByClient,
+  initials,
+  isValidClientKey,
+  matchesClientQuery,
+  type ProjectCard,
+} from "../src/lib/social/clients";
 
 const TODAY = "2026-06-15";
 
@@ -443,4 +451,86 @@ test("Viewer: relógio acumula até completar o frame", () => {
   assert.equal(s.frameIdx, 0);
   s = navReducer(s, { type: "tick", dt: 0.7, ctx });
   assert.deepEqual([s.frameIdx, s.progress], [1, 0]);
+});
+
+/* ------------------- Social media: aba Projetos por cliente ------------------- */
+
+const prj = (over: Partial<ProjectCard> = {}): ProjectCard => ({
+  id: "prj_1",
+  clientId: null,
+  title: "Campanha Outubro",
+  clientName: "Padaria Estrela",
+  igHandle: "padariaestrela",
+  guestToken: "tok_1",
+  createdAt: "2026-09-01T12:00:00.000Z",
+  total: 0,
+  pending: 0,
+  approved: 0,
+  rejected: 0,
+  scheduled: 0,
+  ...over,
+});
+
+test("Clientes: a chave segue a carteira, e o nome digitado normaliza", () => {
+  assert.equal(clientKeyOf({ clientId: 7, clientName: "Padaria Estrela" }), "c:7");
+  assert.equal(
+    clientKeyOf({ clientId: null, clientName: "  Padaria   ESTRELA " }),
+    clientKeyOf({ clientId: null, clientName: "padaria estrela" }),
+    "acento, caixa e espaço dobrado caem no mesmo cartão",
+  );
+  assert.equal(clientKeyOf({ clientId: null, clientName: "Açaí & Cia" }), "n:acai & cia");
+  // Renomear o cliente da carteira não troca a chave (nem perde a capa).
+  assert.equal(clientKeyOf({ clientId: 7, clientName: "Outro nome" }), "c:7");
+});
+
+test("Clientes: a chave que vem do navegador é validada", () => {
+  assert.equal(isValidClientKey("c:12"), true);
+  assert.equal(isValidClientKey("n:padaria estrela"), true);
+  assert.equal(isValidClientKey("c:0"), false, "id de cliente começa em 1");
+  assert.equal(isValidClientKey("x:1"), false);
+  assert.equal(isValidClientKey("n:"), false, "nome vazio");
+  assert.equal(isValidClientKey(`n:${"a".repeat(200)}`), false, "nome absurdo");
+  assert.equal(isValidClientKey(42), false);
+});
+
+test("Clientes: agrupa por cliente, soma o placar e ordena por nome", () => {
+  const groups = groupByClient(
+    [
+      prj({ id: "p1", clientId: 7, clientName: "Padaria Estrela", pending: 2, total: 3, approved: 1, createdAt: "2026-09-10T12:00:00.000Z" }),
+      prj({ id: "p2", clientId: 7, clientName: "Padaria Estrela", rejected: 1, total: 1, igHandle: "estrela.doces", createdAt: "2026-09-02T12:00:00.000Z" }),
+      prj({ id: "p3", clientId: null, clientName: "Auto Center Oliveira", scheduled: 2, total: 2 }),
+    ],
+    { "c:7": "https://x.public.blob.vercel-storage.com/social/clientes/a.jpg" },
+  );
+
+  assert.deepEqual(groups.map((g) => g.clientName), ["Auto Center Oliveira", "Padaria Estrela"]);
+
+  const padaria = groups[1];
+  assert.equal(padaria.key, "c:7");
+  assert.deepEqual(padaria.projects.map((p) => p.id), ["p1", "p2"], "mantém a ordem que veio do banco");
+  assert.deepEqual(
+    [padaria.total, padaria.pending, padaria.approved, padaria.rejected, padaria.scheduled],
+    [4, 2, 1, 1, 0],
+  );
+  assert.deepEqual(padaria.handles, ["padariaestrela", "estrela.doces"], "@ distintos, sem repetir");
+  assert.equal(padaria.lastAt, "2026-09-10T12:00:00.000Z", "o projeto mais recente do cliente");
+  assert.ok(padaria.imageUrl, "a capa entra pela chave");
+  assert.equal(groups[0].imageUrl, null, "sem capa cadastrada, monograma");
+});
+
+test("Clientes: a busca acha por nome, @ ou título do planejamento", () => {
+  const [g] = groupByClient([prj({ clientId: 7, title: "Campanha Outubro" })]);
+  assert.equal(matchesClientQuery(g, ""), true, "busca vazia não filtra");
+  assert.equal(matchesClientQuery(g, "ESTRELA"), true);
+  assert.equal(matchesClientQuery(g, "padária"), true, "acento digitado não atrapalha");
+  assert.equal(matchesClientQuery(g, "padariaestrela"), true, "pelo @");
+  assert.equal(matchesClientQuery(g, "outubro"), true, "pelo planejamento");
+  assert.equal(matchesClientQuery(g, "mecânica"), false);
+});
+
+test("Clientes: monograma usa a primeira e a última palavra de peso", () => {
+  assert.equal(initials("Padaria Estrela"), "PE");
+  assert.equal(initials("Auto Center de Oliveira"), "AO", "partícula não conta");
+  assert.equal(initials("V4"), "V4");
+  assert.equal(initials("  "), "?");
 });
