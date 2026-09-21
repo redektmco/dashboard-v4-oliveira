@@ -36,7 +36,7 @@ export default async function PlanejamentoPage() {
         icon="calendar"
         back={{ href: "/social", label: "Social media" }}
         title="Planejamento"
-        description="Calendário de conteúdo aprovado. Visualize as datas marcadas por mês e organize a esteira de publicação de cada cliente."
+        description="Calendário de conteúdo aprovado e do que já tem data prevista. Visualize as datas marcadas por mês e organize a esteira de publicação de cada cliente."
       />
 
       <RouteTabs
@@ -50,8 +50,8 @@ export default async function PlanejamentoPage() {
       {items.length === 0 ? (
         <Panel title="Nada agendado">
           <p className="px-5 py-8 text-center text-sm text-ink-400">
-            Aprove criativos e defina a data de publicação na página do projeto para eles
-            aparecerem no calendário.
+            Defina uma data prevista ao criar o criativo, ou aprove-o e marque a data na página do
+            projeto, para ele aparecer no calendário.
           </p>
         </Panel>
       ) : (

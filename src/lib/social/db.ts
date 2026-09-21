@@ -227,6 +227,13 @@ export type NewPost = {
   clientKey: string | null;
   /** "draft" guarda sem mostrar ao cliente; "pending" já entra no link. */
   status: Extract<PostStatus, "draft" | "pending">;
+  /**
+   * Data prevista de publicação, definida já na criação — antes da
+   * aprovação do cliente. Popula o Planejamento como "Rascunho"; ao ser
+   * aprovado, vira oficialmente "Agendado" (ver `updatePost` nas rotas de
+   * decisão).
+   */
+  scheduledAt?: string | null;
 };
 
 /**
@@ -240,7 +247,7 @@ export async function createPosts(posts: NewPost[]): Promise<Set<string>> {
   const values = posts
     .map(
       (_, i) =>
-        `(?, ?, (SELECT COALESCE(MAX(ord), -1) + ${i + 1} FROM sm_posts WHERE project_id = ?), ?, ?, ?::jsonb, ?, ?)`,
+        `(?, ?, (SELECT COALESCE(MAX(ord), -1) + ${i + 1} FROM sm_posts WHERE project_id = ?), ?, ?, ?::jsonb, ?, ?, ?)`,
     )
     .join(", ");
   const params = posts.flatMap((p) => [
@@ -252,9 +259,10 @@ export async function createPosts(posts: NewPost[]): Promise<Set<string>> {
     JSON.stringify(p.assets),
     p.clientKey,
     p.status,
+    p.scheduledAt ?? null,
   ]);
   const rows = await all<{ id: string }>(
-    `INSERT INTO sm_posts (id, project_id, ord, format, caption, assets, client_key, status)
+    `INSERT INTO sm_posts (id, project_id, ord, format, caption, assets, client_key, status, scheduled_at)
      VALUES ${values}
      ON CONFLICT (project_id, client_key) WHERE client_key IS NOT NULL DO NOTHING
      RETURNING id`,
@@ -527,7 +535,8 @@ function toScheduled(
 
 /**
  * Planejamento: posts com data marcada, do mais próximo ao mais distante.
- * Inclui os já publicados (o calendário mostra o que saiu, em verde) e deixa
+ * Inclui os já publicados (o calendário mostra o que saiu, em verde), os
+ * ainda não aprovados com data prevista (mostrados como "Rascunho") e deixa
  * de fora projeto arquivado — arquivar tira do calendário.
  */
 export async function listPlanned(): Promise<ScheduledPost[]> {
@@ -537,7 +546,7 @@ export async function listPlanned(): Promise<ScheduledPost[]> {
     `${SCHEDULED_SELECT}
      WHERE po.scheduled_at IS NOT NULL
        AND p.archived = 0
-       AND po.publish_status IN ('scheduled','publishing','failed','published')
+       AND po.publish_status IN ('draft','scheduled','publishing','failed','published')
      ORDER BY po.scheduled_at ASC`,
   );
   return rows.map(toScheduled);

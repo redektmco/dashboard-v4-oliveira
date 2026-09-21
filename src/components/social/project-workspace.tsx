@@ -15,6 +15,7 @@ import { ConfirmDialog, ImpactList, Modal } from "@/components/modal";
 import { toast } from "@/components/toast";
 import { Icon } from "@/components/icon";
 import { PageHeader } from "@/components/ui";
+import { downloadAssets } from "@/lib/social/download";
 import { formatBadge, isVertical } from "@/lib/social/media";
 import { STAGE, STAGE_ORDER, stageOf, type Stage } from "@/lib/social/stage";
 
@@ -182,6 +183,11 @@ export default function ProjectWorkspace({
       { label: "Visualizar", icon: "eye", onSelect: () => setViewing(p) },
       { label: p.format === "story" ? "Editar observação" : "Editar legenda", icon: "pencil", onSelect: () => startEdit(p) },
       { label: "Duplicar", icon: "copy", hint: "Cria uma cópia em rascunho", onSelect: () => void duplicate(p) },
+      {
+        label: p.assets.length > 1 ? "Baixar mídias" : "Baixar mídia",
+        icon: "download",
+        onSelect: () => downloadAssets(p.assets),
+      },
     ];
 
     if (stage === "draft") {

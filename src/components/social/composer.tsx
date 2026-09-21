@@ -40,7 +40,7 @@ type Item = {
 };
 
 /** Um criativo do modo lote: arquivos agrupados à mão, com legenda própria. */
-type Group = { id: string; caption: string; keys: string[] };
+type Group = { id: string; caption: string; scheduledAt: string; keys: string[] };
 
 /** De onde uma miniatura está sendo arrastada. */
 type Zone = "single" | "loose" | string; // string = id de um grupo
@@ -122,7 +122,7 @@ function uploadErrorMessage(e: unknown): string {
   return msg.length < 140 ? msg : "Falha no envio deste arquivo.";
 }
 
-const newGroup = (): Group => ({ id: crypto.randomUUID(), caption: "", keys: [] });
+const newGroup = (): Group => ({ id: crypto.randomUUID(), caption: "", scheduledAt: "", keys: [] });
 
 /**
  * Envio de criativos para aprovação.
@@ -158,6 +158,7 @@ export function Composer({
   const [items, setItems] = useState<Item[]>([]);
   const [groups, setGroups] = useState<Group[]>([newGroup(), newGroup()]);
   const [caption, setCaption] = useState("");
+  const [scheduledAt, setScheduledAt] = useState("");
   const [sending, setSending] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
   const [viewer, setViewer] = useState<number | null>(null);
@@ -241,6 +242,7 @@ export function Composer({
     setItems([]);
     setGroups([newGroup(), newGroup()]);
     setCaption("");
+    setScheduledAt("");
     setBulk("");
     setSummary(null);
     if (inputRef.current) inputRef.current.value = "";
@@ -379,7 +381,14 @@ export function Composer({
   type Result = { clientKey: string | null; status: "created" | "duplicate" | "error"; error?: string };
 
   const createPosts = async (
-    payload: { clientKey: string; format: PostFormat; caption: string; status: "draft" | "pending"; assets: Omit<Asset, "id">[] }[],
+    payload: {
+      clientKey: string;
+      format: PostFormat;
+      caption: string;
+      status: "draft" | "pending";
+      assets: Omit<Asset, "id">[];
+      scheduledAt: string | null;
+    }[],
   ) => {
     const res = await fetch(`/api/social/projects/${projectId}/posts`, {
       method: "POST",
@@ -406,16 +415,20 @@ export function Composer({
    * Os criativos que este composer vai gravar, já na forma final: um por
    * criativo no individual, um por grupo não-vazio no lote.
    */
-  const plan = useMemo((): { items: Item[]; caption: string }[] => {
+  const plan = useMemo((): { items: Item[]; caption: string; scheduledAt: string }[] => {
     const usable = (list: Item[]) => list.filter((i) => i.state !== "done" && !rejectReason(i.file, format));
     if (mode === "single") {
       const list = usable(items);
-      return list.length ? [{ items: list, caption }] : [];
+      return list.length ? [{ items: list, caption, scheduledAt }] : [];
     }
     return groups
-      .map((g) => ({ items: usable(g.keys.map((k) => byKey.get(k)!).filter(Boolean)), caption: g.caption }))
+      .map((g) => ({
+        items: usable(g.keys.map((k) => byKey.get(k)!).filter(Boolean)),
+        caption: g.caption,
+        scheduledAt: g.scheduledAt,
+      }))
       .filter((g) => g.items.length > 0);
-  }, [mode, items, groups, caption, byKey, format]);
+  }, [mode, items, groups, caption, scheduledAt, byKey, format]);
 
   /** Envia (ou guarda) o que está montado. `asDraft` não toca no link do cliente. */
   const submit = async (asDraft: boolean) => {
@@ -463,6 +476,7 @@ export function Composer({
           caption: p.caption,
           status: asDraft ? ("draft" as const) : ("pending" as const),
           assets: p.items.map((i) => toAsset(i, urls.get(i.key)!)),
+          scheduledAt: p.scheduledAt ? new Date(p.scheduledAt).toISOString() : null,
         })),
       );
       onCreated(posts);
@@ -780,6 +794,20 @@ export function Composer({
                 onChange={(e) => setCaption(e.target.value)}
               />
             </label>
+
+            <label className="block">
+              <span className="label">Data prevista de publicação (opcional)</span>
+              <input
+                type="datetime-local"
+                className="field mt-1"
+                value={scheduledAt}
+                disabled={sending}
+                onChange={(e) => setScheduledAt(e.target.value)}
+              />
+              <span className="mt-1 block text-[11.5px] text-ink-500">
+                Já aparece no Planejamento como rascunho; vira data confirmada quando o cliente aprovar.
+              </span>
+            </label>
           </>
         )}
 
@@ -869,6 +897,18 @@ export function Composer({
                       setGroups((gs) => gs.map((x) => (x.id === g.id ? { ...x, caption: e.target.value } : x)))
                     }
                   />
+                  <label className="mt-2 flex items-center gap-2">
+                    <span className="shrink-0 text-[11px] text-ink-500">Data prevista</span>
+                    <input
+                      type="datetime-local"
+                      className="field py-1.5 text-[12.5px]"
+                      value={g.scheduledAt}
+                      disabled={sending}
+                      onChange={(e) =>
+                        setGroups((gs) => gs.map((x) => (x.id === g.id ? { ...x, scheduledAt: e.target.value } : x)))
+                      }
+                    />
+                  </label>
                 </div>
               );
             })}

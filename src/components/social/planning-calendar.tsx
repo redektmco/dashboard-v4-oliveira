@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Asset, PublishStatus } from "@/lib/social/types";
 import type { FormatBadge } from "@/lib/social/media";
 import { Icon } from "@/components/icon";
+import { downloadAssets } from "@/lib/social/download";
 import { MediaView } from "./media";
 import { FormatTag } from "./vertical-preview";
 
@@ -22,27 +23,6 @@ export type PlannedItem = {
   projectTitle: string;
   publishStatus: PublishStatus;
 };
-
-/**
- * Baixa uma mídia do Blob. `?download=1` faz o CDN da Vercel responder com
- * `Content-Disposition: attachment`, então funciona mesmo sendo um domínio
- * diferente (o atributo `download` do <a> é ignorado pelo navegador nesse caso).
- */
-function downloadAsset(url: string, name: string) {
-  const withParam = `${url}${url.includes("?") ? "&" : "?"}download=1`;
-  const a = document.createElement("a");
-  a.href = withParam;
-  a.download = name;
-  a.rel = "noopener";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-}
-
-/** Várias mídias (carrossel/story): dispara uma a uma, espaçadas, para o navegador não bloquear. */
-function downloadAssets(assets: Pick<Asset, "url" | "name">[]) {
-  assets.forEach((asset, i) => setTimeout(() => downloadAsset(asset.url, asset.name), i * 200));
-}
 
 const PUB: Record<PublishStatus, { label: string; cls: string; dot: string }> = {
   draft: { label: "Rascunho", cls: "bg-ink-800 text-ink-300", dot: "bg-ink-500" },

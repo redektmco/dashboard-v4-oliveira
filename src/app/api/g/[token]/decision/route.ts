@@ -43,7 +43,11 @@ export async function POST(req: Request, { params }: Ctx) {
     // Reprovar/voltar a pendente tira a data do calendário.
     ...(status !== "approved" && post.publishStatus === "scheduled"
       ? { publishStatus: "draft" as const, scheduledAt: null }
-      : {}),
+      : // Tinha data prevista (definida na criação, ainda sem aprovação) —
+        // ao aprovar, ela vira oficialmente a data do calendário.
+        status === "approved" && post.publishStatus === "draft" && post.scheduledAt
+        ? { publishStatus: "scheduled" as const }
+        : {}),
   });
 
   // Avisa a equipe quando esta decisão foi a que fechou a avaliação: o post

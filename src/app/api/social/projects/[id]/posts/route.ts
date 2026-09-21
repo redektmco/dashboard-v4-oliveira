@@ -19,6 +19,8 @@ type ItemIn = {
   assets?: unknown;
   /** "draft" guarda no painel; qualquer outra coisa vai para o link. */
   status?: unknown;
+  /** Data prevista de publicação (opcional), para já nascer no Planejamento. */
+  scheduledAt?: unknown;
 };
 
 type ItemResult =
@@ -59,7 +61,15 @@ function parseItem(projectId: string, raw: ItemIn): NewPost | string {
   const clientKey = typeof raw.clientKey === "string" && raw.clientKey ? raw.clientKey.slice(0, 120) : null;
   const caption = typeof raw.caption === "string" ? raw.caption.slice(0, 2200) : ""; // limite do IG
   const status = raw.status === "draft" ? ("draft" as const) : ("pending" as const);
-  return { id: newId("pst_"), projectId, format, caption, assets, clientKey, status };
+
+  let scheduledAt: string | null = null;
+  if (typeof raw.scheduledAt === "string" && raw.scheduledAt) {
+    const when = new Date(raw.scheduledAt);
+    if (Number.isNaN(when.getTime())) return "Data prevista inválida.";
+    scheduledAt = when.toISOString();
+  }
+
+  return { id: newId("pst_"), projectId, format, caption, assets, clientKey, status, scheduledAt };
 }
 
 /**

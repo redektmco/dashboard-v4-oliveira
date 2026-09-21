@@ -37,6 +37,10 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (status !== "approved" && post.publishStatus === "scheduled") {
       patch.publishStatus = "draft";
       patch.scheduledAt = null;
+    } else if (status === "approved" && post.publishStatus === "draft" && post.scheduledAt) {
+      // Tinha data prevista (definida na criação, ainda sem aprovação) — ao
+      // aprovar, ela vira oficialmente a data do calendário.
+      patch.publishStatus = "scheduled";
     }
   }
 
