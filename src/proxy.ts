@@ -41,13 +41,15 @@ export const config = {
   // token), o webhook de leads do CRM (`/api/integrations/webhook/<token>`),
   // além das rotas públicas do cliente de Social media — o link de aprovação
   // `/a/<token>` e sua API de decisão `/api/g/...`, todos protegidos por token
-  // na URL.
+  // na URL. `/api/billing/` também fica fora: o cron de cobrança tem sua
+  // própria checagem de token, e o pixel de rastreio (`/api/billing/track/
+  // <token>`) precisa carregar dentro do e-mail do cliente, sem sessão nenhuma.
   //
   // O arquivo das artes não passa por aqui de propósito: o navegador pede um
   // token pequeno em `/api/social/upload` e envia o arquivo direto ao Vercel
   // Blob. Com o arquivo no caminho, o Next bufferiza o corpo e o trunca em
   // 10 MB (`proxyClientMaxBodySize`) — era isso que quebrava o upload em lote.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|icon.png|apple-icon.png|brand/|api/recompute|api/integrations/webhook/|a/|api/g/).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icon.png|apple-icon.png|brand/|api/recompute|api/integrations/webhook/|api/billing/|a/|api/g/).*)",
   ],
 };

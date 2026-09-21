@@ -19,6 +19,7 @@ export default async function PlanejamentoPage() {
       scheduledAt: p.scheduledAt!,
       caption: p.caption,
       thumb: p.assets[0] ? { url: p.assets[0].url, name: p.assets[0].name, kind: p.assets[0].kind, contentType: p.assets[0].contentType } : null,
+      assets: p.assets.map((a) => ({ url: a.url, name: a.name })),
       format: formatBadge(p),
       clientName: p.clientName,
       igHandle: p.igHandle,

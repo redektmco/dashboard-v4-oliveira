@@ -249,6 +249,13 @@ const PATHS = {
       <path d="M12 5v13" />
     </>
   ),
+  download: (
+    <>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="M7 10l5 5 5-5" />
+      <path d="M12 3v12" />
+    </>
+  ),
   grip: (
     <>
       <circle cx="9" cy="6" r="1" />
@@ -263,6 +270,13 @@ const PATHS = {
     <>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 8v8M8 12h8" />
+    </>
+  ),
+  /* Cobrança — recibo com a serrilha do papel. */
+  receipt: (
+    <>
+      <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z" />
+      <path d="M9 8h6M9 12h6M9 16h4" />
     </>
   ),
 } as const;

@@ -7,6 +7,7 @@ const TABS: (TabItem & { admin?: boolean })[] = [
   { href: "/config/calibracao", label: "Calibração", icon: "target" },
   { href: "/config/usuarios", label: "Usuários", icon: "shield", admin: true },
   { href: "/config/integracoes", label: "Integrações", icon: "plug", admin: true },
+  { href: "/config/cobranca", label: "Cobrança", icon: "receipt", admin: true },
   { href: "/config/modelo", label: "Modelo do score", icon: "layers" },
 ];
 
