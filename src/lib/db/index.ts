@@ -429,13 +429,59 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 CREATE INDEX IF NOT EXISTS idx_crm_leads_client ON crm_leads (client_id, ref_date);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_leads_dedup
   ON crm_leads (client_id, dedup_key) WHERE dedup_key IS NOT NULL;
+
+-- =====================================================================
+-- Cobranca — fatura automatica mensal por cliente (Configuracoes > Cobranca).
+-- Uma linha em billing_charges e "a proxima parcela": recorrente ('mensal')
+-- avanca due_date em 1 mes sozinha depois de cada disparo, unica dispara uma
+-- vez e fica inativa. O cron roda 0h (America/Sao_Paulo) e dispara e-mail
+-- (Resend) e WhatsApp (Meta Cloud API) — ambos opt-in por env; sem a chave
+-- configurada, o canal e pulado (nunca falha o disparo dos demais).
+-- billing_dispatch_log e o historico: uma linha por (parcela, vencimento,
+-- canal), com o pixel de rastreio gravando opened_at na abertura do e-mail.
+-- =====================================================================
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_email TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS billing_phone TEXT;
+
+CREATE TABLE IF NOT EXISTS billing_charges (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  description TEXT NOT NULL,
+  amount DOUBLE PRECISION NOT NULL,
+  due_date DATE NOT NULL,
+  recurrence TEXT NOT NULL DEFAULT 'unica' CHECK (recurrence IN ('unica','mensal')),
+  active SMALLINT NOT NULL DEFAULT 1,
+  created_by INTEGER REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_billing_charges_due ON billing_charges (active, due_date);
+CREATE INDEX IF NOT EXISTS idx_billing_charges_client ON billing_charges (client_id);
+
+CREATE TABLE IF NOT EXISTS billing_dispatch_log (
+  id SERIAL PRIMARY KEY,
+  charge_id INTEGER NOT NULL REFERENCES billing_charges(id) ON DELETE CASCADE,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  due_date DATE NOT NULL,
+  amount DOUBLE PRECISION NOT NULL,
+  channel TEXT NOT NULL CHECK (channel IN ('email','whatsapp')),
+  status TEXT NOT NULL DEFAULT 'failed' CHECK (status IN ('sent','failed')),
+  error TEXT,
+  tracking_token TEXT UNIQUE,
+  opened_at TIMESTAMPTZ,
+  sent_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_billing_log_charge ON billing_dispatch_log (charge_id, sent_at DESC);
+-- Idempotencia: o cron pode rodar mais de uma vez no mesmo dia (retry da
+-- Vercel, disparo manual em cima do cron) sem duplicar o envio.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_log_dedup
+  ON billing_dispatch_log (charge_id, due_date, channel);
 `;
 
 /**
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-09-17.social-por-cliente";
+export const SCHEMA_VERSION = "2026-09-21.cobranca";
 
 let migrated = false;
 

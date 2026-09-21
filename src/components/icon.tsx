@@ -272,6 +272,13 @@ const PATHS = {
       <path d="M12 8v8M8 12h8" />
     </>
   ),
+  /* Cobrança — recibo com a serrilha do papel. */
+  receipt: (
+    <>
+      <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3z" />
+      <path d="M9 8h6M9 12h6M9 16h4" />
+    </>
+  ),
 } as const;
 
 export type IconName = keyof typeof PATHS;
