@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { Asset, PublishStatus } from "@/lib/social/types";
 import type { FormatBadge } from "@/lib/social/media";
+import { Icon } from "@/components/icon";
 import { MediaView } from "./media";
 import { FormatTag } from "./vertical-preview";
 
@@ -13,12 +14,35 @@ export type PlannedItem = {
   scheduledAt: string;
   caption: string;
   thumb: Pick<Asset, "url" | "name" | "kind" | "contentType"> | null;
+  /** Mídias do criativo, para o botão de download (1 = post/reels, 2+ = carrossel/story). */
+  assets: Pick<Asset, "url" | "name">[];
   format: FormatBadge;
   clientName: string;
   igHandle: string;
   projectTitle: string;
   publishStatus: PublishStatus;
 };
+
+/**
+ * Baixa uma mídia do Blob. `?download=1` faz o CDN da Vercel responder com
+ * `Content-Disposition: attachment`, então funciona mesmo sendo um domínio
+ * diferente (o atributo `download` do <a> é ignorado pelo navegador nesse caso).
+ */
+function downloadAsset(url: string, name: string) {
+  const withParam = `${url}${url.includes("?") ? "&" : "?"}download=1`;
+  const a = document.createElement("a");
+  a.href = withParam;
+  a.download = name;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/** Várias mídias (carrossel/story): dispara uma a uma, espaçadas, para o navegador não bloquear. */
+function downloadAssets(assets: Pick<Asset, "url" | "name">[]) {
+  assets.forEach((asset, i) => setTimeout(() => downloadAsset(asset.url, asset.name), i * 200));
+}
 
 const PUB: Record<PublishStatus, { label: string; cls: string; dot: string }> = {
   draft: { label: "Rascunho", cls: "bg-ink-800 text-ink-300", dot: "bg-ink-500" },
@@ -268,6 +292,21 @@ function PlannedRow({ p }: { p: PlannedItem }) {
       <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${PUB[p.publishStatus].cls}`}>
         {PUB[p.publishStatus].label}
       </span>
+      {p.assets.length > 0 && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            downloadAssets(p.assets);
+          }}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[var(--border-hair)] text-ink-300 transition-colors hover:bg-ink-850 hover:text-ink-100"
+          aria-label={p.assets.length > 1 ? "Baixar mídias" : "Baixar mídia"}
+          title={p.assets.length > 1 ? `Baixar ${p.assets.length} mídias` : "Baixar mídia"}
+        >
+          <Icon name="download" size={15} />
+        </button>
+      )}
     </Link>
   );
 }
