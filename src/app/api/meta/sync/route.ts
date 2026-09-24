@@ -14,7 +14,10 @@ export async function POST(req: Request) {
   const token = process.env.RECOMPUTE_TOKEN;
   const cronSecret = process.env.CRON_SECRET;
   const fromCron = Boolean(cronSecret) && req.headers.get("authorization") === `Bearer ${cronSecret}`;
-  if (token && !fromCron && req.headers.get("x-recompute-token") !== token) {
+  const byToken = Boolean(token) && req.headers.get("x-recompute-token") === token;
+  // Fora do proxy de sessão: com qualquer segredo configurado, só entra quem
+  // o apresenta. Sem nenhum (dev local), fica aberta como o recompute.
+  if ((token || cronSecret) && !fromCron && !byToken) {
     return NextResponse.json({ error: "não autorizado" }, { status: 401 });
   }
   if (!metaConfigured()) {
