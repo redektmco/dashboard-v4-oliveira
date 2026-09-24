@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { removeClient, setClientArchived } from "@/actions";
+import { importClientsSheet, removeClient, setClientArchived } from "@/actions";
 import { ACCOUNT_TYPE_LABEL, type User } from "@/lib/model/types";
 import type { ClientFootprint } from "@/lib/repo";
 import { ActionMenu, type MenuItem } from "./action-menu";
 import { ClientDialog, type ClientFormClient } from "./client-form";
-import { ConfirmDialog, ImpactList } from "./modal";
-import { Segmented } from "./form-controls";
+import { ConfirmDialog, ImpactList, Modal } from "./modal";
+import { ActionForm, Segmented, SubmitButton } from "./form-controls";
 import { toast } from "./toast";
 import { Icon } from "./icon";
 import { CardList, CardMeta, CardRow, Empty, SectionHeader, TableScroll, brl, dateBR } from "./ui";
@@ -26,6 +26,7 @@ export function ClientsManager({ rows, users, isAdmin }: { rows: Row[]; users: U
   const [editing, setEditing] = useState<Row | "new" | null>(null);
   const [archiving, setArchiving] = useState<Row | null>(null);
   const [deleting, setDeleting] = useState<Row | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const ativos = rows.filter((r) => r.active);
   const arquivados = rows.filter((r) => !r.active);
@@ -69,10 +70,18 @@ export function ClientsManager({ rows, users, isAdmin }: { rows: Row[]; users: U
         title="Clientes"
         description="Cadastro da carteira e metas. Sem meta cadastrada não há régua — é o primeiro ponto a resolver."
         actions={
-          <button className="btn btn-primary" onClick={() => setEditing("new")}>
-            <Icon name="plus" size={14} />
-            Novo cliente
-          </button>
+          <>
+            {isAdmin && (
+              <button className="btn" onClick={() => setImporting(true)}>
+                <Icon name="upload" size={14} />
+                Importar planilha
+              </button>
+            )}
+            <button className="btn btn-primary" onClick={() => setEditing("new")}>
+              <Icon name="plus" size={14} />
+              Novo cliente
+            </button>
+          </>
         }
       />
 
@@ -235,6 +244,36 @@ export function ClientsManager({ rows, users, isAdmin }: { rows: Row[]; users: U
         )}
         <p className="text-[12.5px] text-ink-500">Cliente que só saiu da carteira? Prefira arquivar.</p>
       </ConfirmDialog>
+
+      <Modal
+        open={importing}
+        onClose={() => setImporting(false)}
+        title="Importar clientes da planilha"
+        description="Planilha de Gestão de Projetos exportada do Google Sheets em CSV (Arquivo → Fazer download → .csv)."
+        size="sm"
+      >
+        <ActionForm action={importClientsSheet} onSuccess={() => setImporting(false)}>
+          <label className="block">
+            <span className="label">Arquivo .csv</span>
+            <input type="file" name="file" accept=".csv,text/csv" required className="field mt-1" />
+          </label>
+          <ul className="list-disc space-y-1 pl-4 text-[12.5px] text-ink-400">
+            <li>Lê CLIENTE, MRR, GT, ACC, E-MAIL, CONTATO, MÍDIA GERIDA e E-COMMERCE; linhas de total são ignoradas.</li>
+            <li>
+              Cliente que já existe (mesmo nome) é <strong className="text-ink-200">atualizado</strong>: MRR e time. Reimportar
+              não duplica.
+            </li>
+            <li>Com link de e-commerce vira conta de e-commerce; o resto, geração de lead — ajuste depois se preciso.</li>
+            <li>Mídia gerida mensal vira a meta semanal de verba, quando ainda não houver.</li>
+          </ul>
+          <div className="modal-actions">
+            <button type="button" className="btn" onClick={() => setImporting(false)}>
+              Cancelar
+            </button>
+            <SubmitButton pendingLabel="Importando…">Importar</SubmitButton>
+          </div>
+        </ActionForm>
+      </Modal>
     </>
   );
 }

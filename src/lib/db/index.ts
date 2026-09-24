@@ -475,13 +475,51 @@ CREATE INDEX IF NOT EXISTS idx_billing_log_charge ON billing_dispatch_log (charg
 -- Vercel, disparo manual em cima do cron) sem duplicar o envio.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_log_dedup
   ON billing_dispatch_log (charge_id, due_date, channel);
+
+-- =====================================================================
+-- Meta Ads — puxa verba, leads/conversas, receita e alcance direto da API
+-- de Insights com o token do usuario de sistema da unidade (env
+-- META_ACCESS_TOKEN, nunca no banco). Um cliente pode ter varias contas de
+-- anuncio; cada conta pertence a um cliente so. meta_insights guarda uma
+-- linha por (conta, semana-ritual): o sync regrava as ultimas semanas, que a
+-- Meta ainda ajusta por atribuicao atrasada.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS meta_ad_accounts (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  ad_account_id TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL DEFAULT '',
+  currency TEXT,
+  lead_metric TEXT NOT NULL DEFAULT 'both' CHECK (lead_metric IN ('lead','messaging','both')),
+  active SMALLINT NOT NULL DEFAULT 1,
+  created_by INTEGER REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_sync_at TIMESTAMPTZ,
+  last_error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_meta_ad_accounts_client ON meta_ad_accounts (client_id);
+
+CREATE TABLE IF NOT EXISTS meta_insights (
+  ad_account_id TEXT NOT NULL REFERENCES meta_ad_accounts(ad_account_id) ON DELETE CASCADE,
+  ref_date DATE NOT NULL,
+  spend DOUBLE PRECISION NOT NULL DEFAULT 0,
+  leads INTEGER NOT NULL DEFAULT 0,
+  conversations INTEGER NOT NULL DEFAULT 0,
+  purchases INTEGER NOT NULL DEFAULT 0,
+  revenue DOUBLE PRECISION NOT NULL DEFAULT 0,
+  reach INTEGER NOT NULL DEFAULT 0,
+  impressions INTEGER NOT NULL DEFAULT 0,
+  clicks INTEGER NOT NULL DEFAULT 0,
+  synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (ad_account_id, ref_date)
+);
 `;
 
 /**
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-09-21.cobranca";
+export const SCHEMA_VERSION = "2026-09-24.meta-ads";
 
 let migrated = false;
 

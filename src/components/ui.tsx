@@ -243,6 +243,47 @@ export function Panel({
   );
 }
 
+/**
+ * Distribuição da carteira numa barra só: a proporção entre as bandas lida
+ * de relance, o que quatro números soltos não mostram. "Sem score" entra
+ * cinza — conta sem dado também é risco, só que invisível.
+ */
+export function BandBar({ counts }: { counts: Record<Band | "sem_dado", number> }) {
+  const parts = [
+    { key: "vermelho", label: "Crítico", n: counts.vermelho, cls: BAND_STYLE.vermelho.dot },
+    { key: "amarelo", label: "Em risco", n: counts.amarelo, cls: BAND_STYLE.amarelo.dot },
+    { key: "verde", label: "Saudável", n: counts.verde, cls: BAND_STYLE.verde.dot },
+    { key: "sem_dado", label: "Sem score", n: counts.sem_dado, cls: "bg-ink-500" },
+  ];
+  const total = parts.reduce((a, p) => a + p.n, 0);
+  if (!total) return null;
+  return (
+    <div className="panel px-4 py-3 sm:px-5">
+      <div
+        className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full"
+        role="img"
+        aria-label={parts.map((p) => `${p.label}: ${p.n}`).join(", ")}
+      >
+        {parts
+          .filter((p) => p.n > 0)
+          .map((p) => (
+            <span key={p.key} className={`${p.cls} h-full`} style={{ width: `${(p.n / total) * 100}%` }} />
+          ))}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] text-ink-400">
+        {parts.map((p) => (
+          <span key={p.key} className="inline-flex items-center gap-1.5">
+            <span className={`size-2 rounded-full ${p.cls}`} aria-hidden />
+            {p.label}
+            <strong className="tnum text-ink-200">{p.n}</strong>
+            <span className="tnum text-ink-600">{Math.round((p.n / total) * 100)}%</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** KPI tile do kit BI. `accent` reserva o vermelho ao número que manda no dia. */
 export function Stat({
   label,

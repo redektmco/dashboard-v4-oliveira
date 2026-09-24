@@ -1,8 +1,11 @@
 import Link from "next/link";
-import { portfolio, portfolioSummary, listOpenPlans, today } from "@/lib/repo";
+import { metaWeeks, portfolio, portfolioSummary, listOpenPlans, today } from "@/lib/repo";
+import { recentWeeks } from "@/lib/meta/sync";
+import { weekLabel } from "@/lib/week";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
 import { PortfolioTable, type Row } from "@/components/portfolio-table";
 import {
+  BandBar,
   BandChip,
   CardList,
   CardMeta,
@@ -27,8 +30,24 @@ export const dynamic = "force-dynamic";
 export default async function CarteiraPage() {
   await requireUser();
   const at = today();
-  const [rows, plans] = await Promise.all([portfolio(at), listOpenPlans()]);
+  const [rows, plans, meta] = await Promise.all([portfolio(at), listOpenPlans(), metaWeeks()]);
   const summary = portfolioSummary(rows);
+
+  // Mídia Meta da última semana fechada, somando as contas vinculadas da
+  // carteira ativa. A semana em curso fica de fora: parcial engana.
+  const [, closedWeek] = recentWeeks(2, at);
+  const activeIds = new Set(rows.map((r) => r.client.id));
+  const metaClosed = [...meta]
+    .filter(([id]) => activeIds.has(id))
+    .map(([id, weeks]) => ({ id, w: weeks.get(closedWeek) }));
+  const media = metaClosed.reduce(
+    (a, { w }) => ({ spend: a.spend + (w?.week.spend ?? 0), leads: a.leads + (w?.leads ?? 0) }),
+    { spend: 0, leads: 0 },
+  );
+  const stopped = metaClosed
+    .filter(({ w }) => (w?.week.spend ?? 0) === 0)
+    .map(({ id }) => rows.find((r) => r.client.id === id)!.client.name);
+  const unscoredMrr = rows.filter((r) => !r.score.band).reduce((a, r) => a + r.client.mrr, 0);
 
   const view: Row[] = rows.map((r) => ({
     id: r.client.id,
@@ -81,9 +100,9 @@ export default async function CarteiraPage() {
         }
       />
 
-      {/* Quatro números: a contagem de "confiança < alta" vive na caixa
-          "Dado desatualizado" da triagem, logo abaixo — não repete aqui. */}
-      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
+      {/* Bandas + o que ainda não pontua; a contagem de "confiança < alta"
+          vive na caixa "Dado desatualizado" da triagem, logo abaixo. */}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 xl:grid-cols-5">
         <Stat
           label="Vermelho"
           value={summary.byBand.vermelho}
@@ -103,13 +122,61 @@ export default async function CarteiraPage() {
           hint={`${Math.round((summary.byBand.verde / total) * 100)}% da carteira`}
         />
         <Stat
-          label="MRR em risco"
-          value={brl(summary.mrrAtRisk)}
-          hint={`de ${brl(summary.mrrTotal)} na carteira`}
-          tone={summary.mrrAtRisk > summary.mrrTotal * 0.3 ? "vermelho" : "default"}
-          accent
+          label="Sem score"
+          value={summary.byBand.sem_dado}
+          hint={
+            summary.byBand.sem_dado
+              ? `${brl(unscoredMrr)} de MRR sem leitura — falta meta ou preenchimento`
+              : "toda a carteira pontua"
+          }
         />
+        <div className="col-span-2 grid xl:col-span-1">
+          <Stat
+            label="MRR em risco"
+            value={brl(summary.mrrAtRisk)}
+            hint={`de ${brl(summary.mrrTotal)} na carteira`}
+            tone={summary.mrrAtRisk > summary.mrrTotal * 0.3 ? "vermelho" : "default"}
+            accent
+          />
+        </div>
       </div>
+      <BandBar counts={summary.byBand} />
+
+      {metaClosed.length > 0 && (
+        <section className="panel">
+          <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-hair)] px-4 py-2.5 sm:px-5">
+            <div className="flex items-center gap-2">
+              <span className="inline-block size-2 rounded-full bg-[#1877f2]" aria-hidden />
+              <span className="eyebrow">Meta Ads · semana fechada {weekLabel(closedWeek)}</span>
+            </div>
+            <Link href="/config/integracoes" className="text-[12px] text-ink-400 hover:text-ink-100">
+              {metaClosed.length} conta(s) vinculada(s) →
+            </Link>
+          </header>
+          <dl className="grid grid-cols-2 gap-px bg-[var(--border-hair)] lg:grid-cols-4">
+            {[
+              { label: "Investimento", value: brl(media.spend) },
+              { label: "Leads e conversas", value: media.leads.toLocaleString("pt-BR") },
+              {
+                label: "Custo por lead",
+                value: media.leads > 0 ? (media.spend / media.leads).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—",
+              },
+              {
+                label: "Verba parada",
+                value: stopped.length,
+                hint: stopped.length ? stopped.slice(0, 3).join(", ") + (stopped.length > 3 ? "…" : "") : "todas as contas rodaram",
+                tone: stopped.length ? "text-vermelho-fg" : "text-ink-100",
+              },
+            ].map((m) => (
+              <div key={m.label} className="bg-ink-900 px-4 py-3 sm:px-5">
+                <dt className="text-[11.5px] text-ink-500">{m.label}</dt>
+                <dd className={`tnum mt-1 font-display text-[18px] font-bold ${m.tone ?? "text-ink-100"}`}>{m.value}</dd>
+                {m.hint && <dd className="mt-0.5 truncate text-[11px] text-ink-500">{m.hint}</dd>}
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
 
       {/* -------------------- Triagem diária -------------------- */}
       <Panel

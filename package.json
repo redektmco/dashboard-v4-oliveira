@@ -17,7 +17,8 @@
     "usuarios": "dotenv -e .env.local -- tsx scripts/usuarios.ts",
     "migrate:social": "dotenv -e .env.local -- tsx scripts/migrate-social.ts",
     "migrate:crm": "dotenv -e .env.local -- tsx scripts/migrate-crm.ts",
-    "limpar": "dotenv -e .env.local -- tsx scripts/limpar.ts"
+    "limpar": "dotenv -e .env.local -- tsx scripts/limpar.ts",
+    "importar:clientes": "dotenv -e .env.local -- tsx scripts/importar-clientes.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

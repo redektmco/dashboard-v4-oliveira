@@ -11,7 +11,10 @@ import {
   deleteIntegration,
   deletePlan,
   getClient,
+  getMetaLink,
   getPlan,
+  importClients,
+  linkMetaAccount,
   persistScore,
   recomputeAll,
   recomputeRange,
@@ -19,9 +22,12 @@ import {
   saveSnapshot,
   scoreFor,
   setIntegrationActive,
+  setMetaAccountActive,
+  setMetaLeadMetric,
   setSetting,
   setTargets,
   today,
+  unlinkMetaAccount,
   updateClient,
   updatePlan,
   updatePlanStatus,
@@ -35,6 +41,10 @@ import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
 import { DIMENSIONS } from "@/lib/model/catalog";
 import { requireAdmin, requireUser } from "@/lib/auth";
 import type { ActionResult } from "@/lib/action";
+import { listAdAccounts, metaConfigured, type AdAccount } from "@/lib/meta/graph";
+import { LEAD_METRIC_LABEL, type LeadMetric } from "@/lib/meta/metrics";
+import { syncMeta } from "@/lib/meta/sync";
+import { parseClientsSheet } from "@/lib/import/clients-sheet";
 
 const str = (f: FormData, k: string) => (f.get(k) as string | null)?.trim() ?? "";
 const numOrNull = (f: FormData, k: string) => {
@@ -247,6 +257,112 @@ export async function removeIntegration(clientId: number): Promise<ActionResult>
   revalidatePath("/config/integracoes");
   revalidatePath("/");
   return { ok: "Integração removida. Os leads já recebidos continuam no histórico." };
+}
+
+/* ------------------------ importação de planilha -------------------- */
+
+export async function importClientsSheet(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  await requireAdmin();
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Escolha o arquivo .csv da planilha." };
+  if (file.size > 5 * 1024 * 1024) return { error: "Arquivo grande demais (máx. 5 MB)." };
+  let rows;
+  try {
+    rows = parseClientsSheet(await file.text());
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Não consegui ler a planilha." };
+  }
+  if (!rows.length) return { error: "Nenhum cliente encontrado na planilha." };
+  const r = await importClients(rows);
+  after(() => recomputeAll());
+  revalidatePath("/config");
+  revalidatePath("/");
+  const people = r.people.length ? ` · ${r.people.length} pessoa(s) do time adicionada(s)` : "";
+  return { ok: `${r.created.length} cliente(s) novo(s), ${r.updated.length} atualizado(s)${people}.` };
+}
+
+/* ---------------------------- Meta Ads ----------------------------- */
+
+const LEAD_METRICS: LeadMetric[] = ["lead", "messaging", "both"];
+
+/** Contas de anúncio que o token enxerga — carregadas só quando o modal abre. */
+export async function loadMetaAdAccounts(): Promise<{ accounts?: AdAccount[]; error?: string }> {
+  await requireAdmin();
+  try {
+    return { accounts: await listAdAccounts() };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Falha ao falar com a Meta." };
+  }
+}
+
+export async function connectMetaAccount(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const me = await requireAdmin();
+  const clientId = Number(str(formData, "client_id"));
+  const accountId = str(formData, "ad_account_id");
+  const metric = str(formData, "lead_metric") as LeadMetric;
+  if (!clientId) return { error: "Escolha o cliente." };
+  if (!accountId) return { error: "Escolha a conta de anúncio." };
+  if (!LEAD_METRICS.includes(metric)) return { error: "Escolha o que conta como lead." };
+
+  // Revalida no servidor: só vincula conta que o token realmente enxerga.
+  let acc: AdAccount | undefined;
+  try {
+    acc = (await listAdAccounts()).find((a) => a.id === accountId);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Falha ao falar com a Meta." };
+  }
+  if (!acc) return { error: "O token da unidade não tem acesso a essa conta." };
+
+  await linkMetaAccount(clientId, { id: acc.id, name: acc.name, currency: acc.currency }, metric, me.id ?? null);
+  // Histórico de 12 semanas já no vínculo, para o score não esperar o cron.
+  const r = await syncMeta({ weeks: 12, adAccountId: acc.id });
+  after(() => recomputeRange(90));
+  revalidatePath("/config/integracoes");
+  revalidatePath("/");
+  if (r.failed.length) return { error: `Conta vinculada, mas a sincronização falhou: ${r.failed[0].error}` };
+  return { ok: `${acc.name} vinculada — 12 semanas importadas.` };
+}
+
+export async function syncMetaNow(): Promise<ActionResult> {
+  await requireAdmin();
+  if (!metaConfigured()) return { error: "Configure META_ACCESS_TOKEN no ambiente." };
+  const r = await syncMeta({ weeks: 3 });
+  await recomputeRange(28);
+  revalidatePath("/config/integracoes");
+  revalidatePath("/");
+  if (r.failed.length) {
+    return { error: `${r.ok} de ${r.accounts} conta(s) sincronizadas. Falhou: ${r.failed.map((f) => f.account).join(", ")}` };
+  }
+  return { ok: `${r.ok} conta(s) sincronizadas e score recalculado.` };
+}
+
+export async function setMetaAccountPaused(adAccountId: string, paused: boolean): Promise<ActionResult> {
+  await requireAdmin();
+  await setMetaAccountActive(adAccountId, !paused);
+  after(() => recomputeRange(45));
+  revalidatePath("/config/integracoes");
+  revalidatePath("/");
+  return { ok: paused ? "Conta pausada — os números voltam para o input manual." : "Conta reativada." };
+}
+
+export async function changeMetaLeadMetric(adAccountId: string, metric: LeadMetric): Promise<ActionResult> {
+  await requireAdmin();
+  if (!LEAD_METRICS.includes(metric)) return { error: "Métrica inválida." };
+  await setMetaLeadMetric(adAccountId, metric);
+  after(() => recomputeRange(45));
+  revalidatePath("/config/integracoes");
+  revalidatePath("/");
+  return { ok: `Lead agora conta como: ${LEAD_METRIC_LABEL[metric].toLowerCase()}.` };
+}
+
+export async function removeMetaAccount(adAccountId: string): Promise<ActionResult> {
+  await requireAdmin();
+  const link = await getMetaLink(adAccountId);
+  await unlinkMetaAccount(adAccountId);
+  after(() => recomputeRange(90));
+  revalidatePath("/config/integracoes");
+  revalidatePath("/");
+  return { ok: `${link?.name ?? "Conta"} desvinculada.` };
 }
 
 /* --------------------------- planos -------------------------------- */

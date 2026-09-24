@@ -50,6 +50,12 @@ type SortKey = "risk" | "score" | "delta" | "mrr" | "name" | "renewal";
 
 const BAND_ORDER: Record<Band, number> = { vermelho: 0, amarelo: 1, verde: 2 };
 
+/** Idade dos dois preenchimentos numa linha curta; conta nunca preenchida diz isso direto. */
+const fillAge = (perf: number | null, chk: number | null) =>
+  perf === null && chk === null
+    ? "nunca preenchido"
+    : `perf ${perf === null ? "—" : `${perf}d`} · chk ${chk === null ? "—" : `${chk}d`}`;
+
 export function PortfolioTable({ rows }: { rows: Row[] }) {
   const [band, setBand] = useState<"todas" | Band>("todas");
   const [conf, setConf] = useState<"todas" | Confidence>("todas");
@@ -283,8 +289,7 @@ export function PortfolioTable({ rows }: { rows: Row[] }) {
                     <span className="flex flex-col gap-0.5">
                       <ConfidenceTag c={r.confidence} compact />
                       <span className="text-[10.5px] text-ink-500">
-                        perf {r.perfAge === null ? "nunca" : `${r.perfAge}d`} · chk{" "}
-                        {r.checkinAge === null ? "nunca" : `${r.checkinAge}d`}
+                        {fillAge(r.perfAge, r.checkinAge)}
                       </span>
                     </span>
                   ),
@@ -364,8 +369,7 @@ export function PortfolioTable({ rows }: { rows: Row[] }) {
                 <td>
                   <ConfidenceTag c={r.confidence} compact />
                   <div className="mt-0.5 text-[11px] text-ink-500">
-                    perf {r.perfAge === null ? "nunca" : `${r.perfAge}d`} · chk{" "}
-                    {r.checkinAge === null ? "nunca" : `${r.checkinAge}d`}
+                    {fillAge(r.perfAge, r.checkinAge)}
                   </div>
                 </td>
                 <td className="max-w-[220px]">
