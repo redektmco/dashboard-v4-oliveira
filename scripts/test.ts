@@ -19,6 +19,8 @@ import { aspectWarning, formatBadge, rejectReason } from "../src/lib/social/medi
 import { matchCaptionsToFiles, parseBatchCaptions } from "../src/lib/social/batch";
 import { isOwnBlobUrl } from "../src/lib/social/storage";
 import { navReducer, type Nav } from "../src/components/social/story-nav";
+import { EMPTY_WEEK, leadsOf, metaFields, parseInsight, weekRange } from "../src/lib/meta/metrics";
+import { clientKey, firstPhone, parseBRL, parseClientsSheet, parseCsv } from "../src/lib/import/clients-sheet";
 import {
   clientKeyOf,
   groupByClient,
@@ -533,4 +535,104 @@ test("Clientes: monograma usa a primeira e a última palavra de peso", () => {
   assert.equal(initials("Auto Center de Oliveira"), "AO", "partícula não conta");
   assert.equal(initials("V4"), "V4");
   assert.equal(initials("  "), "?");
+});
+
+/* ---------------------------- Meta Ads ----------------------------- */
+
+test("meta: agregado 'lead' não soma com as quebras por origem", () => {
+  const w = parseInsight({
+    spend: "1000.50",
+    reach: "5000",
+    impressions: "9000",
+    actions: [
+      { action_type: "offsite_conversion.fb_pixel_lead", value: "30" },
+      { action_type: "lead", value: "40" },
+      { action_type: "onsite_conversion.lead_grouped", value: "10" },
+      { action_type: "onsite_conversion.messaging_conversation_started_7d", value: "12" },
+      { action_type: "onsite_conversion.total_messaging_connection", value: "20" },
+      { action_type: "link_click", value: "300" },
+    ],
+    date_start: "2026-09-12",
+    date_stop: "2026-09-18",
+  });
+  assert.equal(w.spend, 1000.5);
+  assert.equal(w.leads, 40);
+  assert.equal(w.conversations, 12);
+  assert.equal(w.clicks, 300);
+  assert.equal(leadsOf(w, "lead"), 40);
+  assert.equal(leadsOf(w, "messaging"), 12);
+  assert.equal(leadsOf(w, "both"), 52);
+});
+
+test("meta: compra e receita pelo agregado, com fallback para omni", () => {
+  const w = parseInsight({
+    spend: "200",
+    actions: [{ action_type: "omni_purchase", value: "4" }],
+    action_values: [{ action_type: "omni_purchase", value: "1600" }],
+    date_start: "2026-09-12",
+    date_stop: "2026-09-18",
+  });
+  assert.equal(w.purchases, 4);
+  assert.equal(w.revenue, 1600);
+  assert.deepEqual(metaFields("ecommerce", w, 0), {
+    budget_real: 200,
+    revenue_real: 1600,
+    roas_real: 8,
+    ticket_real: 400,
+  });
+});
+
+test("meta: campos por tipo de conta, sem razão com denominador zero", () => {
+  const w = { ...EMPTY_WEEK, spend: 900, reach: 12000 };
+  assert.deepEqual(metaFields("lead_gen", w, 30), { budget_real: 900, leads_real: 30, cpl_real: 30 });
+  assert.deepEqual(metaFields("lead_gen", w, 0), { budget_real: 900, leads_real: 0 });
+  assert.deepEqual(metaFields("branding", w, 0), { budget_real: 900, reach_real: 12000 });
+  assert.deepEqual(metaFields("ecommerce", { ...EMPTY_WEEK }, 0), { budget_real: 0, revenue_real: 0 });
+});
+
+test("meta: semana-ritual vai de sábado a sexta", () => {
+  assert.deepEqual(weekRange("2026-09-18"), { since: "2026-09-12", until: "2026-09-18" });
+  assert.deepEqual(weekRange("2026-10-02"), { since: "2026-09-26", until: "2026-10-02" });
+});
+
+/* ------------------------ importação de planilha -------------------- */
+
+test("planilha: cabeçalho com quebra de linha, linha de total e squads", () => {
+  const csv = [
+    ",,,CONTRATO,,,,,",
+    ",ORIGEM,CLIENTE,CONTATO,E-MAIL,\"MRR\",MÍDIA GERIDA,\"GT\",ACC,\"E-COMMERCE\",INÍCIO",
+    '1,Lead Broker,Padaria Estrela ,"Maria 15 99677-9992 / Pedro 15 1111-2222","a@x.com / b@y.com","R$ 4.700,00","R$ 5.200,00",IGOR,LARA,,28/04/25',
+    '2,Outbound,"Loja ""Boa""",11 93802-4170,loja@z.com,"R$ 9.952,40",Não definido,SEM GT,JENIFFER,https://loja.com,',
+    ',,,,,"R$ 14.652,40","R$ 5.200,00",,,,',
+    '1,Indicação,Padaria  Estrela,,,,,,,,',
+  ].join("\n");
+  const rows = parseClientsSheet(csv);
+  assert.equal(rows.length, 2, "linha de total e repetido ficam de fora");
+  assert.deepEqual(rows[0], {
+    name: "Padaria Estrela",
+    accountType: "lead_gen",
+    mrr: 4700,
+    gt: "Igor",
+    account: "Lara",
+    email: "a@x.com",
+    phone: "5515996779992",
+    mediaMonthly: 5200,
+    start: "2025-04-28",
+  });
+  assert.equal(rows[1].name, 'Loja "Boa"');
+  assert.equal(rows[1].accountType, "ecommerce");
+  assert.equal(rows[1].gt, null, "SEM GT não vira pessoa");
+  assert.equal(rows[1].mediaMonthly, null);
+});
+
+test("planilha: CSV com célula multilinha entre aspas", () => {
+  assert.deepEqual(parseCsv('a,"PESQUISA \nNPS",c\r\n1,2,3'), [
+    ["a", "PESQUISA \nNPS", "c"],
+    ["1", "2", "3"],
+  ]);
+  assert.equal(parseBRL("R$ 1.303,20"), 1303.2);
+  assert.equal(parseBRL("Sem Informação"), null);
+  assert.equal(firstPhone("5513996090102"), "5513996090102");
+  assert.equal(firstPhone("sem telefone"), null);
+  assert.equal(clientKey("Wisqueria "), clientKey("wisquería"));
 });

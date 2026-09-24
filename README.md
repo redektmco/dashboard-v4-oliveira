@@ -46,6 +46,7 @@ Outros comandos:
 | `npm run recompute -- --days=90` | Backfill: refaz a série dos últimos 90 dias |
 | `npm run check` | Diagnóstico: carteira por risco; passe um nome para abrir um cliente |
 | `npm run migrate:sqlite` | Importa um banco SQLite da fase self-host, preservando ids e datas |
+| `npm run importar:clientes -- planilha.csv` | Sobe a carteira da planilha de Gestão de Projetos (CSV); reimportar só atualiza |
 | `npm run typecheck` / `npm run lint` | Verificações |
 | `npm run build` / `npm start` | Produção |
 
@@ -62,6 +63,22 @@ Roda pelo cron da Vercel, declarado em `vercel.json`:
 Fora da Vercel, agende `npm run recompute` no cron do host. Para proteger a rota, defina
 `RECOMPUTE_TOKEN` e mande o header `x-recompute-token` (o cron da Vercel é reconhecido pelo
 `Authorization: Bearer $CRON_SECRET`).
+
+### Meta Ads
+
+Puxa verba, leads, conversas iniciadas, faturamento e alcance da API de Insights da Meta com o
+token do **usuário de sistema da unidade** (acesso a todas as BMs). O token vive só na env
+`META_ACCESS_TOKEN` da Vercel — nunca no banco nem no repositório. Precisa do escopo `ads_read`.
+
+- **Vínculo:** Configurações → Integrações → *Vincular conta*. Lista todas as contas que o token
+  enxerga; um cliente pode ter várias (os números somam). Por conta, escolha o que conta como
+  lead: formulário/pixel, conversas iniciadas (WhatsApp/Direct) ou os dois.
+- **Sync:** cron `/api/meta/sync` às 05h30 (antes do recompute), regrava as 3 últimas
+  semanas-ritual (a Meta ainda ajusta conversão atrasada) e recalcula a série. O vínculo já
+  importa 12 semanas; `?weeks=12` na rota refaz um histórico maior. Mesma proteção do recompute.
+- **No score:** preenche o que o GT deixou em branco no snapshot da semana; semana fechada sem
+  snapshot vira um registro "Meta Ads" com as metas vigentes. Número digitado pelo GT sempre
+  vence; leads do CRM vencem os da Meta. O formulário do GT já abre com os números da Meta.
 
 ### Região das funções
 
@@ -82,7 +99,7 @@ um round-trip HTTP; com a função no padrão `iad1` (EUA), cada uma cruzava o c
 | `/config` | coordenação | — | Configurações: clientes (cadastro, metas, arquivar/excluir) |
 | `/config/calibracao` | coordenação | trimestral | pesos, limiares, recompute |
 | `/config/usuarios` | admin | — | quem entra no painel, senha, permissão, exclusão |
-| `/config/integracoes` | admin | — | webhooks de CRM por cliente |
+| `/config/integracoes` | admin | — | contas do Meta Ads e webhooks de CRM por cliente |
 | `/config/modelo` | todos | — | pesos, réguas e justificativas, abertos |
 
 O menu principal tem só as jornadas (Carteira, Performance, Check-in, Social media);

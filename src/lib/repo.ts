@@ -4,6 +4,8 @@ import { currentRitualDate, ritualWeekEnd } from "./week";
 import { DIMENSIONS } from "./model/catalog";
 import { computeScore, DEFAULT_CONFIG, type ScoreConfig, type WeightMap } from "./model/scoring";
 import { insertDemoData, wipe } from "./seed";
+import { EMPTY_WEEK, leadsOf, metaFields, type LeadMetric, type MetaWeek } from "./meta/metrics";
+import { clientKey, type SheetClient } from "./import/clients-sheet";
 import type {
   AccountType,
   Band,
@@ -336,33 +338,79 @@ export async function saveSnapshot(
 
 /* ------------------------------ score ------------------------------ */
 
-/**
- * Contagem de leads do CRM por semana-ritual (chave = `ref_date` da semana que
- * fecha) mais a meta de leads vigente. É o que faz a contabilização automática
- * entrar direto no score sem passar pelo preenchimento manual do GT.
- */
-export type CrmOverlay = { leadsByWeek: Map<string, number>; leadsMeta: number | null };
+/** Semana da Meta de um cliente: soma das contas + leads já pela métrica de cada conta. */
+export type MetaAgg = { week: MetaWeek; leads: number };
 
 /**
- * Sobrepõe a contagem do CRM na régua de leads das contas de geração:
- *  1. onde já há snapshot manual da semana, troca só o `leads_real` pela
- *     contagem do CRM — CPL, verba e MQL continuam do preenchimento do GT;
- *  2. na semana em curso ainda sem snapshot, sintetiza um registro "vivo" com
- *     a contagem, ancorado no dia do cálculo para passar o filtro `<= at`, para
- *     que o score reflita os leads sem esperar o ritual da sexta.
- * Só mexe quando o CRM tem dado para aquela semana — semana sem evento cai no
- * fallback do preenchimento manual, então um webhook mudo nunca zera o histórico.
+ * Dados automáticos por semana-ritual (chave = `ref_date` da semana que fecha):
+ * contagem de leads do CRM, semanas do Meta Ads e as metas vigentes. É o que
+ * faz a contabilização automática entrar direto no score sem passar pelo
+ * preenchimento manual do GT.
  */
-function applyCrmOverlay(client: ClientRow, perf: Snap[], at: string, overlay: CrmOverlay): Snap[] {
-  if (client.account_type !== "lead_gen") return perf;
+export type AutoOverlay = {
+  leadsByWeek: Map<string, number>;
+  metaByWeek: Map<string, MetaAgg>;
+  targets: Record<string, number>;
+};
+
+const blank = (v: unknown) => v === undefined || v === null || v === "";
+
+/**
+ * Sobrepõe os dados automáticos nos snapshots de performance:
+ *  1. Meta Ads preenche o que o GT deixou em branco no snapshot da semana
+ *     (verba, CPL, faturamento, ROAS, alcance) — número digitado pelo GT
+ *     sempre vence, porque pode somar canais que a Meta não enxerga;
+ *  2. semana fechada com dado da Meta e sem snapshot manual vira um registro
+ *     "Meta Ads" com as metas vigentes — o score anda mesmo se o GT atrasar;
+ *  3. o CRM troca o `leads_real` das contas de geração (é a fonte mais
+ *     completa de lead) e, na semana em curso ainda sem snapshot, sintetiza um
+ *     registro "vivo" ancorado no dia do cálculo, para passar o filtro `<= at`.
+ * Semanas da Meta anteriores à primeira com verba ficam de fora: conta
+ * vinculada depois de meses parada não inventa "verba zero" retroativa.
+ */
+function applyOverlay(client: ClientRow, perf: Snap[], at: string, ov: AutoOverlay): Snap[] {
+  const type = client.account_type;
+  const crmLeads = (ref: string) => (type === "lead_gen" ? ov.leadsByWeek.get(ref) : undefined);
+
+  const firstSpend = [...ov.metaByWeek]
+    .filter(([, m]) => m.week.spend > 0)
+    .map(([ref]) => ref)
+    .sort()[0];
+  const fromMeta = (ref: string) => {
+    const m = ov.metaByWeek.get(ref);
+    if (!m || !firstSpend || ref < firstSpend) return null;
+    return metaFields(type, m.week, crmLeads(ref) ?? m.leads);
+  };
 
   const list = perf.map((s) => {
-    const n = overlay.leadsByWeek.get(s.ref_date);
-    return n === undefined ? s : { ...s, data: { ...s.data, leads_real: n } };
+    let data = s.data;
+    const meta = fromMeta(s.ref_date);
+    if (meta) {
+      data = { ...data };
+      for (const [k, v] of Object.entries(meta)) if (blank(data[k])) data[k] = v;
+    }
+    const n = crmLeads(s.ref_date);
+    if (n !== undefined) data = { ...data, leads_real: n };
+    return data === s.data ? s : { ...s, data };
   });
 
+  const filled = new Set(list.map((s) => s.ref_date));
+  for (const ref of ov.metaByWeek.keys()) {
+    const meta = ref <= at && !filled.has(ref) ? fromMeta(ref) : null;
+    if (!meta) continue;
+    list.push({
+      id: 0,
+      client_id: client.id,
+      ref_date: ref,
+      filled_by: null,
+      filled_at: ref + "T23:59:00",
+      filler: "Meta Ads",
+      data: { ...ov.targets, ...meta },
+    });
+  }
+
   const curWeek = ritualWeekEnd(at);
-  const curCount = overlay.leadsByWeek.get(curWeek);
+  const curCount = crmLeads(curWeek);
   const hasCur = list.some((s) => s.ref_date === curWeek && s.ref_date <= at);
   if (!hasCur && curCount !== undefined) {
     list.push({
@@ -372,7 +420,7 @@ function applyCrmOverlay(client: ClientRow, perf: Snap[], at: string, overlay: C
       filled_by: null,
       filled_at: at + "T12:00:00",
       filler: "CRM",
-      data: { leads_real: curCount, leads_meta: overlay.leadsMeta ?? undefined },
+      data: { leads_real: curCount, leads_meta: ov.targets.leads_meta ?? undefined },
     });
   }
   return list.sort((a, b) =>
@@ -388,9 +436,9 @@ function scoreFrom(
   at: string,
   weights: WeightMap,
   config: ScoreConfig,
-  overlay?: CrmOverlay | null,
+  overlay?: AutoOverlay | null,
 ): ScoreResult {
-  const perfEff = overlay ? applyCrmOverlay(client, perf, at, overlay) : perf;
+  const perfEff = overlay ? applyOverlay(client, perf, at, overlay) : perf;
   const p = perfEff.filter((s) => s.ref_date <= at);
   const c = chk.filter((s) => s.ref_date <= at);
   const latestPerf = p[0] ?? null;
@@ -433,7 +481,7 @@ export async function scoreFor(clientId: number, at = today()): Promise<ScoreRes
     checkinSnapshots(clientId, SCORE_WINDOW),
     getWeights(),
     getConfig(),
-    crmOverlay(clientId),
+    autoOverlay(clientId),
   ]);
   if (!client) return null;
   return scoreFrom(client, perf, chk, at, weights, config, overlay);
@@ -491,7 +539,7 @@ export async function recomputeRange(days: number, endDay = today()) {
     allSnapshots(),
     getWeights(),
     getConfig(),
-    crmOverlays(),
+    autoOverlays(),
   ]);
 
   const dayList = Array.from({ length: days }, (_, i) => addDaysIso(endDay, -(days - 1 - i)));
@@ -585,9 +633,9 @@ export async function recordLead(
   return rows.length > 0;
 }
 
-/** Overlay de todos os clientes com integração ativa — uma passada só. */
-async function crmOverlays(): Promise<Map<number, CrmOverlay>> {
-  const [counts, metas] = await Promise.all([
+/** Overlay de todos os clientes com CRM ou Meta Ads ativos — uma passada só. */
+async function autoOverlays(): Promise<Map<number, AutoOverlay>> {
+  const [counts, targets, meta] = await Promise.all([
     all<{ client_id: number; ref_date: string; n: number }>(
       `SELECT l.client_id, l.ref_date::text AS ref_date, COUNT(*)::int AS n
        FROM crm_leads l
@@ -595,37 +643,43 @@ async function crmOverlays(): Promise<Map<number, CrmOverlay>> {
        GROUP BY l.client_id, l.ref_date`,
     ),
     getAllTargets(),
+    metaWeeks(),
   ]);
-  const map = new Map<number, CrmOverlay>();
-  for (const r of counts) {
-    let ov = map.get(r.client_id);
+  const map = new Map<number, AutoOverlay>();
+  const of = (clientId: number) => {
+    let ov = map.get(clientId);
     if (!ov) {
-      ov = { leadsByWeek: new Map(), leadsMeta: metas.get(r.client_id)?.leads_meta ?? null };
-      map.set(r.client_id, ov);
+      ov = { leadsByWeek: new Map(), metaByWeek: new Map(), targets: targets.get(clientId) ?? {} };
+      map.set(clientId, ov);
     }
-    ov.leadsByWeek.set(r.ref_date, Number(r.n));
-  }
+    return ov;
+  };
+  for (const r of counts) of(r.client_id).leadsByWeek.set(r.ref_date, Number(r.n));
+  for (const [clientId, weeks] of meta) of(clientId).metaByWeek = weeks;
   return map;
 }
 
 /** Overlay de um cliente só — usado no recompute pontual após cada webhook. */
-async function crmOverlay(clientId: number): Promise<CrmOverlay | null> {
-  const active = await one<{ id: number }>(
-    `SELECT id FROM crm_integrations WHERE client_id = ? AND active = 1`,
-    [clientId],
-  );
-  if (!active) return null;
+async function autoOverlay(clientId: number): Promise<AutoOverlay | null> {
+  const [active, meta] = await Promise.all([
+    one<{ id: number }>(`SELECT id FROM crm_integrations WHERE client_id = ? AND active = 1`, [clientId]),
+    metaWeeks(clientId),
+  ]);
+  const metaByWeek = meta.get(clientId) ?? new Map<string, MetaAgg>();
+  if (!active && !metaByWeek.size) return null;
   const [counts, targets] = await Promise.all([
-    all<{ ref_date: string; n: number }>(
-      `SELECT ref_date::text AS ref_date, COUNT(*)::int AS n FROM crm_leads
-       WHERE client_id = ? GROUP BY ref_date`,
-      [clientId],
-    ),
+    active
+      ? all<{ ref_date: string; n: number }>(
+          `SELECT ref_date::text AS ref_date, COUNT(*)::int AS n FROM crm_leads
+           WHERE client_id = ? GROUP BY ref_date`,
+          [clientId],
+        )
+      : Promise.resolve([]),
     getTargets(clientId),
   ]);
   const leadsByWeek = new Map<string, number>();
   for (const c of counts) leadsByWeek.set(c.ref_date, Number(c.n));
-  return { leadsByWeek, leadsMeta: targets.leads_meta ?? null };
+  return { leadsByWeek, metaByWeek, targets };
 }
 
 export type IntegrationRow = Integration & {
@@ -659,6 +713,239 @@ export async function listIntegrations(): Promise<IntegrationRow[]> {
   );
 }
 
+/* ---------------------------- Meta Ads ----------------------------- */
+
+export type MetaLink = {
+  id: number;
+  client_id: number;
+  client_name: string;
+  account_type: AccountType;
+  ad_account_id: string;
+  name: string;
+  currency: string | null;
+  lead_metric: LeadMetric;
+  active: number;
+  last_sync_at: string | null;
+  last_error: string | null;
+};
+
+export const listMetaLinks = () =>
+  all<MetaLink>(
+    `SELECT a.id, a.client_id, c.name AS client_name, c.account_type, a.ad_account_id, a.name,
+            a.currency, a.lead_metric, a.active, a.last_sync_at::text AS last_sync_at, a.last_error
+     FROM meta_ad_accounts a JOIN clients c ON c.id = a.client_id
+     ORDER BY c.name, a.name`,
+  );
+
+export const getMetaLink = (adAccountId: string) =>
+  one<{ client_id: number; name: string }>(
+    `SELECT client_id, name FROM meta_ad_accounts WHERE ad_account_id = ?`,
+    [adAccountId],
+  );
+
+/** Vincula a conta ao cliente. Reapontar uma conta já vinculada troca o dono. */
+export async function linkMetaAccount(
+  clientId: number,
+  acc: { id: string; name: string; currency: string | null },
+  leadMetric: LeadMetric,
+  createdBy: number | null,
+) {
+  await run(
+    `INSERT INTO meta_ad_accounts (client_id, ad_account_id, name, currency, lead_metric, created_by)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (ad_account_id) DO UPDATE SET
+       client_id = excluded.client_id, name = excluded.name, currency = excluded.currency,
+       lead_metric = excluded.lead_metric, active = 1`,
+    [clientId, acc.id, acc.name, acc.currency, leadMetric, createdBy],
+  );
+}
+
+export const unlinkMetaAccount = (adAccountId: string) =>
+  run(`DELETE FROM meta_ad_accounts WHERE ad_account_id = ?`, [adAccountId]);
+
+export const setMetaAccountActive = (adAccountId: string, active: boolean) =>
+  run(`UPDATE meta_ad_accounts SET active = ? WHERE ad_account_id = ?`, [active ? 1 : 0, adAccountId]);
+
+export const setMetaLeadMetric = (adAccountId: string, metric: LeadMetric) =>
+  run(`UPDATE meta_ad_accounts SET lead_metric = ? WHERE ad_account_id = ?`, [metric, adAccountId]);
+
+/** Grava as semanas puxadas da API (regrava: a Meta ajusta atribuição por dias). */
+export async function saveMetaWeeks(adAccountId: string, weeks: Map<string, MetaWeek>) {
+  const entries = [...weeks];
+  if (entries.length) {
+    const values = entries.map(() => `(?, ?::date, ?, ?, ?, ?, ?, ?, ?, ?, now())`).join(", ");
+    await run(
+      `INSERT INTO meta_insights
+         (ad_account_id, ref_date, spend, leads, conversations, purchases, revenue, reach, impressions, clicks, synced_at)
+       VALUES ${values}
+       ON CONFLICT (ad_account_id, ref_date) DO UPDATE SET
+         spend = excluded.spend, leads = excluded.leads, conversations = excluded.conversations,
+         purchases = excluded.purchases, revenue = excluded.revenue, reach = excluded.reach,
+         impressions = excluded.impressions, clicks = excluded.clicks, synced_at = excluded.synced_at`,
+      entries.flatMap(([ref, w]) => [
+        adAccountId,
+        ref,
+        w.spend,
+        w.leads,
+        w.conversations,
+        w.purchases,
+        w.revenue,
+        w.reach,
+        w.impressions,
+        w.clicks,
+      ]),
+    );
+  }
+  await run(`UPDATE meta_ad_accounts SET last_sync_at = now(), last_error = NULL WHERE ad_account_id = ?`, [
+    adAccountId,
+  ]);
+}
+
+export const saveMetaError = (adAccountId: string, error: string) =>
+  run(`UPDATE meta_ad_accounts SET last_sync_at = now(), last_error = ? WHERE ad_account_id = ?`, [
+    error.slice(0, 500),
+    adAccountId,
+  ]);
+
+const META_COLS = "i.spend, i.leads, i.conversations, i.purchases, i.revenue, i.reach, i.impressions, i.clicks";
+
+// O driver devolve DOUBLE/INTEGER como número ou string conforme o backend.
+const weekOf = (r: MetaWeek): MetaWeek => ({
+  spend: Number(r.spend),
+  leads: Number(r.leads),
+  conversations: Number(r.conversations),
+  purchases: Number(r.purchases),
+  revenue: Number(r.revenue),
+  reach: Number(r.reach),
+  impressions: Number(r.impressions),
+  clicks: Number(r.clicks),
+});
+
+/** Semanas da Meta por cliente, somando as contas ativas de cada um. */
+export async function metaWeeks(clientId?: number): Promise<Map<number, Map<string, MetaAgg>>> {
+  const rows = await all<MetaWeek & { client_id: number; lead_metric: LeadMetric; ref_date: string }>(
+    `SELECT a.client_id, a.lead_metric, i.ref_date::text AS ref_date, ${META_COLS}
+     FROM meta_insights i
+     JOIN meta_ad_accounts a ON a.ad_account_id = i.ad_account_id AND a.active = 1
+     ${clientId ? "WHERE a.client_id = ?" : ""}`,
+    clientId ? [clientId] : [],
+  );
+  const out = new Map<number, Map<string, MetaAgg>>();
+  for (const r of rows) {
+    const byWeek = out.get(r.client_id) ?? new Map<string, MetaAgg>();
+    out.set(r.client_id, byWeek);
+    const cur = byWeek.get(r.ref_date) ?? { week: { ...EMPTY_WEEK }, leads: 0 };
+    const w = weekOf(r);
+    for (const k of Object.keys(w) as (keyof MetaWeek)[]) cur.week[k] += w[k];
+    cur.leads += leadsOf(w, r.lead_metric);
+    byWeek.set(r.ref_date, cur);
+  }
+  return out;
+}
+
+/** Números da Meta de uma conta por semana — para o painel de integrações. */
+export async function metaWeeksByAccount(refs: string[]): Promise<Map<string, Map<string, MetaAgg>>> {
+  if (!refs.length) return new Map();
+  const rows = await all<MetaWeek & { ad_account_id: string; lead_metric: LeadMetric; ref_date: string }>(
+    `SELECT i.ad_account_id, a.lead_metric, i.ref_date::text AS ref_date, ${META_COLS}
+     FROM meta_insights i JOIN meta_ad_accounts a ON a.ad_account_id = i.ad_account_id
+     WHERE i.ref_date IN (${refs.map(() => "?::date").join(", ")})`,
+    refs,
+  );
+  const out = new Map<string, Map<string, MetaAgg>>();
+  for (const r of rows) {
+    const w = weekOf(r);
+    const m = out.get(r.ad_account_id) ?? new Map<string, MetaAgg>();
+    m.set(r.ref_date, { week: w, leads: leadsOf(w, r.lead_metric) });
+    out.set(r.ad_account_id, m);
+  }
+  return out;
+}
+
+/* ------------------------ importação de planilha -------------------- */
+
+export type ImportSummary = { created: string[]; updated: string[]; people: string[] };
+
+const personKey = (s: string) =>
+  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase().split(/\s+/)[0] ?? "";
+
+/**
+ * Sobe a carteira da planilha. Idempotente: o cliente é casado pelo nome
+ * (sem acento, caixa e pontuação), então reimportar a mesma planilha só
+ * atualiza. Na atualização, a planilha manda em MRR e time; o tipo de conta,
+ * os contatos de cobrança e a meta de verba só são preenchidos quando ainda
+ * estão vazios — o que foi ajustado no painel não é desfeito.
+ * GT/Account que não existem entram como integrantes do time, sem login.
+ */
+export async function importClients(rows: SheetClient[]): Promise<ImportSummary> {
+  const summary: ImportSummary = { created: [], updated: [], people: [] };
+  const [existing, users, targets] = await Promise.all([
+    all<{ id: number; name: string; billing_email: string | null; billing_phone: string | null }>(
+      `SELECT id, name, billing_email, billing_phone FROM clients`,
+    ),
+    listUsers(),
+    getAllTargets(),
+  ]);
+  const byKey = new Map(existing.map((c) => [clientKey(c.name), c]));
+  const people = new Map<string, number>();
+  for (const u of users) {
+    const k = `${u.role}:${personKey(u.name)}`;
+    if (!people.has(k)) people.set(k, u.id);
+  }
+
+  const person = async (name: string | null, role: "gt" | "account") => {
+    if (!name) return null;
+    const k = `${role}:${personKey(name)}`;
+    let id = people.get(k);
+    if (id === undefined) {
+      id = await insert(`INSERT INTO users (name, role) VALUES (?, ?) RETURNING id`, [name, role]);
+      people.set(k, id);
+      summary.people.push(`${name} (${role === "gt" ? "GT" : "Account"})`);
+    }
+    return id;
+  };
+
+  for (const r of rows) {
+    const gt = await person(r.gt, "gt");
+    const acc = await person(r.account, "account");
+    const cur = byKey.get(clientKey(r.name));
+    let id: number;
+    if (cur) {
+      id = cur.id;
+      await updateClient(id, {
+        ...(r.mrr > 0 ? { mrr: r.mrr } : {}),
+        ...(gt ? { gt_user_id: gt } : {}),
+        ...(acc ? { account_user_id: acc } : {}),
+      });
+      if ((!cur.billing_email && r.email) || (!cur.billing_phone && r.phone)) {
+        await run(`UPDATE clients SET billing_email = ?, billing_phone = ? WHERE id = ?`, [
+          cur.billing_email || r.email,
+          cur.billing_phone || r.phone,
+          id,
+        ]);
+      }
+      summary.updated.push(r.name);
+    } else {
+      id = await createClient({
+        name: r.name,
+        account_type: r.accountType,
+        mrr: r.mrr,
+        gt_user_id: gt,
+        account_user_id: acc,
+        renewal_date: null,
+      });
+      await run(`UPDATE clients SET billing_email = ?, billing_phone = ? WHERE id = ?`, [r.email, r.phone, id]);
+      byKey.set(clientKey(r.name), { id, name: r.name, billing_email: r.email, billing_phone: r.phone });
+      summary.created.push(r.name);
+    }
+    // Mídia gerida é mensal; a régua de verba é semanal (12 meses / 52 semanas).
+    if (r.mediaMonthly && targets.get(id)?.budget_meta === undefined) {
+      await setTargets(id, { budget_meta: Math.round((r.mediaMonthly * 12) / 52) });
+    }
+  }
+  return summary;
+}
+
 /* --------------------------- carteira ------------------------------ */
 
 export type PortfolioRow = {
@@ -678,7 +965,7 @@ export async function portfolio(at = today()): Promise<PortfolioRow[]> {
     allSnapshots(SCORE_WINDOW),
     getWeights(),
     getConfig(),
-    crmOverlays(),
+    autoOverlays(),
     all<{ client_id: number; ref_day: string; score: number | null; band: Band | null }>(
       `SELECT client_id, ref_day::text AS ref_day, score, band FROM score_snapshots
        WHERE ref_day <= ?::date AND ref_day > ?::date ORDER BY ref_day DESC`,

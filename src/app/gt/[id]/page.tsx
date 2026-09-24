@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getClient, getTargets, listFillers, perfSnapshots } from "@/lib/repo";
+import { getClient, getTargets, listFillers, metaWeeks, perfSnapshots } from "@/lib/repo";
+import { metaFields } from "@/lib/meta/metrics";
 import { fieldsFor } from "@/lib/model/catalog";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
 import { currentRitualDate, weekLabel } from "@/lib/week";
@@ -20,11 +21,12 @@ export default async function GtFormPage({ params }: { params: Promise<{ id: str
   const ref = currentRitualDate();
   // Cadastro, histórico, metas e time em paralelo — antes o cadastro vinha
   // sozinho antes do resto.
-  const [client, history, targets, gts] = await Promise.all([
+  const [client, history, targets, gts, meta] = await Promise.all([
     getClient(clientId),
     perfSnapshots(clientId, 6),
     getTargets(clientId),
     listFillers("gt"),
+    metaWeeks(clientId),
   ]);
   if (!client) notFound();
   const last = history[0] ?? null;
@@ -34,9 +36,12 @@ export default async function GtFormPage({ params }: { params: Promise<{ id: str
   const qualityFields = fields.filter((f) => f.dimension === "lead_quality");
   const opsFields = fields.filter((f) => f.dimension === "operational");
 
-  // Metas pré-preenchidas; números reais sempre em branco (é dado novo da semana).
+  // Metas pré-preenchidas. Os números reais vêm do Meta Ads quando a conta
+  // está vinculada (o GT confere e ajusta se somar outros canais); sem Meta,
+  // ficam em branco — é dado novo da semana.
   const defaults: Record<string, number | string | null> = { ...targets };
-  const values: Record<string, unknown> = {};
+  const metaWeek = meta.get(clientId)?.get(ref);
+  const values: Record<string, unknown> = metaWeek ? metaFields(client.account_type, metaWeek.week, metaWeek.leads) : {};
 
   return (
     <div className="space-y-5">
@@ -51,6 +56,16 @@ export default async function GtFormPage({ params }: { params: Promise<{ id: str
           {last.filler ?? "—"}
           <div className="mt-0.5 text-ink-600">
             Salvar não sobrescreve — gera um novo registro datado.
+          </div>
+        </div>
+      )}
+
+      {metaWeek && (
+        <div className="panel flex items-start gap-2.5 border-[rgba(24,119,242,0.35)] px-4 py-2.5 text-xs text-ink-300">
+          <span className="mt-0.5 inline-block size-2 shrink-0 rounded-full bg-[#1877f2]" aria-hidden />
+          <div>
+            <strong className="text-ink-100">Números do Meta Ads já preenchidos</strong> para a semana{" "}
+            {weekLabel(ref)}. Confira e ajuste se o cliente também anuncia em outros canais — o que você salvar vence.
           </div>
         </div>
       )}
