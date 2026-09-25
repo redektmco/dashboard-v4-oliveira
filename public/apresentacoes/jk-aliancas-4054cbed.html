@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatório de Resultados - JK Alianças</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #09090b; /* Quase preto */
+            color: #ffffff;
+            overflow: hidden; /* Impede rolagem, comportamento de slide */
+            margin: 0;
+            padding: 0;
+        }
+        
+        #presentation-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .slide {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+            transform: scale(0.95);
+            display: flex;
+            flex-direction: column;
+            padding: 4rem 6rem;
+            box-sizing: border-box;
+        }
+        
+        .slide.active {
+            opacity: 1;
+            visibility: visible;
+            transform: scale(1);
+            z-index: 10;
+        }
+
+        .metric-card {
+            background: linear-gradient(145deg, #18181b, #0f0f13);
+            border: 1px solid #27272a;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            position: relative;
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background-color: #ef4444; /* Vermelho alerta/V4 */
+            border-top-left-radius: 12px;
+            border-bottom-left-radius: 12px;
+        }
+
+        .border-green::before { background-color: #22c55e; }
+        .border-blue::before { background-color: #3b82f6; }
+        .border-gold::before { background-color: #eab308; }
+
+        .label {
+            color: #ef4444;
+            font-size: 0.875rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.5rem;
+        }
+
+        .value {
+            font-size: 3rem;
+            font-weight: 900;
+            color: #ffffff;
+            line-height: 1.1;
+        }
+
+        .sub-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #a1a1aa;
+        }
+
+        /* Controles de Navegação */
+        .controls {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            display: flex;
+            gap: 1rem;
+            z-index: 50;
+        }
+
+        .nav-btn {
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .nav-btn:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        .nav-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Barra de Progresso */
+        #progress-bar-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background-color: #27272a;
+            z-index: 50;
+        }
+
+        #progress-bar {
+            height: 100%;
+            background-color: #ef4444;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .slide-header {
+            border-bottom: 1px solid #27272a;
+            padding-bottom: 1rem;
+            margin-bottom: 3rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="progress-bar-container">
+        <div id="progress-bar"></div>
+    </div>
+
+    <div class="controls">
+        <button id="prevBtn" class="nav-btn" onclick="prevSlide()" disabled>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+        </button>
+        <button id="nextBtn" class="nav-btn" onclick="nextSlide()">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+        </button>
+    </div>
+
+    <div id="presentation-container">
+
+        <div class="slide active" id="slide-1">
+            <div class="flex-grow flex flex-col items-center justify-center text-center">
+                <div class="w-24 h-1 bg-red-500 mb-8 mx-auto"></div>
+                <h1 class="text-6xl font-black mb-6 tracking-tight text-white uppercase">Relatório de Resultados Operacionais</h1>
+                <h2 class="text-3xl text-gray-400 font-light mb-12">Consolidado de Mídia Paga: JK Alianças</h2>
+                <div class="inline-block border border-gray-800 bg-[#18181b] px-6 py-3 rounded-full text-gray-300 font-mono text-sm tracking-widest">
+                    PERÍODO AUDITADO: 01/MARÇO/2026 A 31/AGOSTO/2026
+                </div>
+                <p class="absolute bottom-12 text-gray-600 text-sm max-w-2xl text-center">
+                    Este documento contém o registro fiel dos dados de investimento, faturamento e retorno gerados pelas plataformas de anúncios ao longo do período do projeto.
+                </p>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-2">
+            <div class="slide-header">
+                <div>
+                    <h2 class="text-4xl font-bold">Consolidado do Projeto (6 Meses)</h2>
+                    <p class="text-gray-400 mt-2">Visão macro de investimento vs. receita gerada.</p>
+                </div>
+                <div class="text-right font-mono text-sm text-gray-500">MAR a AGO / 2026</div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-8 mb-10">
+                <div class="metric-card border-gold col-span-1">
+                    <p class="label text-yellow-500">Faturamento Total Gerado</p>
+                    <p class="value text-5xl">R$ 756.940</p>
+                </div>
+                <div class="metric-card border-blue col-span-1">
+                    <p class="label text-blue-500">Investimento Total Mídia</p>
+                    <p class="value text-5xl">R$ 276.089</p>
+                </div>
+                <div class="metric-card border-green col-span-1">
+                    <p class="label text-green-500">ROAS Médio Global</p>
+                    <p class="value text-5xl">2,74x</p>
+                </div>
+            </div>
+
+            <div class="flex-grow w-full bg-[#18181b] border border-gray-800 rounded-xl p-6 relative">
+                <canvas id="evolutionChart"></canvas>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-3">
+            <div class="slide-header">
+                <div>
+                    <h2 class="text-4xl font-bold">Fechamento: Março</h2>
+                    <p class="text-gray-400 mt-2">Big Numbers</p>
+                </div>
+                <div class="text-right font-mono text-sm text-gray-500 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    01 A 31/03
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-8 mb-8">
+                <div class="metric-card">
+                    <p class="label">Valor Investido</p>
+                    <p class="value">R$ 27.750,90</p>
+                </div>
+                <div class="metric-card relative">
+                    <p class="label">Vendas</p>
+                    <p class="value">236</p>
+                    <span class="absolute bottom-6 right-6 bg-green-500 text-black font-bold px-3 py-1 rounded text-sm">R$ 117,58 | CPV</span>
+                </div>
+            </div>
+            <div class="grid grid-cols-3 gap-8">
+                <div class="metric-card border-green">
+                    <p class="label text-green-500">Faturamento</p>
+                    <p class="sub-value text-white">R$ 95.181,14</p>
+                </div>
+                <div class="metric-card">
+                    <p class="label">ROAS</p>
+                    <p class="sub-value text-white">3,4</p>
+                </div>
+                <div class="metric-card relative">
+                    <p class="label">ROI</p>
+                    <p class="sub-value text-white">2,42</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-4">
+            <div class="slide-header">
+                <div>
+                    <h2 class="text-4xl font-bold">Fechamento: Abril</h2>
+                    <p class="text-gray-400 mt-2">Big Numbers</p>
+                </div>
+                <div class="text-right font-mono text-sm text-gray-500 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    01 A 30/04
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-8 mb-8">
+                <div class="metric-card">
+                    <p class="label">Valor Investido</p>
+                    <p class="value">R$ 27.620,95</p>
+                </div>
+                <div class="metric-card relative">
+                    <p class="label">Vendas</p>
+                    <p class="value">200</p>
+                    <span class="absolute bottom-6 right-6 bg-green-500 text-black font-bold px-3 py-1 rounded text-sm">R$ 138,10 | CPV</span>
+                </div>
+            </div>
+            <div class="grid grid-cols-3 gap-8">
+                <div class="metric-card border-green">
+                    <p class="label text-green-500">Faturamento</p>
+                    <p class="sub-value text-white">R$ 89.333,57</p>
+                </div>
+                <div class="metric-card">
+                    <p class="label">ROAS</p>
+                    <p class="sub-value text-white">3,23</p>
+                </div>
+                <div class="metric-card relative">
+                    <p class="label">ROI</p>
+                    <p class="sub-value text-white">223%</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-5">
+            <div class="slide-header">
+                <div>
+                    <h2 class="text-4xl font-bold">Fechamento: Maio</h2>
+                    <p class="text-gray-400 mt-2">Big Numbers (Aumento de Investimento)</p>
+                </div>
+                <div class="text-right font-mono text-sm text-gray-500 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    01 A 31/05
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-8 mb-8">
+                <div class="metric-card">
+                    <p class="label">Valor Investido</p>
+                    <p class="value">R$ 42.888,87</p>
+                </div>
+                <div class="metric-card relative">
+                    <p class="label">Vendas</p>
+                    <p class="value">303</p>
+                    <span class="absolute bottom-6 right-6 bg-green-500 text-black font-bold px-3 py-1 rounded text-sm">R$ 141,54 | CPV</span>
+                </div>
+            </div>
+            <div class="grid grid-cols-3 gap-8">
+                <div class="metric-card border-green">
+                    <p class="label text-green-500">Faturamento</p>
+                    <p class="sub-value text-white">R$ 121.607,34</p>
+                </div>
+                <div class="metric-card">
+                    <p class="label">ROAS</p>
+                    <p class="sub-value text-white">2,83</p>
+                </div>
+                <div class="metric-card relative">
+                    <p class="label">ROI</p>
+                    <p class="sub-value text-white">1,7</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-6">
+            <div class="slide-header">
+                <div>
+                    <h2 class="text-4xl font-bold">Fechamento: Junho</h2>
+                    <p class="text-gray-400 mt-2">Big Numbers</p>
+                </div>
+                <div class="text-right font-mono text-sm text-gray-500 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    01 A 30/06
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-8 mb-8">
+                <div class="metric-card">
+                    <p class="label">Valor Investido</p>
+                    <p class="value">R$ 68.732,64</p>
+                </div>
+                <div class="metric-card relative">
+                    <p class="label">Vendas</p>
+                    <p class="value">402</p>
+                    <span class="absolute bottom-6 right-6 bg-green-500 text-black font-bold px-3 py-1 rounded text-sm">R$ 170,97 | CPV</span>
+                </div>
+            </div>
+            <div class="grid grid-cols-3 gap-8">
+                <div class="metric-card border-green">
+                    <p class="label text-green-500">Faturamento</p>
+                    <p class="sub-value text-white">R$ 156.423,96</p>
+                </div>
+                <div class="metric-card">
+                    <p class="label">ROAS</p>
+                    <p class="sub-value text-white">2,28</p>
+                </div>
+                <div class="metric-card relative">
+                    <p class="label">ROI</p>
+                    <p class="sub-value text-white">1,28</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-7">
+            <div class="slide-header">
+                <div>
+                    <h2 class="text-4xl font-bold">Fechamento: Julho</h2>
+                    <p class="text-gray-400 mt-2">Detalhamento por Frentes</p>
+                </div>
+                <div class="text-right font-mono text-sm text-gray-500 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    01 A 31/07
+                </div>
+            </div>
+            
+            <div class="space-y-6">
+                <!-- Conversão -->
+                <div class="bg-[#18181b] border border-gray-800 rounded-lg p-6">
+                    <h3 class="text-xl font-bold mb-4 text-white">Frente 1: Conversão</h3>
+                    <div class="grid grid-cols-4 gap-4">
+                        <div><p class="label">Investido</p><p class="text-2xl font-bold">R$ 48.200,96</p></div>
+                        <div><p class="label text-green-500">Faturamento</p><p class="text-2xl font-bold text-white">R$ 141.527,00</p></div>
+                        <div><p class="label">Vendas</p><p class="text-2xl font-bold">354</p></div>
+                        <div><p class="label">ROAS</p><p class="text-2xl font-bold">2,94</p></div>
+                    </div>
+                </div>
+
+                <!-- Outras Frentes -->
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="bg-[#18181b] border border-gray-800 rounded-lg p-6">
+                        <h3 class="text-xl font-bold mb-4 text-white">Frente 2: Lives</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><p class="label">Investido</p><p class="text-xl font-bold">R$ 2.352,86</p></div>
+                            <div><p class="label">Alcance</p><p class="text-xl font-bold">225.682</p></div>
+                        </div>
+                    </div>
+                    <div class="bg-[#18181b] border border-gray-800 rounded-lg p-6">
+                        <h3 class="text-xl font-bold mb-4 text-white">Frente 3: Seguidores</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><p class="label">Investido</p><p class="text-xl font-bold">R$ 5.253,55</p></div>
+                            <div><p class="label text-green-500">Custo/Seg</p><p class="text-xl font-bold">R$ 2,40</p></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="slide" id="slide-8">
+            <div class="slide-header">
+                <div>
+                    <h2 class="text-4xl font-bold">Fechamento: Agosto</h2>
+                    <p class="text-gray-400 mt-2">Detalhamento por Frentes</p>
+                </div>
+                <div class="text-right font-mono text-sm text-gray-500 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    01 A 31/08
+                </div>
+            </div>
+            
+            <div class="space-y-6">
+                <!-- Conversão -->
+                <div class="bg-[#18181b] border border-gray-800 rounded-lg p-6 relative overflow-hidden">
+                    <div class="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
+                    <h3 class="text-xl font-bold mb-4 text-white">Frente 1: Conversão</h3>
+                    <div class="grid grid-cols-4 gap-4">
+                        <div><p class="label">Investido</p><p class="text-2xl font-bold">R$ 47.758,15</p></div>
+                        <div><p class="label text-green-500">Faturamento</p><p class="text-2xl font-bold text-white">R$ 152.869,52</p></div>
+                        <div><p class="label">Vendas</p><p class="text-2xl font-bold">283</p></div>
+                        <div><p class="label">ROAS</p><p class="text-2xl font-bold">3,20</p></div>
+                    </div>
+                </div>
+
+                <!-- Outras Frentes -->
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="bg-[#18181b] border border-gray-800 rounded-lg p-6">
+                        <h3 class="text-xl font-bold mb-4 text-white">Frente 2: Lives</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><p class="label">Investido</p><p class="text-xl font-bold">R$ 2.679,78</p></div>
+                            <div><p class="label">Alcance</p><p class="text-xl font-bold">407.577</p></div>
+                        </div>
+                    </div>
+                    <div class="bg-[#18181b] border border-gray-800 rounded-lg p-6">
+                        <h3 class="text-xl font-bold mb-4 text-white">Frente 3: Seguidores</h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><p class="label">Investido</p><p class="text-xl font-bold">R$ 2.854,09</p></div>
+                            <div><p class="label text-green-500">Custo/Seg</p><p class="text-xl font-bold">R$ 2,25</p></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        let currentSlide = 1;
+        const totalSlides = document.querySelectorAll('.slide').length;
+        
+        function updatePresentation() {
+            // Atualiza slides
+            document.querySelectorAll('.slide').forEach((slide, index) => {
+                if (index + 1 === currentSlide) {
+                    slide.classList.add('active');
+                } else {
+                    slide.classList.remove('active');
+                }
+            });
+
+            // Atualiza botões
+            document.getElementById('prevBtn').disabled = currentSlide === 1;
+            document.getElementById('nextBtn').disabled = currentSlide === totalSlides;
+
+            // Atualiza barra de progresso
+            const progress = ((currentSlide - 1) / (totalSlides - 1)) * 100;
+            document.getElementById('progress-bar').style.width = `${progress}%`;
+            
+            // Renderiza o gráfico apenas quando chegar no slide 2 para animação fluida
+            if (currentSlide === 2 && !window.chartRendered) {
+                renderChart();
+                window.chartRendered = true;
+            }
+        }
+
+        function nextSlide() {
+            if (currentSlide < totalSlides) {
+                currentSlide++;
+                updatePresentation();
+            }
+        }
+
+        function prevSlide() {
+            if (currentSlide > 1) {
+                currentSlide--;
+                updatePresentation();
+            }
+        }
+
+        // Navegação por teclado (Setas)
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === 'Space') {
+                nextSlide();
+            } else if (e.key === 'ArrowLeft') {
+                prevSlide();
+            }
+        });
+
+        // Configuração do Gráfico (Chart.js)
+        function renderChart() {
+            const ctx = document.getElementById('evolutionChart').getContext('2d');
+            
+            const labels = ['Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago'];
+            const investimentos = [27750, 27620, 42888, 68732, 55807, 53292]; 
+            const faturamentos = [95181, 89333, 121607, 156423, 141527, 152869];
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Faturamento (R$)',
+                            data: faturamentos,
+                            borderColor: '#22c55e',
+                            backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                            borderWidth: 3,
+                            tension: 0.4,
+                            fill: true,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Investimento (R$)',
+                            data: investimentos,
+                            type: 'bar',
+                            backgroundColor: '#ef4444',
+                            borderRadius: 4,
+                            barPercentage: 0.5,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: '#a1a1aa', font: { family: 'Inter', size: 14 } }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            grid: { color: '#27272a' },
+                            ticks: {
+                                color: '#a1a1aa',
+                                callback: function(value) { return 'R$ ' + (value / 1000) + 'k'; }
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            grid: { drawOnChartArea: false },
+                            ticks: {
+                                color: '#ef4444',
+                                callback: function(value) { return 'R$ ' + (value / 1000) + 'k'; }
+                            }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#a1a1aa', font: { weight: 'bold' } }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Inicializa a primeira tela
+        updatePresentation();
+    </script>
+</body>
+</html>
