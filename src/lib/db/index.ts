@@ -513,13 +513,62 @@ CREATE TABLE IF NOT EXISTS meta_insights (
   synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (ad_account_id, ref_date)
 );
+
+-- =====================================================================
+-- Redesign (ficha do cliente + Configurações).
+-- audit_log: "Últimas alterações" de Configurações e o histórico da conta.
+-- calibration_versions: cada "Salvar e recalcular" vira uma versão (v1,
+-- v2…) e dá para voltar a uma anterior.
+-- action_plans ganha prioridade, dimensão, tarefas e autor; client_targets
+-- e clients guardam quem mudou a meta e o check-in agendado.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS audit_log (
+  id SERIAL PRIMARY KEY,
+  at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  user_name TEXT,
+  kind TEXT NOT NULL,
+  client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  data JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log (at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_client ON audit_log (client_id, at DESC);
+
+CREATE TABLE IF NOT EXISTS calibration_versions (
+  id SERIAL PRIMARY KEY,
+  version INTEGER NOT NULL UNIQUE,
+  weights JSONB NOT NULL,
+  config JSONB NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE action_plans ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'media';
+ALTER TABLE action_plans DROP CONSTRAINT IF EXISTS action_plans_priority_check;
+ALTER TABLE action_plans ADD CONSTRAINT action_plans_priority_check
+  CHECK (priority IN ('alta','media','baixa'));
+ALTER TABLE action_plans ADD COLUMN IF NOT EXISTS dimension TEXT;
+ALTER TABLE action_plans ADD COLUMN IF NOT EXISTS tasks JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE action_plans ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE client_targets ADD COLUMN IF NOT EXISTS created_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS next_checkin_at TIMESTAMPTZ;
+
+ALTER TABLE crm_integrations ADD COLUMN IF NOT EXISTS crm_name TEXT;
+
+ALTER TABLE billing_charges DROP CONSTRAINT IF EXISTS billing_charges_recurrence_check;
+ALTER TABLE billing_charges ADD CONSTRAINT billing_charges_recurrence_check
+  CHECK (recurrence IN ('unica','mensal','trimestral','anual'));
 `;
 
 /**
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-09-24.meta-ads";
+export const SCHEMA_VERSION = "2026-10-02.redesign";
 
 let migrated = false;
 

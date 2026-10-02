@@ -110,6 +110,20 @@ export function daysBetween(a: string | Date, b: string | Date): number {
 const fmt = (n: number, d = 0) =>
   n.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
 
+/**
+ * Valor de exibição de um par real/meta: dinheiro compacto ("R$ 38,2 mil",
+ * "R$ 84"), percentual ou número com no máximo uma casa — é o que cabe na
+ * coluna Atual / Meta do drawer de indicadores.
+ */
+function display(n: number, label: string, decimals = 0): string {
+  if (/\(R\$\)/.test(label)) {
+    if (Math.abs(n) >= 10_000) return `R$ ${fmt(n / 1000, n % 1000 === 0 ? 0 : 1)} mil`;
+    return `R$ ${fmt(n, Math.abs(n) < 10 && n % 1 !== 0 ? 2 : 0)}`;
+  }
+  if (/\(%\)/.test(label)) return `${fmt(n, 1)}%`;
+  return fmt(n, Math.min(decimals, 1));
+}
+
 export const TRI_VALUES = ["full", "partial", "none"] as const;
 export type TriValue = (typeof TRI_VALUES)[number];
 
@@ -143,7 +157,7 @@ export type ScoreInput = {
 function evalField(
   f: FieldDef,
   input: ScoreInput,
-): { score: number | null; raw: string; note?: string } {
+): { score: number | null; raw: string; note?: string; actual?: string; target?: string } {
   const perf = input.performance?.data ?? null;
   const chk = input.checkin?.data ?? null;
   const bag = f.source === "gt" ? perf : chk;
@@ -164,6 +178,8 @@ function evalField(
       return {
         score,
         raw: `${fmt(real, d)} / ${fmt(meta, d)}`,
+        actual: display(real, i.realLabel, d),
+        target: display(meta, i.realLabel, d),
         note: score === null ? "meta inválida (zero ou vazia)" : undefined,
       };
     }
@@ -176,10 +192,17 @@ function evalField(
         return { score: null, raw: "—", note: "sem MQL ou sem leads na semana" };
       const rate = (mql / leads) * 100;
       if (metaRate === null || metaRate <= 0)
-        return { score: null, raw: `${fmt(rate, 1)}%`, note: "meta de taxa de MQL não cadastrada" };
+        return {
+          score: null,
+          raw: `${fmt(rate, 1)}%`,
+          actual: `${fmt(rate, 1)}%`,
+          note: "meta de taxa de MQL não cadastrada",
+        };
       return {
         score: ruleA(rate, metaRate),
         raw: `${fmt(rate, 1)}% de ${fmt(leads)} leads / meta ${fmt(metaRate, 1)}%`,
+        actual: `${fmt(rate, 1)}%`,
+        target: `${fmt(metaRate, 1)}%`,
       };
     }
     case "TREND": {
@@ -194,25 +217,29 @@ function evalField(
         return {
           score: null,
           raw: fmt(real, i.decimals ?? 0),
+          actual: display(real, i.label, i.decimals ?? 0),
           note: "sem histórico — fora do cálculo",
         };
       const base = prev.reduce((a, b) => a + b, 0) / prev.length;
       return {
         score: ruleA(real, base),
         raw: `${fmt(real, i.decimals ?? 0)} vs base ${fmt(base, i.decimals ?? 0)} (${prev.length} sem.)`,
+        actual: display(real, i.label, i.decimals ?? 0),
+        target: display(base, i.label, i.decimals ?? 0),
       };
     }
     case "C5": {
       if (i.kind !== "scale5") return { score: null, raw: "—" };
       const n = num(bag[i.key]);
       if (n === null) return { score: null, raw: "—", note: "em branco" };
-      return { score: ruleC5(n), raw: `nota ${n}` };
+      return { score: ruleC5(n), raw: `nota ${n}`, actual: `${fmt(n)}/5`, target: "5/5" };
     }
     case "BOOL": {
       if (i.kind !== "bool") return { score: null, raw: "—" };
       const s = ruleBool(bag[i.key]);
       if (s === null) return { score: null, raw: "—", note: "em branco" };
-      return { score: s, raw: s === 100 ? i.trueLabel : i.falseLabel };
+      const label = s === 100 ? i.trueLabel : i.falseLabel;
+      return { score: s, raw: label, actual: label, target: i.trueLabel };
     }
     case "TRI": {
       if (i.kind !== "tri") return { score: null, raw: "—" };
@@ -220,7 +247,7 @@ function evalField(
       const s = ruleTri(v);
       if (s === null) return { score: null, raw: "—", note: "em branco" };
       const idx = TRI_VALUES.indexOf(v as TriValue);
-      return { score: s, raw: i.options[idx] ?? String(v) };
+      return { score: s, raw: i.options[idx] ?? String(v), actual: i.options[idx] ?? String(v), target: i.options[0] };
     }
     case "RENEWAL": {
       const date = (bag["renewal_date"] as string | undefined) || input.renewalDate;
@@ -229,6 +256,8 @@ function evalField(
       return {
         score: ruleRenewal(d),
         raw: d < 0 ? `vencida há ${-d}d` : `em ${d} dias (${date})`,
+        actual: d < 0 ? `vencida` : `${d} dias`,
+        target: "> 90 dias",
       };
     }
     default:
@@ -290,6 +319,8 @@ export function computeScore(input: ScoreInput): ScoreResult {
       weight: f.weight,
       effectiveWeight: 0,
       raw: r.raw,
+      actual: r.actual,
+      target: r.target,
       score: r.score,
       note: r.note,
     };

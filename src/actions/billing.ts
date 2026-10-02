@@ -11,7 +11,9 @@ import {
   updateCharge,
 } from "@/lib/billing/db";
 import { runDailyDispatch } from "@/lib/billing/dispatch";
-import type { BillingRecurrence } from "@/lib/billing/types";
+import { RECURRENCE_LABEL, type BillingRecurrence } from "@/lib/billing/types";
+import { logChange } from "@/lib/audit";
+import { getClient } from "@/lib/repo";
 
 const str = (f: FormData, k: string) => (f.get(k) as string | null)?.trim() ?? "";
 // `amount` vem do <NumberField> (input[type=number]): o DOM já entrega o
@@ -41,7 +43,7 @@ export async function saveCharge(_prev: ActionResult, formData: FormData): Promi
   if (!description) return { error: "Descreva a cobrança." };
   if (amount === null || amount <= 0) return { error: "Informe um valor válido." };
   if (!dueDate) return { error: "Informe a data de vencimento." };
-  if (recurrence !== "unica" && recurrence !== "mensal") return { error: "Recorrência inválida." };
+  if (!(recurrence in RECURRENCE_LABEL)) return { error: "Recorrência inválida." };
 
   await setBillingContact(clientId, billingEmail || null, billingPhone || null);
 
@@ -49,16 +51,18 @@ export async function saveCharge(_prev: ActionResult, formData: FormData): Promi
     await updateCharge(Number(id), { description, amount, dueDate, recurrence });
   } else {
     await createCharge({ clientId, description, amount, dueDate, recurrence, createdBy: me.id ?? null });
+    const c = await getClient(clientId);
+    await logChange(me, "cobranca", `Cobrança criada: ${c?.name ?? "cliente"}`, { clientId });
   }
 
-  revalidatePath("/config/cobranca");
+  revalidatePath("/config", "layout");
   return { ok: id ? "Cobrança atualizada." : "Cobrança cadastrada." };
 }
 
 export async function pauseCharge(id: number, active: boolean): Promise<ActionResult> {
   await requireAdmin();
   await setChargeActive(id, active);
-  revalidatePath("/config/cobranca");
+  revalidatePath("/config", "layout");
   return { ok: active ? "Cobrança reativada." : "Cobrança encerrada. O histórico de disparos continua guardado." };
 }
 
@@ -72,7 +76,7 @@ export async function testDispatchNow(): Promise<ActionResult> {
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "app.v4oliveira.com.br";
   const proto = h.get("x-forwarded-proto") ?? "https";
   const summary = await runDailyDispatch(`${proto}://${host}`);
-  revalidatePath("/config/cobranca");
+  revalidatePath("/config", "layout");
   if (summary.checked === 0) return { ok: "Nenhuma cobrança vence hoje." };
   return {
     ok: `${summary.checked} cobrança(s) vencendo hoje — ${summary.sent} disparo(s) enviado(s), ${summary.failed} falharam, ${summary.skipped} sem canal configurado.`,

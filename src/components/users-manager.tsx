@@ -16,7 +16,8 @@ import { ActionForm, SubmitButton } from "./form-controls";
 import { ConfirmDialog, ImpactList, Modal } from "./modal";
 import { toast } from "./toast";
 import { Icon } from "./icon";
-import { CardList, CardRow, Empty, Panel, SectionHeader, TableScroll } from "./ui";
+import { CardList, CardRow, Empty, Panel, TableScroll } from "./ui";
+import { PageTitle } from "./kit";
 
 const ROLE_LABEL = {
   gt: "GT",
@@ -129,7 +130,7 @@ export function UsersManager({ users, meId, senhaPadrao }: { users: UserRow[]; m
 
   return (
     <>
-      <SectionHeader
+      <PageTitle
         title="Usuários e acesso"
         description={
           <>
@@ -137,9 +138,9 @@ export function UsersManager({ users, meId, senhaPadrao }: { users: UserRow[]; m
             <code className="rounded bg-ink-850 px-1 py-0.5 font-mono text-xs">{senhaPadrao}</code>.
           </>
         }
-        actions={
-          <button className="btn btn-primary" onClick={() => setDialog({ kind: "create" })}>
-            <Icon name="plus" size={14} />
+        aside={
+          <button className="btn" onClick={() => setDialog({ kind: "create" })}>
+            <Icon name="plus" size={16} />
             Novo usuário
           </button>
         }

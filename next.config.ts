@@ -21,6 +21,8 @@ const nextConfig: NextConfig = {
       { source: "/usuarios", destination: "/config/usuarios", permanent: true },
       { source: "/integracoes", destination: "/config/integracoes", permanent: true },
       { source: "/modelo", destination: "/config/modelo", permanent: true },
+      // Redesign de Configurações: calibração e modelo viraram uma página só.
+      { source: "/config/calibracao", destination: "/config/modelo", permanent: true },
     ];
   },
 };

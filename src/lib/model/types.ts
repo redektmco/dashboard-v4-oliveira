@@ -125,6 +125,9 @@ export type FieldResult = {
   /** Peso efetivo após renormalização entre campos presentes. */
   effectiveWeight: number;
   raw: string; // valor cru legível
+  /** Valor atual e meta já formatados, separados (coluna Atual / Meta). */
+  actual?: string;
+  target?: string;
   score: number | null; // 0–100 ou null quando ausente
   note?: string;
 };

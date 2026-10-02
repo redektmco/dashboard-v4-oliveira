@@ -14,7 +14,7 @@ export const BAND_STYLE: Record<Band, { chip: string; fg: string; dot: string; l
     chip: "bg-amarelo-dim text-amarelo-fg",
     fg: "text-amarelo-fg",
     dot: "bg-amarelo",
-    label: "Em risco",
+    label: "Atenção",
   },
   vermelho: {
     chip: "bg-vermelho-dim text-vermelho-fg",
@@ -251,7 +251,7 @@ export function Panel({
 export function BandBar({ counts }: { counts: Record<Band | "sem_dado", number> }) {
   const parts = [
     { key: "vermelho", label: "Crítico", n: counts.vermelho, cls: BAND_STYLE.vermelho.dot },
-    { key: "amarelo", label: "Em risco", n: counts.amarelo, cls: BAND_STYLE.amarelo.dot },
+    { key: "amarelo", label: "Atenção", n: counts.amarelo, cls: BAND_STYLE.amarelo.dot },
     { key: "verde", label: "Saudável", n: counts.verde, cls: BAND_STYLE.verde.dot },
     { key: "sem_dado", label: "Sem score", n: counts.sem_dado, cls: "bg-ink-500" },
   ];

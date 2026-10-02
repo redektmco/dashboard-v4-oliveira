@@ -1,6 +1,7 @@
 import { FIXED_ADMIN_LOGINS, listAuthUsers, requireAdmin, SENHA_PADRAO } from "@/lib/auth";
 import { userFootprints } from "@/lib/repo";
 import { UsersManager } from "@/components/users-manager";
+import { ConfigPage } from "@/components/config-shell";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ export default async function UsuariosPage() {
   const [users, footprints] = await Promise.all([listAuthUsers(), userFootprints()]);
 
   return (
+    <ConfigPage>
     <UsersManager
       meId={me.id}
       senhaPadrao={SENHA_PADRAO}
@@ -25,5 +27,6 @@ export default async function UsuariosPage() {
         footprint: footprints.get(u.id) ?? EMPTY,
       }))}
     />
+    </ConfigPage>
   );
 }

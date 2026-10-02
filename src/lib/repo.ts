@@ -1,7 +1,7 @@
 import { all, insert, one, run, transaction } from "./db";
 import { newToken } from "./social/id";
 import { currentRitualDate, ritualWeekEnd } from "./week";
-import { DIMENSIONS } from "./model/catalog";
+import { DIMENSIONS, fieldsFor } from "./model/catalog";
 import { computeScore, DEFAULT_CONFIG, type ScoreConfig, type WeightMap } from "./model/scoring";
 import { insertDemoData, wipe } from "./seed";
 import { EMPTY_WEEK, leadsOf, metaFields, type LeadMetric, type MetaWeek } from "./meta/metrics";
@@ -120,11 +120,17 @@ export async function deleteUser(id: number): Promise<{ error?: string }> {
 
 /* ----------------------------- clients ----------------------------- */
 
-export type ClientRow = Client & { gt_name: string | null; account_name: string | null };
+export type ClientRow = Client & {
+  gt_name: string | null;
+  account_name: string | null;
+  /** Check-in agendado pelo Account ("Próximas ações" da ficha). */
+  next_checkin_at: string | null;
+};
 
 const CLIENT_SELECT = `
   SELECT c.id, c.name, c.account_type, c.mrr, c.gt_user_id, c.account_user_id,
          c.renewal_date::text AS renewal_date, c.active, c.created_at::text AS created_at,
+         c.next_checkin_at::text AS next_checkin_at,
          g.name AS gt_name, a.name AS account_name
   FROM clients c
   LEFT JOIN users g ON g.id = c.gt_user_id
@@ -239,24 +245,39 @@ export async function setTargets(
   clientId: number,
   targets: Record<string, number>,
   effectiveFrom = today(),
+  createdBy: number | null = null,
 ) {
   const entries = Object.entries(targets).filter(([, v]) => isFinite(v));
   if (!entries.length) return;
   // Um único INSERT com várias linhas — evita um round-trip por meta.
-  const values = entries.map(() => `(?, ?, ?, ?::date)`).join(", ");
-  const params = entries.flatMap(([k, v]) => [clientId, k, v, effectiveFrom]);
+  const values = entries.map(() => `(?, ?, ?, ?::date, ?)`).join(", ");
+  const params = entries.flatMap(([k, v]) => [clientId, k, v, effectiveFrom, createdBy]);
   await run(
-    `INSERT INTO client_targets (client_id, key, value, effective_from) VALUES ${values}`,
+    `INSERT INTO client_targets (client_id, key, value, effective_from, created_by) VALUES ${values}`,
     params,
   );
 }
 
-export const targetHistory = (clientId: number) =>
-  all<{ key: string; value: number; effective_from: string; created_at: string }>(
-    `SELECT key, value, effective_from::text AS effective_from, created_at::text AS created_at
-     FROM client_targets WHERE client_id = ? ORDER BY created_at DESC LIMIT 50`,
-    [clientId],
+export type TargetChange = {
+  key: string;
+  value: number;
+  effective_from: string;
+  created_at: string;
+  by: string | null;
+};
+
+export const targetHistory = (clientId: number, limit = 50) =>
+  all<TargetChange>(
+    `SELECT t.key, t.value, t.effective_from::text AS effective_from, t.created_at::text AS created_at,
+            u.name AS by
+     FROM client_targets t LEFT JOIN users u ON u.id = t.created_by
+     WHERE t.client_id = ? ORDER BY t.created_at DESC, t.id DESC LIMIT ?`,
+    [clientId, limit],
   );
+
+/** Agenda (ou limpa) o próximo check-in do cliente. */
+export const setNextCheckin = (clientId: number, at: string | null) =>
+  run(`UPDATE clients SET next_checkin_at = ?::timestamptz WHERE id = ?`, [at, clientId]);
 
 /* ---------------------------- snapshots ---------------------------- */
 
@@ -471,6 +492,52 @@ function scoreFrom(
   });
 }
 
+/**
+ * Sugestão de metas pela média dos últimos 90 dias (+10% de ambição): a
+ * média do realizado em cada indicador que tem meta, já com Meta Ads e CRM
+ * sobrepostos. Indicador "quanto menor melhor" (CPL) ganha 10% a menos.
+ */
+export type TargetSuggestion = { key: string; avg: number | null; suggestion: number | null; weeks: number };
+
+const niceRound = (v: number) => {
+  const a = Math.abs(v);
+  const step = a >= 10_000 ? 1000 : a >= 1000 ? 100 : a >= 100 ? 10 : a >= 10 ? 1 : 0.1;
+  return Math.round(v / step) * step;
+};
+
+export async function suggestTargets(clientId: number, at = today()): Promise<TargetSuggestion[]> {
+  const [client, perf, overlay] = await Promise.all([
+    getClient(clientId),
+    perfSnapshots(clientId, 20),
+    autoOverlay(clientId),
+  ]);
+  if (!client) return [];
+  const since = addDaysIso(at, -90);
+  const snaps = (overlay ? applyOverlay(client, perf, at, overlay) : perf).filter(
+    (s) => s.ref_date >= since && s.ref_date <= at,
+  );
+  const n = (v: unknown) => (typeof v === "number" ? v : v == null || v === "" ? null : Number(v));
+  return fieldsFor(client.account_type, "gt")
+    .filter((f) => f.targetKey && f.input.kind === "pair")
+    .map((f) => {
+      const i = f.input as Extract<typeof f.input, { kind: "pair" }>;
+      const values = snaps
+        .map((s) => {
+          if (f.rule === "RATE") {
+            const mql = n(s.data[i.realKey]);
+            const leads = n(s.data.leads_real);
+            return mql !== null && leads ? (mql / leads) * 100 : null;
+          }
+          return n(s.data[i.realKey]);
+        })
+        .filter((v): v is number => v !== null && Number.isFinite(v) && v > 0);
+      if (!values.length) return { key: f.targetKey!, avg: null, suggestion: null, weeks: 0 };
+      const avg = values.reduce((a, b) => a + b, 0) / values.length;
+      const suggestion = niceRound(f.rule === "B" ? avg * 0.9 : avg * 1.1);
+      return { key: f.targetKey!, avg, suggestion, weeks: values.length };
+    });
+}
+
 /** Snapshots por cliente que o cálculo do score de um dia enxerga. */
 const SCORE_WINDOW = 12;
 
@@ -534,6 +601,7 @@ export const persistScore = (clientId: number, day: string, r: ScoreResult) =>
  * sobre HTTP, uma query por cliente por dia levaria minutos.
  */
 export async function recomputeRange(days: number, endDay = today()) {
+  const started = Date.now();
   const [clients, snaps, weights, config, overlays] = await Promise.all([
     listClients(),
     allSnapshots(),
@@ -556,8 +624,18 @@ export async function recomputeRange(days: number, endDay = today()) {
     await persistScores(client.id, rows);
     n += rows.length;
   }
+  // Carimbo do último recompute: "Operação" e "Funcionando" leem daqui.
+  await setSetting("recompute_last", {
+    at: new Date().toISOString(),
+    clients: clients.length,
+    days,
+    ms: Date.now() - started,
+  });
   return { clients: clients.length, snapshots: n, day: endDay };
 }
+
+export type RecomputeStamp = { at: string; clients: number; days: number; ms: number };
+export const lastRecompute = () => getSetting<RecomputeStamp | null>("recompute_last", null);
 
 export const recomputeAll = (day = today()) => recomputeRange(1, day);
 
@@ -569,6 +647,52 @@ export const scoreHistory = (clientId: number, limit = 60) =>
     [clientId, limit],
   );
 
+/**
+ * Série diária leve para o gráfico da ficha: score, faixa e a nota de cada
+ * dimensão, sem o breakdown inteiro (que pesa ~3 KB por dia).
+ */
+export type SeriesPoint = {
+  day: string;
+  score: number | null;
+  band: Band | null;
+  dims: Partial<Record<DimensionKey, number | null>>;
+};
+
+export async function scoreSeries(clientId: number, days = 365, at = today()): Promise<SeriesPoint[]> {
+  const rows = await all<{ day: string; score: number | null; band: Band | null; dims: Record<string, number | null> | null }>(
+    `SELECT ref_day::text AS day, score, band,
+            (SELECT jsonb_object_agg(d->>'key', d->'score')
+               FROM jsonb_array_elements(breakdown->'dimensions') d) AS dims
+     FROM score_snapshots
+     WHERE client_id = ? AND ref_day > ?::date AND ref_day <= ?::date
+     ORDER BY ref_day`,
+    [clientId, addDaysIso(at, -days), at],
+  );
+  return rows.map((r) => ({
+    day: r.day,
+    score: r.score === null ? null : Number(r.score),
+    band: r.band,
+    dims: (r.dims ?? {}) as SeriesPoint["dims"],
+  }));
+}
+
+/** Indicadores de uma dimensão em dias específicos (detalhe dos eventos do gráfico). */
+export async function dimensionFieldsOn(
+  clientId: number,
+  dimension: DimensionKey,
+  days: string[],
+): Promise<Map<string, { label: string; score: number | null; actual?: string; raw: string }[]>> {
+  if (!days.length) return new Map();
+  const rows = await all<{ day: string; fields: { label: string; score: number | null; actual?: string; raw: string }[] | null }>(
+    `SELECT ref_day::text AS day,
+            (SELECT d->'fields' FROM jsonb_array_elements(breakdown->'dimensions') d
+              WHERE d->>'key' = ? LIMIT 1) AS fields
+     FROM score_snapshots WHERE client_id = ? AND ref_day::text = ANY(?::text[])`,
+    [dimension, clientId, days],
+  );
+  return new Map(rows.map((r) => [r.day, r.fields ?? []]));
+}
+
 /* ----------------------- integrações (CRM) ------------------------- */
 
 export type Integration = {
@@ -576,13 +700,15 @@ export type Integration = {
   client_id: number;
   token: string;
   provider: string;
+  /** CRM de origem escolhido no guia (RD Station, Kommo…). Só rótulo. */
+  crm_name: string | null;
   active: number;
   created_at: string;
   last_event_at: string | null;
 };
 
 const INTEGRATION_SELECT = `
-  SELECT id, client_id, token, provider, active, created_at::text AS created_at,
+  SELECT id, client_id, token, provider, crm_name, active, created_at::text AS created_at,
          last_event_at::text AS last_event_at
   FROM crm_integrations`;
 
@@ -607,6 +733,9 @@ export const setIntegrationActive = (clientId: number, active: boolean) =>
 
 export const rotateIntegrationToken = (clientId: number) =>
   run(`UPDATE crm_integrations SET token = ? WHERE client_id = ?`, [newToken(), clientId]);
+
+export const setIntegrationCrm = (clientId: number, crmName: string | null) =>
+  run(`UPDATE crm_integrations SET crm_name = ? WHERE client_id = ?`, [crmName, clientId]);
 
 export const deleteIntegration = (clientId: number) =>
   run(`DELETE FROM crm_integrations WHERE client_id = ?`, [clientId]);
@@ -697,7 +826,7 @@ export async function listIntegrations(): Promise<IntegrationRow[]> {
   const cur = ritualWeekEnd(today());
   const prev = addDaysIso(cur, -7);
   return all<IntegrationRow>(
-    `SELECT i.id, i.client_id, i.token, i.provider, i.active,
+    `SELECT i.id, i.client_id, i.token, i.provider, i.crm_name, i.active,
             i.created_at::text AS created_at, i.last_event_at::text AS last_event_at,
             c.name AS client_name, c.account_type, c.active AS client_active,
             COUNT(l.id)::int AS total_leads,
@@ -1020,6 +1149,33 @@ export async function portfolio(at = today()): Promise<PortfolioRow[]> {
     .sort((a, b) => riskRank(a) - riskRank(b));
 }
 
+/**
+ * Score de hoje de toda a carteira ativa com pesos e limiares quaisquer —
+ * a "Prévia do impacto" da calibração: o mesmo cálculo da carteira, só que
+ * com a configuração ainda não salva.
+ */
+export async function simulateToday(
+  scenarios: { weights: WeightMap; config: ScoreConfig }[],
+  at = today(),
+): Promise<{ id: number; name: string; score: number | null; band: Band | null }[][]> {
+  // Uma leitura do banco para todos os cenários: só o cálculo se repete.
+  const [clients, snaps, overlays] = await Promise.all([listClients(), allSnapshots(SCORE_WINDOW), autoOverlays()]);
+  return scenarios.map(({ weights, config }) =>
+    clients.map((client) => {
+      const r = scoreFrom(
+        client,
+        snaps.perf.get(client.id) ?? [],
+        snaps.chk.get(client.id) ?? [],
+        at,
+        weights,
+        config,
+        overlays.get(client.id) ?? null,
+      );
+      return { id: client.id, name: client.name, score: r.score, band: r.band };
+    }),
+  );
+}
+
 const BAND_ORDER: Record<Band, number> = { vermelho: 0, amarelo: 1, verde: 2 };
 
 export function riskRank(r: PortfolioRow) {
@@ -1028,6 +1184,9 @@ export function riskRank(r: PortfolioRow) {
 }
 
 /* --------------------------- planos -------------------------------- */
+
+export type PlanTask = { text: string; done: boolean };
+export type PlanPriority = "alta" | "media" | "baixa";
 
 export type Plan = {
   id: number;
@@ -1040,12 +1199,17 @@ export type Plan = {
   clickup_url: string | null;
   created_at: string;
   closed_at: string | null;
+  priority: PlanPriority;
+  dimension: DimensionKey | null;
+  tasks: PlanTask[];
+  created_by_name: string | null;
 };
 
 const PLAN_SELECT = `
   SELECT p.id, p.client_id, p.risk, p.plan, p.owner, p.due_date::text AS due_date,
          p.status, p.clickup_url, p.created_at::text AS created_at,
-         p.closed_at::text AS closed_at`;
+         p.closed_at::text AS closed_at, p.priority, p.dimension, p.tasks,
+         (SELECT name FROM users u WHERE u.id = p.created_by) AS created_by_name`;
 
 export const listPlans = (clientId: number) =>
   all<Plan>(
@@ -1070,6 +1234,7 @@ export type Aviso = { id: string; label: string; count: number; href: string };
 
 export async function avisos(): Promise<Aviso[]> {
   const ref = currentRitualDate();
+  const { checkinMaxAgeDays: limite } = await getConfig();
   const [leitura, semana, planos] = await Promise.all([
     one<{ n: number }>(
       `SELECT count(*)::int AS n FROM clients c
@@ -1077,7 +1242,8 @@ export async function avisos(): Promise<Aviso[]> {
          AND COALESCE(
                (SELECT max(s.ref_date) FROM checkin_snapshots s WHERE s.client_id = c.id),
                DATE '1970-01-01'
-             ) < current_date - 35`,
+             ) < current_date - ?::int`,
+      [limite],
     ),
     one<{ n: number }>(
       `SELECT count(*)::int AS n FROM clients c
@@ -1098,7 +1264,7 @@ export async function avisos(): Promise<Aviso[]> {
   return [
     {
       id: "checkin",
-      label: "contas sem check-in há mais de 35 dias",
+      label: `contas sem check-in há mais de ${limite} dias`,
       count: leitura?.n ?? 0,
       href: "/account",
     },
@@ -1112,13 +1278,24 @@ export async function avisos(): Promise<Aviso[]> {
   ].filter((a) => a.count > 0);
 }
 
-export const createPlan = (
-  p: Omit<Plan, "id" | "created_at" | "closed_at" | "status" | "clickup_url">,
-) =>
+export type PlanInput = Pick<Plan, "risk" | "plan" | "owner" | "due_date" | "priority" | "dimension" | "tasks">;
+
+export const createPlan = (p: PlanInput & { client_id: number; created_by: number | null; status?: Plan["status"] }) =>
   insert(
-    `INSERT INTO action_plans (client_id, risk, plan, owner, due_date)
-     VALUES (?, ?, ?, ?, ?::date) RETURNING id`,
-    [p.client_id, p.risk, p.plan, p.owner, p.due_date],
+    `INSERT INTO action_plans (client_id, risk, plan, owner, due_date, priority, dimension, tasks, created_by, status)
+     VALUES (?, ?, ?, ?, ?::date, ?, ?, ?::jsonb, ?, ?) RETURNING id`,
+    [
+      p.client_id,
+      p.risk,
+      p.plan,
+      p.owner,
+      p.due_date,
+      p.priority,
+      p.dimension,
+      JSON.stringify(p.tasks),
+      p.created_by,
+      p.status ?? "aberto",
+    ],
   );
 
 export const updatePlanStatus = (id: number, status: Plan["status"]) =>
@@ -1131,17 +1308,15 @@ export const updatePlanStatus = (id: number, status: Plan["status"]) =>
 
 export const getPlan = (id: number) => one<Plan>(`${PLAN_SELECT} FROM action_plans p WHERE p.id = ?`, [id]);
 
-export const updatePlan = (
-  id: number,
-  p: Pick<Plan, "risk" | "plan" | "owner" | "due_date">,
-) =>
-  run(`UPDATE action_plans SET risk = ?, plan = ?, owner = ?, due_date = ?::date WHERE id = ?`, [
-    p.risk,
-    p.plan,
-    p.owner,
-    p.due_date,
-    id,
-  ]);
+export const updatePlan = (id: number, p: PlanInput) =>
+  run(
+    `UPDATE action_plans SET risk = ?, plan = ?, owner = ?, due_date = ?::date,
+       priority = ?, dimension = ?, tasks = ?::jsonb WHERE id = ?`,
+    [p.risk, p.plan, p.owner, p.due_date, p.priority, p.dimension, JSON.stringify(p.tasks), id],
+  );
+
+export const setPlanTasks = (id: number, tasks: PlanTask[]) =>
+  run(`UPDATE action_plans SET tasks = ?::jsonb WHERE id = ?`, [JSON.stringify(tasks), id]);
 
 /** Plano registrado por engano. Plano real que não vai adiante é "cancelado", não excluído. */
 export const deletePlan = (id: number) => run("DELETE FROM action_plans WHERE id = ?", [id]);

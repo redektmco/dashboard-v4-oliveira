@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { lastCheckinByClient, portfolio, today } from "@/lib/repo";
+import { getConfig, lastCheckinByClient, portfolio, today } from "@/lib/repo";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
 import { daysBetween } from "@/lib/model/scoring";
 import {
@@ -20,7 +20,9 @@ export const dynamic = "force-dynamic";
 export default async function AccountPage() {
   await requireUser();
   const at = today();
-  const [carteira, lastChk] = await Promise.all([portfolio(at), lastCheckinByClient()]);
+  const [carteira, lastChk, cfg] = await Promise.all([portfolio(at), lastCheckinByClient(), getConfig()]);
+  // Limite da regra "Cliente sem check-in há mais de N dias" (Modelo e calibração).
+  const limite = cfg.checkinMaxAgeDays;
   const lastBy = new Map(lastChk.map((s) => [s.client_id, s]));
 
   const rows = carteira.map(({ client: c, score }) => {
@@ -35,7 +37,7 @@ export default async function AccountPage() {
   });
   rows.sort((a, b) => a.c.name.localeCompare(b.c.name));
 
-  const semLeitura = rows.filter((r) => r.age === null || r.age > 35);
+  const semLeitura = rows.filter((r) => r.age === null || r.age > limite);
   const byAcc = new Map<string, typeof rows>();
   for (const r of rows) {
     const k = r.c.account_name ?? "Sem Account";
@@ -54,7 +56,7 @@ export default async function AccountPage() {
       <div className="grid grid-cols-2 gap-2.5 sm:gap-3 md:grid-cols-4">
         <Stat label="Contas" value={rows.length} />
         <Stat
-          label="Com leitura fresca (≤35d)"
+          label={`Com leitura fresca (≤${limite}d)`}
           value={rows.length - semLeitura.length}
           tone="verde"
         />
@@ -78,7 +80,7 @@ export default async function AccountPage() {
               ocupando a linha inteira. */}
           <CardList>
             {list.map((r) => (
-              <CardRow key={r.c.id} critical={r.risk || r.age === null || r.age > 35}>
+              <CardRow key={r.c.id} critical={r.risk || r.age === null || r.age > limite}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <span className="font-semibold text-ink-100">{r.c.name}</span>
@@ -108,11 +110,11 @@ export default async function AccountPage() {
                       value:
                         r.age === null
                           ? "relação sem leitura"
-                          : r.age > 35
+                          : r.age > limite
                             ? `${r.age}d — vencida`
                             : `${r.age}d`,
                       className:
-                        r.age === null || r.age > 35
+                        r.age === null || r.age > limite
                           ? "font-semibold text-vermelho-fg"
                           : r.age > 21
                             ? "font-semibold text-amarelo-fg"
@@ -162,7 +164,7 @@ export default async function AccountPage() {
                   <td className="text-xs">
                     {r.age === null ? (
                       <span className="font-semibold text-vermelho-fg">relação sem leitura</span>
-                    ) : r.age > 35 ? (
+                    ) : r.age > limite ? (
                       <span className="font-semibold text-vermelho-fg">{r.age}d — vencida</span>
                     ) : r.age > 21 ? (
                       <span className="font-semibold text-amarelo-fg">{r.age}d</span>

@@ -23,6 +23,7 @@
   --color-ink-500: #666666;
   --color-ink-400: #8a8a8a; /* --fg-3 terciário */
   --color-ink-300: #b3b3b3; /* --fg-2 secundário */
+  --color-ink-200: #d6d6d6; /* linha do Health Score no gráfico */
   --color-ink-100: #ffffff; /* --fg  primário */
 
   /* --- Status: verde / amarelo da marca, crítico no vermelho V4 --- */
@@ -226,7 +227,7 @@ select.field {
   padding: 0 14px;
   border-radius: var(--radius-md);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   border: 1px solid var(--border-strong);
   background: var(--color-ink-850);
   color: var(--color-ink-100);
@@ -246,6 +247,7 @@ select.field {
   background: var(--color-v4-red);
   border-color: transparent;
   color: #fff;
+  font-weight: 600;
 }
 .btn-primary:hover {
   background: var(--color-v4-red-600);
@@ -389,7 +391,8 @@ table.data-table td.text-center {
 :root {
   /* Barra de abas + faixa do gesto do iPhone. Tudo que não pode
      nascer embaixo da barra soma estas duas. */
-  --tabbar-h: 58px;
+  /* Sem barra de abas no rodapé: a navegação do celular é a gaveta do menu. */
+  --tabbar-h: 0px;
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
 }
@@ -1516,65 +1519,205 @@ table.data-table th[aria-sort] .sort svg {
   padding-bottom: 1px;
 }
 
-/* ---------------- Barra lateral ---------------- */
-.side-link {
-  position: relative;
+/* ---------------- Rail lateral (redesign) ----------------
+   Aberto (232px) a partir de 1440px; entre 1024 e 1440 vira coluna de
+   ícones (64px). Abaixo de 1024 some e entra a gaveta do celular. */
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  flex-shrink: 0;
+  display: none;
+  flex-direction: column;
+  gap: 24px;
+  background: #000;
+  border-right: 1px solid var(--border-hair);
+}
+.sidebar--full {
+  width: 232px;
+  padding: 20px 14px;
+}
+.sidebar--compact {
+  width: 64px;
+  padding: 20px 12px;
+  align-items: center;
+}
+@media (min-width: 1024px) and (max-width: 1439px) {
+  .sidebar--compact {
+    display: flex;
+  }
+}
+@media (min-width: 1440px) {
+  .sidebar--full {
+    display: flex;
+  }
+}
+.nav-group-label {
+  padding: 0 10px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-400);
+}
+.nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  border-radius: var(--radius-md);
-  padding: 7px 10px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 6px;
   font-size: 13px;
-  font-weight: 600;
   color: var(--color-ink-300);
   transition:
     color var(--dur-fast) var(--ease-out),
     background var(--dur-fast) var(--ease-out);
 }
-.side-link:hover {
+.nav-item:hover {
+  color: var(--color-ink-100);
+  background: var(--color-ink-900);
+}
+.nav-item[aria-current="page"] {
   background: var(--color-ink-850);
   color: var(--color-ink-100);
+  font-weight: 500;
 }
-.side-link[aria-current="page"],
-.side-link[data-open] {
-  color: var(--color-ink-100);
-}
-.side-link[aria-current="page"] {
-  background: rgba(229, 9, 20, 0.1);
-}
-.side-link[aria-current="page"]::before {
-  content: "";
-  position: absolute;
-  left: -10px;
-  top: 7px;
-  bottom: 7px;
-  width: 2px;
-  border-radius: 0 2px 2px 0;
-  background: var(--color-v4-red);
+.nav-item--icon {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  justify-content: center;
 }
 /* Filhos da seção aberta, com a guia vertical do grupo. */
-.side-sub {
-  margin: 2px 0 6px 20px;
+.nav-sub {
+  margin: 2px 0 6px 18px;
   padding-left: 12px;
   border-left: 1px solid var(--border-hair);
   display: flex;
   flex-direction: column;
   gap: 1px;
 }
-.side-sub a {
+.nav-sub a {
   border-radius: var(--radius-sm);
   padding: 5px 8px;
   font-size: 12.5px;
-  font-weight: 500;
   color: var(--color-ink-400);
   transition: color var(--dur-fast) var(--ease-out);
 }
-.side-sub a:hover {
+.nav-sub a:hover {
   color: var(--color-ink-100);
 }
-.side-sub a[aria-current="page"] {
+.nav-sub a[aria-current="page"] {
   color: var(--color-ink-100);
+  font-weight: 500;
+}
+
+/* Gaveta do celular: o mesmo rail, por cima da página. */
+.nav-drawer {
+  position: fixed;
+  z-index: 51;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(300px, 86vw);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: calc(var(--safe-t) + 16px) 14px calc(var(--safe-b) + 16px);
+  background: #000;
+  border-right: 1px solid var(--border-hair);
+  box-shadow: 12px 0 40px rgba(0, 0, 0, 0.6);
+  animation: v4-drawer-in 220ms var(--ease-out);
+}
+@keyframes v4-drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+}
+
+/* ---------------- Barra superior ---------------- */
+.topbar {
+  display: none;
+  height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 40px;
+  border-bottom: 1px solid var(--border-hair);
+}
+@media (min-width: 1024px) {
+  .topbar {
+    display: flex;
+  }
+}
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 280px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--color-ink-900);
+  border: 1px solid var(--border-hair);
+  cursor: text;
+}
+.search-box:focus-within {
+  border-color: var(--border-strong);
+}
+.search-results {
+  overflow: hidden;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--color-ink-850);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-2);
+}
+.search-group {
+  padding: 8px 8px 4px;
+  font-size: 10px;
   font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-500);
+}
+.search-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  text-align: left;
+}
+.search-item:hover,
+.search-item:focus-visible {
+  background: var(--color-ink-800);
+}
+.search-letter {
+  display: flex;
+  height: 26px;
+  width: 26px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--color-ink-800);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-ink-300);
+}
+
+/* Primário neutro do redesign: fundo claro, texto escuro. O vermelho da
+   marca (.btn-primary) fica para a ação que resolve uma pendência. */
+.btn-light {
+  background: var(--color-ink-100);
+  border-color: transparent;
+  color: var(--color-ink-950);
+  font-weight: 600;
+}
+.btn-light:hover {
+  background: #e4e4e4;
 }
 
 /* Área de soltar arquivos do composer de Social media. */
@@ -1614,4 +1757,36 @@ table.data-table th[aria-sort] .sort svg {
 }
 .progress-bar.is-done > i {
   background: var(--color-verde);
+}
+
+/* Painel lateral (drawer da direita) do redesign. */
+.side-panel {
+  animation: v4-panel-in 240ms var(--ease-out);
+  padding-bottom: var(--safe-b);
+}
+@keyframes v4-panel-in {
+  from {
+    transform: translateX(32px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .side-panel,
+  .nav-drawer {
+    animation: none;
+  }
+}
+
+.nav-item--cfg {
+  padding: 0 8px;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+/* Campo sobre painel: fundo da página, como no layout das telas de cadastro. */
+.field.field--deep {
+  background: var(--color-ink-950);
 }

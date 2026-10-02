@@ -120,7 +120,7 @@ export function ScoreChart({
           <div className="tnum font-display text-[15px] font-bold" style={{ color: colorOf(h.score) }}>
             {Math.round(h.score)}
             <span className="ml-1 font-sans text-[10px] font-semibold text-ink-400">
-              {h.score >= 75 ? "saudável" : h.score >= 55 ? "em risco" : "crítico"}
+              {h.score >= 75 ? "saudável" : h.score >= 55 ? "atenção" : "crítico"}
             </span>
           </div>
         </div>

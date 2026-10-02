@@ -96,15 +96,26 @@ um round-trip HTTP; com a função no padrão `iad1` (EUA), cada uma cruzava o c
 | `/account` → `/account/[id]` | **Account** | a cada check-in | "O cliente está satisfeito e engajado?" |
 | `/clientes/[id]` | todos | — | decomposição, histórico, planos |
 | `/social` | social + admin | por entrega | aprovação de criativos e calendário |
-| `/config` | coordenação | — | Configurações: clientes (cadastro, metas, arquivar/excluir) |
-| `/config/calibracao` | coordenação | trimestral | pesos, limiares, recompute |
+| `/config` | coordenação | — | Pendências: o que falta para o score refletir a carteira, o que está funcionando e as últimas alterações |
+| `/config/clientes` | coordenação | — | cadastro, metas (com sugestão pela média de 90 dias) e fonte de leads, cliente a cliente ou em sequência |
+| `/config/cobranca` | admin | mensal | cobranças por cliente (única, mensal, trimestral, anual) e histórico de disparos |
+| `/config/modelo` | coordenação | trimestral | pesos e regras com prévia do impacto; cada salvamento vira uma versão (dá para voltar) |
+| `/config/modelo/detalhes` | todos | — | pesos, réguas e justificativas, abertos |
+| `/config/integracoes` | admin | — | Meta Ads, webhooks de CRM e saúde de cada integração |
+| `/config/canais` | admin | — | e-mail e WhatsApp das cobranças (credenciais nas variáveis de ambiente) |
 | `/config/usuarios` | admin | — | quem entra no painel, senha, permissão, exclusão |
-| `/config/integracoes` | admin | — | contas do Meta Ads e webhooks de CRM por cliente |
-| `/config/modelo` | todos | — | pesos, réguas e justificativas, abertos |
 
-O menu principal tem só as jornadas (Carteira, Performance, Check-in, Social media);
-administração mora em Configurações. Os endereços antigos (`/usuarios`, `/integracoes`,
-`/modelo`) redirecionam.
+O menu principal tem só as jornadas (Carteira, Performance, Check-in, Social media, Onboarding);
+administração mora em Configurações, que tem moldura própria (menu de seções com contadores e
+"Voltar para a carteira"). Os endereços antigos (`/usuarios`, `/integracoes`, `/modelo`,
+`/config/calibracao`) redirecionam.
+
+A ficha do cliente (`/clientes/[id]`) mostra o Health Score, o status da conta, as próximas
+ações (performance da semana, check-in agendado, planos), o diagnóstico por dimensão com o
+drawer de indicadores, o principal risco, a evolução com eventos (check-in, meta alterada, queda
+de performance, plano criado), os últimos check-ins, os planos de ação com tarefas e prioridade
+e o histórico da conta. Alterações de configuração ficam em `audit_log`; cada calibração salva
+vira uma linha em `calibration_versions`.
 
 Cada um preenche só o que controla. O GT não avalia relacionamento; o Account não estima métrica de
 mídia.
@@ -161,7 +172,7 @@ npm run usuarios -- reset felipe  # volta a senha padrão
 | Operacional / Dados | GT | 8% |
 
 Cada peso — de dimensão **e** de campo — carrega uma justificativa escrita no código
-(`weightRationale`) e exibida em `/config/modelo`. Nenhum número é chute.
+(`weightRationale`) e exibida em `/config/modelo/detalhes`. Nenhum número é chute.
 
 ### Réguas de normalização (`src/lib/model/scoring.ts`)
 
@@ -289,14 +300,14 @@ reversíveis pela UI:
    dono claro sem travar o preenchimento, e o histórico de metas não é apagado.
 2. **Tipos de conta.** Os três do briefing (`lead_gen`, `ecommerce`, `branding`) com os campos
    propostos. Ajustar à carteira real é editar `catalog.ts` — formulários, cálculo e a página
-   `/config/modelo` derivam todos dele.
+   `/config/modelo/detalhes` derivam todos dele.
 3. **Âncoras 1–5.** Implementadas literalmente como no briefing e exibidas no próprio formulário: o
    Account clica na descrição, não no número. Validar o texto com os Accounts é edição de uma
    constante (`SCALE_ANCHORS`).
 4. **Dia fixo do GT.** Sexta-feira (`HEALTHSCORE_RITUAL_DAY=5`). A tela do GT mostra a semana de
    referência e quem já preencheu.
 5. **Limiares dos overrides.** Performance < 50% por 2 ciclos; frescor de 10 dias (performance) e 35
-   dias (check-in). Todos editáveis em `/config` sem tocar em código.
+   dias (check-in). Todos editáveis em `/config/modelo` sem tocar em código.
 
 ### Refinamento além do briefing, que vale registrar
 
@@ -309,9 +320,11 @@ do cálculo e a UI diz o porquê, em vez de inventar um número.
 
 ## Calibração (seção 9 do briefing)
 
-Os pesos são hipótese inicial defensável, não verdade. Em `/config` você edita pesos e limiares, e
-**salvar reescreve a série dos últimos 90 dias** com os novos pesos — sem isso a comparação entre
-score passado e desfecho real não faz sentido.
+Os pesos são hipótese inicial defensável, não verdade. Em `/config/modelo` você edita pesos e regras,
+vê antes de salvar quais clientes mudariam de faixa (prévia do impacto), e **salvar reescreve a série
+dos últimos 90 dias** com os novos pesos — sem isso a comparação entre score passado e desfecho real
+não faz sentido. Cada salvamento vira uma versão (v1, v2…); voltar a uma anterior cria uma versão
+nova com os valores dela.
 
 O ciclo: rodar 60–90 dias → marcar quem deu churn/downgrade/renovou → olhar o score e cada dimensão
 30/60/90 dias antes do desfecho → a dimensão que melhor separou "quem saiu" de "quem ficou" ganha

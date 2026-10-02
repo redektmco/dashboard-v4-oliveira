@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { all, insert, one, run } from "@/lib/db";
-import type { BillingChargeRow, DispatchChannel, DispatchLogEntry, DispatchStatus } from "./types";
+import { RECURRENCE_MONTHS, type BillingChargeRow, type BillingRecurrence, type DispatchChannel, type DispatchLogEntry, type DispatchStatus } from "./types";
 
 /** Token url-safe para o pixel de rastreio do e-mail — não-adivinhável. */
 export function newTrackToken(): string {
@@ -60,7 +60,7 @@ export async function createCharge(input: {
   description: string;
   amount: number;
   dueDate: string;
-  recurrence: "unica" | "mensal";
+  recurrence: BillingRecurrence;
   createdBy: number | null;
 }): Promise<number> {
   return insert(
@@ -72,7 +72,7 @@ export async function createCharge(input: {
 
 export async function updateCharge(
   id: number,
-  input: { description: string; amount: number; dueDate: string; recurrence: "unica" | "mensal" },
+  input: { description: string; amount: number; dueDate: string; recurrence: BillingRecurrence },
 ): Promise<void> {
   await run(
     `UPDATE billing_charges SET description = ?, amount = ?, due_date = ?::date, recurrence = ? WHERE id = ?`,
@@ -83,9 +83,15 @@ export async function updateCharge(
 export const setChargeActive = (id: number, active: boolean) =>
   run(`UPDATE billing_charges SET active = ? WHERE id = ?`, [active ? 1 : 0, id]);
 
-/** Avança a parcela recorrente para o próximo mês, depois de disparar. */
-export const advanceMonthly = (id: number) =>
-  run(`UPDATE billing_charges SET due_date = due_date + INTERVAL '1 month' WHERE id = ?`, [id]);
+/** Avança a parcela recorrente para o próximo vencimento, depois de disparar. */
+export const advanceRecurring = (id: number, recurrence: BillingRecurrence) => {
+  const months = RECURRENCE_MONTHS[recurrence];
+  if (!months) return Promise.resolve();
+  return run(`UPDATE billing_charges SET due_date = due_date + (?::text || ' months')::interval WHERE id = ?`, [
+    String(months),
+    id,
+  ]);
+};
 
 /** Parcelas ativas que vencem hoje (data do banco — o cron roda 0h de São Paulo). */
 export async function chargesDueToday(): Promise<BillingChargeRow[]> {

@@ -7,16 +7,20 @@ import { ActionMenu } from "./action-menu";
 import { ClientDialog, type ClientFormClient } from "./client-form";
 import { ConfirmDialog } from "./modal";
 import { toast } from "./toast";
+import { Icon } from "./icon";
 
 /** ⋯ da ficha do cliente: editar cadastro/metas e arquivar, sem sair da página. */
 export function ClientActions({
   client,
   users,
   targets,
+  size,
 }: {
   client: ClientFormClient;
   users: User[];
   targets: Record<string, number>;
+  /** Botão quadrado do cabeçalho da ficha (36px; 42px no celular). */
+  size?: "md" | "lg";
 }) {
   const [editing, setEditing] = useState(false);
   const [archiving, setArchiving] = useState(false);
@@ -25,6 +29,17 @@ export function ClientActions({
     <>
       <ActionMenu
         label="Mais ações do cliente"
+        trigger={
+          size ? (
+            <span
+              className={`flex items-center justify-center rounded-lg border border-[var(--border-strong)] bg-ink-850 text-ink-100 hover:bg-ink-800 ${
+                size === "lg" ? "h-[42px] w-[42px]" : "h-9 w-9"
+              }`}
+            >
+              <Icon name="dots" size={16} />
+            </span>
+          ) : undefined
+        }
         items={[
           { label: "Editar cadastro e metas", icon: "settings", onSelect: () => setEditing(true) },
           "separator",

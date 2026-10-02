@@ -19,6 +19,7 @@ import {
   updateUserProfile,
 } from "@/lib/auth";
 import { deleteUser } from "@/lib/repo";
+import { logChange } from "@/lib/audit";
 import type { User } from "@/lib/model/types";
 import type { ActionResult } from "@/lib/action";
 
@@ -58,7 +59,7 @@ const withPassword = (senha: string) =>
   senha === SENHA_PADRAO ? " com a senha padrão." : " com a senha definida agora.";
 
 export async function adminCreateUser(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  await requireAdmin();
+  const me = await requireAdmin();
 
   const name = str(formData, "name");
   const l = normalizeLogin(str(formData, "login") || name.split(" ")[0] || "");
@@ -69,12 +70,13 @@ export async function adminCreateUser(_prev: ActionResult, formData: FormData): 
   if (await loginExists(l)) return { error: `O login "${l}" já existe.` };
 
   await createAuthUser({ name, login: l, role: role(formData, "role"), password: senha, is_admin: bool(formData, "is_admin") });
+  await logChange(me, "usuario", `Usuário criado: ${name}`);
   return done(`${name} criado. Login "${l}"${withPassword(senha)}`);
 }
 
 /** Integrante que já existia na tabela do time e ainda não tinha acesso. */
 export async function adminGrantAccess(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
-  await requireAdmin();
+  const me = await requireAdmin();
 
   const id = Number(str(formData, "id"));
   const name = str(formData, "name");
@@ -85,6 +87,7 @@ export async function adminGrantAccess(_prev: ActionResult, formData: FormData):
   if (await loginExists(l)) return { error: `O login "${l}" já existe.` };
 
   await grantAccess(id, l, senha, bool(formData, "is_admin"));
+  await logChange(me, "usuario", `Acesso liberado: ${name}`);
   return done(`Acesso liberado para ${name}. Login "${l}"${withPassword(senha)}`);
 }
 
@@ -129,6 +132,7 @@ export async function adminSetActive(id: number, active: boolean): Promise<Actio
   if (!active && target.login && FIXED_ADMIN_LOGINS.includes(target.login))
     return { error: "Administradores fixos da unidade não podem ser desativados." };
   await setUserActive(id, active);
+  await logChange(me, "usuario", `${active ? "Acesso reativado" : "Acesso desativado"}: ${target.name}`);
   return done(active ? "Acesso reativado." : "Acesso desativado. A pessoa saiu do painel na hora; o histórico continua.");
 }
 
@@ -140,6 +144,7 @@ export async function adminSetAdmin(id: number, isAdmin: boolean): Promise<Actio
   if (!isAdmin && target.login && FIXED_ADMIN_LOGINS.includes(target.login))
     return { error: "Administradores fixos da unidade continuam admin." };
   await setUserAdmin(id, isAdmin);
+  await logChange(me, "usuario", `${isAdmin ? "Virou administrador" : "Saiu dos administradores"}: ${target.name}`);
   return done(isAdmin ? `${target.name} agora é administrador.` : `${target.name} saiu dos administradores.`);
 }
 

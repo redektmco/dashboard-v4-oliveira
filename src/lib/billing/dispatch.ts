@@ -1,5 +1,5 @@
 import {
-  advanceMonthly,
+  advanceRecurring,
   chargesDueToday,
   finalizeDispatch,
   newTrackToken,
@@ -13,7 +13,7 @@ import type { DispatchSummary } from "./types";
  * Roda o disparo do dia: para cada parcela ativa vencendo hoje, tenta
  * e-mail e WhatsApp (cada canal só se tiver contato do cliente e a
  * integração estiver configurada) e, se a parcela for recorrente, avança o
- * vencimento em 1 mês. Compartilhado pelo cron (`/api/billing/dispatch`) e
+ * vencimento (1, 3 ou 12 meses). Compartilhado pelo cron (`/api/billing/dispatch`) e
  * pelo botão "Testar disparo agora" do painel.
  *
  * Idempotente no dia: `reserveDispatch` usa o índice único
@@ -83,8 +83,8 @@ export async function runDailyDispatch(baseUrl: string): Promise<DispatchSummary
 
     // Recorrente: só avança se algum canal foi de fato tentado hoje (evita
     // pular o mês quando a parcela não tinha nenhum contato configurado).
-    if (charge.recurrence === "mensal" && anyRecurrenceTrigger) {
-      await advanceMonthly(charge.id);
+    if (charge.recurrence !== "unica" && anyRecurrenceTrigger) {
+      await advanceRecurring(charge.id, charge.recurrence);
     }
   }
 
