@@ -323,6 +323,7 @@ export function computeScore(input: ScoreInput): ScoreResult {
       target: r.target,
       score: r.score,
       note: r.note,
+      period: f.period,
     };
   });
 

@@ -160,6 +160,7 @@ export default async function ClientePage({
         actual: f.actual ?? (f.score === null ? "—" : f.raw),
         target: f.target ?? "—",
         note: f.note,
+        period: f.period,
       })),
       primary: fromGT
         ? { label: "Ajustar metas", href: `/gt?c=${clientId}`, icon: "target" as IconName }

@@ -64,6 +64,8 @@ export type InputSpec =
 export type FieldDef = {
   key: string;
   label: string;
+  /** Recorte do valor (ex.: "Total da semana"), mostrado sob o indicador. */
+  period?: string;
   /**
    * Pergunta literal, na primeira pessoa, para o Account ler em voz alta na
    * call. O critério do check-in é o que o cliente responde — não o que o
@@ -136,6 +138,7 @@ export type FieldResult = {
   target?: string;
   score: number | null; // 0–100 ou null quando ausente
   note?: string;
+  period?: string;
 };
 
 export type DimensionResult = {
