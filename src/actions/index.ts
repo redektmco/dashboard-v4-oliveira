@@ -150,6 +150,12 @@ export async function saveCheckin(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/account");
   revalidatePath(`/clientes/${clientId}`);
+  // "Registrar em sequência": depois de salvar, abre a próxima conta da fila.
+  const [next, ...rest] = str(formData, "fila").split(",").map(Number).filter((n) => n > 0);
+  if (next) {
+    const msg = encodeURIComponent(`Check-in salvo. Próxima conta: ${rest.length + 1} restante(s).`);
+    redirect(`/account/${next}?${rest.length ? `fila=${rest.join(",")}&` : ""}ok=${msg}`);
+  }
   redirect(`/clientes/${clientId}?ok=${encodeURIComponent("Check-in salvo e score recalculado.")}`);
 }
 
@@ -186,6 +192,14 @@ export async function saveClient(_prev: ActionResult, formData: FormData): Promi
     gt_user_id: Number(str(formData, "gt_user_id")) || null,
     account_user_id: Number(str(formData, "account_user_id")) || null,
     renewal_date: str(formData, "renewal_date") || null,
+    contract_code: str(formData, "contract_code") || null,
+    services: str(formData, "services")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
+    contract_start: str(formData, "contract_start") || null,
+    fidelity_months: numOrNull(formData, "fidelity_months"),
+    notice_days: numOrNull(formData, "notice_days"),
   };
   const clientId = id ? (await updateClient(id, payload), id) : await createClient(payload);
 

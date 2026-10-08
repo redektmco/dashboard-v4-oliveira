@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { recomputeAll, recomputeRange } from "@/lib/repo";
+import { recomputeAll, recomputeRange, today } from "@/lib/repo";
+import { applyScheduledInactivations } from "@/lib/churn/db";
 
 /**
  * Job diário via HTTP, para quem prefere agendar fora do host (briefing 7).
@@ -16,6 +17,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "não autorizado" }, { status: 401 });
   }
 
+  // Cancelamento com data efetiva alcançada: o cliente sai da carteira antes do recálculo.
+  await applyScheduledInactivations(today());
   const days = Number(new URL(req.url).searchParams.get("days") ?? 0);
   const result = days > 0 ? await recomputeRange(days) : await recomputeAll();
   return NextResponse.json({ ok: true, ...result });

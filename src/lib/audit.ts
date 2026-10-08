@@ -18,7 +18,8 @@ export type AuditKind =
   | "cobranca"
   | "usuario"
   | "plano"
-  | "checkin_agendado";
+  | "checkin_agendado"
+  | "churn";
 
 export type AuditEntry = {
   id: number;

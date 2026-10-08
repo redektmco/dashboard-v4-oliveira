@@ -595,13 +595,113 @@ ALTER TABLE crm_integrations ADD COLUMN IF NOT EXISTS crm_name TEXT;
 ALTER TABLE billing_charges DROP CONSTRAINT IF EXISTS billing_charges_recurrence_check;
 ALTER TABLE billing_charges ADD CONSTRAINT billing_charges_recurrence_check
   CHECK (recurrence IN ('unica','mensal','trimestral','anual'));
+
+-- =====================================================================
+-- Contrato do cliente — puxado pela solicitacao de churn (numero, servicos,
+-- inicio, fidelidade e aviso previo). Preenchido no cadastro do cliente.
+-- =====================================================================
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS contract_code TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS services JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS contract_start DATE;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS fidelity_months INTEGER;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS notice_days INTEGER;
+
+-- =====================================================================
+-- Churn — solicitacoes de cancelamento ja formalizadas pelo cliente (nao e
+-- previsao). Uma solicitacao vai de 'solicitado' ate o desfecho ('retido' ou
+-- 'cancelado'); tentativas de retencao, tarefas e o historico (contatos,
+-- notas, mudancas de status) ficam em tabelas proprias e nunca sao
+-- sobrescritos. Valores do contrato sao copiados na abertura: o historico
+-- continua certo mesmo se o cadastro do cliente mudar depois.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS churn_requests (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'solicitado'
+    CHECK (status IN ('solicitado','em_analise','em_negociacao','agendado','retido','cancelado')),
+  requested_at DATE NOT NULL,
+  channel TEXT NOT NULL DEFAULT 'outro' CHECK (channel IN ('email','whatsapp','call','reuniao','outro')),
+  main_reason TEXT NOT NULL,
+  secondary_reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
+  justification TEXT NOT NULL DEFAULT '',
+  desired_end DATE,
+  owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  retention_chance TEXT NOT NULL DEFAULT 'media' CHECK (retention_chance IN ('alta','media','baixa','nenhuma')),
+  mrr DOUBLE PRECISION NOT NULL DEFAULT 0,
+  contract_code TEXT,
+  services JSONB NOT NULL DEFAULT '[]'::jsonb,
+  evidences JSONB NOT NULL DEFAULT '[]'::jsonb,
+  outcome TEXT CHECK (outcome IN ('retido','retido_alteracao','cancelado')),
+  final_reason TEXT,
+  final_note TEXT,
+  effective_end DATE,
+  new_mrr DOUBLE PRECISION,
+  client_inactivated SMALLINT NOT NULL DEFAULT 0,
+  closed_at TIMESTAMPTZ,
+  closed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_churn_req_client ON churn_requests (client_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_churn_req_status ON churn_requests (status);
+
+CREATE TABLE IF NOT EXISTS churn_attempts (
+  id SERIAL PRIMARY KEY,
+  request_id INTEGER NOT NULL REFERENCES churn_requests(id) ON DELETE CASCADE,
+  n INTEGER NOT NULL,
+  strategy TEXT NOT NULL,
+  proposal TEXT NOT NULL DEFAULT '',
+  changes JSONB NOT NULL DEFAULT '[]'::jsonb,
+  current_mrr DOUBLE PRECISION,
+  proposed_mrr DOUBLE PRECISION,
+  owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  due_date DATE,
+  sent_at DATE NOT NULL,
+  result TEXT NOT NULL DEFAULT 'aguardando'
+    CHECK (result IN ('aguardando','aceita','recusada','contraproposta_aceita','contraproposta_recusada')),
+  response TEXT,
+  response_kind TEXT CHECK (response_kind IN ('resposta','contraproposta')),
+  responded_at DATE,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (request_id, n)
+);
+
+CREATE TABLE IF NOT EXISTS churn_tasks (
+  id SERIAL PRIMARY KEY,
+  request_id INTEGER NOT NULL REFERENCES churn_requests(id) ON DELETE CASCADE,
+  attempt_id INTEGER REFERENCES churn_attempts(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL DEFAULT 'tarefa' CHECK (kind IN ('tarefa','pendencia')),
+  text TEXT NOT NULL,
+  owner TEXT,
+  due_date DATE,
+  note TEXT,
+  done SMALLINT NOT NULL DEFAULT 0,
+  done_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_churn_tasks_req ON churn_tasks (request_id);
+
+CREATE TABLE IF NOT EXISTS churn_events (
+  id SERIAL PRIMARY KEY,
+  request_id INTEGER NOT NULL REFERENCES churn_requests(id) ON DELETE CASCADE,
+  at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  kind TEXT NOT NULL CHECK (kind IN ('abertura','observacao','contato','anexo','status','tentativa','resposta','conclusao')),
+  title TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  data JSONB NOT NULL DEFAULT '{}'::jsonb,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  user_name TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_churn_events_req ON churn_events (request_id, at DESC);
 `;
 
 /**
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-10-08.google-ads";
+export const SCHEMA_VERSION = "2026-10-08.churn";
 
 let migrated = false;
 

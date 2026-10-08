@@ -42,6 +42,9 @@ export function ClientActions({
         }
         items={[
           { label: "Editar cadastro e metas", icon: "settings", onSelect: () => setEditing(true) },
+          ...(client.active
+            ? [{ label: "Registrar pedido de cancelamento", icon: "userMinus" as const, href: `/churn/nova?cliente=${client.id}` }]
+            : []),
           "separator",
           client.active
             ? { label: "Arquivar cliente", icon: "lock", hint: "Sai da carteira, mantém o histórico", onSelect: () => setArchiving(true) }

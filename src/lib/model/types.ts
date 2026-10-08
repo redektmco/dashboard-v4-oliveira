@@ -102,6 +102,12 @@ export type Client = {
   renewal_date: string | null;
   active: number;
   created_at: string;
+  /** Contrato (puxado pelo churn): número, serviços, início, fidelidade e aviso prévio. */
+  contract_code: string | null;
+  services: string[];
+  contract_start: string | null;
+  fidelity_months: number | null;
+  notice_days: number | null;
 };
 
 export type User = { id: number; name: string; role: "gt" | "account" | "coord" | "social" };

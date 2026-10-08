@@ -115,6 +115,46 @@ function ClientFields({
         <input type="date" name="renewal_date" defaultValue={client?.renewal_date ?? ""} className="field mt-1" />
       </label>
 
+      <details className="rounded-lg border border-[var(--border-hair)] px-3 py-2.5" open={!client?.contract_code}>
+        <summary className="cursor-pointer text-[13px] font-semibold text-ink-200">Contrato</summary>
+        <p className="mt-2 text-[11.5px] text-ink-500">
+          Puxado automaticamente quando o cliente pede cancelamento (Churn).
+        </p>
+        <div className="mt-2 grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="label">Nº do contrato</span>
+            <input name="contract_code" defaultValue={client?.contract_code ?? ""} placeholder="CT-2024-001" className="field mt-1" />
+          </label>
+          <label className="block">
+            <span className="label">Início do contrato</span>
+            <input type="date" name="contract_start" defaultValue={client?.contract_start ?? ""} className="field mt-1" />
+          </label>
+        </div>
+        <label className="mt-3 block">
+          <span className="label">Serviços (separados por vírgula)</span>
+          <input
+            name="services"
+            defaultValue={(client?.services ?? []).join(", ")}
+            placeholder="Tráfego pago, Social media"
+            className="field mt-1"
+          />
+        </label>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="label">Fidelidade (meses)</span>
+            <span className="mt-1 block">
+              <NumberField name="fidelity_months" step="1" defaultValue={client?.fidelity_months ?? ""} placeholder="—" />
+            </span>
+          </label>
+          <label className="block">
+            <span className="label">Aviso prévio (dias)</span>
+            <span className="mt-1 block">
+              <NumberField name="notice_days" step="1" defaultValue={client?.notice_days ?? ""} placeholder="30" />
+            </span>
+          </label>
+        </div>
+      </details>
+
       <details className="rounded-lg border border-[var(--border-hair)] px-3 py-2.5" open={semMeta}>
         <summary className="cursor-pointer text-[13px] font-semibold text-ink-200">
           Metas de {ACCOUNT_TYPE_LABEL[type]}

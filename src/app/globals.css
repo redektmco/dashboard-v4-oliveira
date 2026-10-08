@@ -37,6 +37,14 @@
   --color-vermelho-fg: #ff5560;
   --color-vermelho-dim: rgba(229, 9, 20, 0.18);
 
+  /* --- Status do churn: em análise (azul) e cancelamento agendado (roxo) --- */
+  --color-azul: #6e9bf5;
+  --color-azul-fg: #8fb2f8;
+  --color-azul-dim: rgba(110, 155, 245, 0.14);
+  --color-roxo: #b48cf2;
+  --color-roxo-fg: #c4a3f5;
+  --color-roxo-dim: rgba(180, 140, 242, 0.14);
+
   --color-accent: #e50914;
 
   /* --- Tipografia: Montserrat (display) + Inter (corpo) --- */
