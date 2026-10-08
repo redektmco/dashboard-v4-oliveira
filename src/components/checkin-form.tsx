@@ -164,7 +164,7 @@ function CheckinFormInner({ client, history, accounts, me, scales, previous, tod
           localStorage.removeItem(storageKey);
         } catch {}
       }}
-      className="-mx-4 -mt-4 sm:-mx-6 lg:-mx-7 lg:-mt-5"
+      className="-mx-4 -mt-5 sm:-mx-6 lg:-mx-10 lg:-mt-8"
     >
       {Object.entries(values).map(([k, v]) => (
         <input key={k} type="hidden" name={k} value={v} />

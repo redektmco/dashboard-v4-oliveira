@@ -154,8 +154,8 @@ export function BillingBoard({
   );
 
   return (
-    <div className="flex min-h-full">
-      <div className="mx-auto flex w-full min-w-0 max-w-[1100px] flex-1 flex-col gap-5 px-4 pb-10 pt-5 lg:pb-8 lg:pl-10 lg:pr-8 lg:pt-9">
+    <div className="flex items-start gap-6">
+      <div className="flex w-full min-w-0 flex-1 flex-col gap-5">
         <PageTitle
           title="Cobrança"
           description="Faturas que disparam sozinhas no vencimento."
@@ -307,7 +307,11 @@ export function BillingBoard({
         )}
       </div>
 
-      {panel && <aside className="sticky top-0 hidden h-screen w-[440px] shrink-0 flex-col border-l border-[var(--border-strong)] bg-ink-900 lg:flex">{panelEl}</aside>}
+      {panel && (
+        <aside className="sticky top-4 hidden h-[calc(100vh-2rem)] w-[420px] shrink-0 flex-col overflow-hidden rounded-xl border border-[var(--border-strong)] bg-ink-900 lg:flex">
+          {panelEl}
+        </aside>
+      )}
       <MobileOnlyPanel open={Boolean(panel)} onClose={closePanel}>
         {panelEl}
       </MobileOnlyPanel>

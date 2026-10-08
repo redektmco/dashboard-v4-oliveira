@@ -147,8 +147,8 @@ export function ClientsBoard({
   );
 
   return (
-    <div className="flex min-h-full">
-      <div className="mx-auto flex w-full min-w-0 max-w-[1100px] flex-1 flex-col gap-5 px-4 pb-10 pt-5 lg:px-10 lg:pb-8 lg:pl-10 lg:pr-8 lg:pt-9">
+    <div className="flex items-start gap-6">
+      <div className="flex w-full min-w-0 flex-1 flex-col gap-5">
         <PageHead
           crumbs={[{ label: "Cadastro" }]}
           title="Clientes"
@@ -264,7 +264,11 @@ export function ClientsBoard({
       </div>
 
       {/* Painel: coluna ao lado no desktop, tela cheia no celular. */}
-      {row && <aside className="sticky top-0 hidden h-screen w-[460px] shrink-0 flex-col border-l border-[var(--border-strong)] bg-ink-900 lg:flex">{panel}</aside>}
+      {row && (
+        <aside className="sticky top-4 hidden h-[calc(100vh-2rem)] w-[420px] shrink-0 flex-col overflow-hidden rounded-xl border border-[var(--border-strong)] bg-ink-900 lg:flex">
+          {panel}
+        </aside>
+      )}
       <MobilePanel open={Boolean(row)} onClose={close}>
         {panel}
       </MobilePanel>

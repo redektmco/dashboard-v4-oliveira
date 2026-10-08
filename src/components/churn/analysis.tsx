@@ -282,7 +282,7 @@ export function ChurnAnalysis({
             <div className="min-w-0 flex-1">
               <div className="flex h-[150px] items-end justify-around gap-1 border-b border-ink-700">
                 {vol.map((v) => (
-                  <div key={v.ym} className="flex h-full items-end gap-[2px]" title={`${monthLabel(v.ym)}: ${v.canc} cancelados, ${v.ret} retidos${compare ? ` · ${v.prev} cancelados em ${Number(v.ym.slice(0, 4)) - 1}` : ""}`}>
+                  <div key={v.ym} className="flex h-full items-end gap-px sm:gap-[2px]" title={`${monthLabel(v.ym)}: ${v.canc} cancelados, ${v.ret} retidos${compare ? ` · ${v.prev} cancelados em ${Number(v.ym.slice(0, 4)) - 1}` : ""}`}>
                     {compare && <Col h={v.prev / volMax} cls="bg-ink-700" />}
                     <Col h={v.canc / volMax} cls="bg-vermelho" />
                     <Col h={v.ret / volMax} cls="bg-verde" />
@@ -578,7 +578,8 @@ function Legend({ cls, label }: { cls: string; label: string }) {
 }
 
 function Col({ h, cls }: { h: number; cls: string }) {
-  return <span className={`w-2.5 rounded-t-[4px] sm:w-3 ${cls}`} style={{ height: h > 0 ? `${Math.max(3, h * 100)}%` : "0" }} />;
+  // No celular a barra afina: 12 meses × 3 barras precisam caber em 390px.
+  return <span className={`w-1.5 rounded-t-[3px] sm:w-3 sm:rounded-t-[4px] ${cls}`} style={{ height: h > 0 ? `${Math.max(3, h * 100)}%` : "0" }} />;
 }
 
 function Empty() {

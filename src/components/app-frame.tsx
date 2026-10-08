@@ -28,21 +28,14 @@ export function AppFrame({
 }) {
   const path = usePathname();
   if (path.startsWith("/a/")) return <>{children}</>;
-  // Configurações, Performance e a lista de Clientes têm moldura própria
-  // (respiro da página e, em Clientes, o painel lateral de ponta a ponta).
-  const config = path.startsWith("/config") || path.startsWith("/gt") || path === "/clientes";
   return (
     <>
       <Sidebar user={user} avisos={avisos} />
       <div className="flex min-w-0 flex-1 flex-col">
         <MobileNav user={user} />
-        <main
-          className={
-            config
-              ? "app-main min-w-0 flex-1"
-              : "app-main mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-6 lg:px-7 lg:pt-5"
-          }
-        >
+        {/* A largura e o respiro de toda tela moram aqui, e só aqui: nenhuma
+            página define o próprio container. */}
+        <main className="app-main mx-auto w-full min-w-0 max-w-[1320px] px-4 pt-5 sm:px-6 lg:px-10 lg:pt-8">
           {children}
         </main>
       </div>

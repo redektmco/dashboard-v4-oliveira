@@ -52,7 +52,7 @@ export default async function PendenciasPage() {
   const okCount = health.filter((h) => h.ok).length;
 
   return (
-    <ConfigPage wide>
+    <ConfigPage>
       <PageTitle
         title="Pendências"
         description="O que falta para o score refletir a carteira inteira — em ordem de impacto."

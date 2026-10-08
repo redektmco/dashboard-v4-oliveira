@@ -68,13 +68,10 @@ export function ConfigShell({
   );
 }
 
-/** Área de conteúdo de uma página de Configurações, com o respiro do layout. */
-export function ConfigPage({ children, wide = false, className = "" }: { children: React.ReactNode; wide?: boolean; className?: string }) {
-  return (
-    <div
-      className={`mx-auto flex w-full flex-col gap-5 px-4 pb-10 pt-5 lg:gap-6 lg:pb-14 lg:pt-8 ${wide ? "max-w-[1328px] lg:px-14" : "max-w-[1272px] lg:px-10"} ${className}`}
-    >
-      {children}
-    </div>
-  );
+/**
+ * Pilha de conteúdo de uma página com cabeçalho e seções. A largura e o
+ * respiro são os da moldura do app (`AppFrame`), iguais em toda tela.
+ */
+export function ConfigPage({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <div className={`flex w-full flex-col gap-5 lg:gap-6 ${className}`}>{children}</div>;
 }

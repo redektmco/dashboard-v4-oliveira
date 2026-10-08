@@ -104,7 +104,7 @@ export function CheckinQueue({ rows, limit, scales }: { rows: QueueRow[]; limit:
   const pct = rows.length ? (fresh / rows.length) * 100 : 0;
 
   return (
-    <div className="flex flex-col gap-6 pb-12 lg:px-3 lg:pt-4">
+    <div className="flex flex-col gap-6">
       {/* ------------------------------ cabeçalho ------------------------------ */}
       <PageHead
         crumbs={[{ label: "Account" }]}
