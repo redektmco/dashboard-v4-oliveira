@@ -67,9 +67,16 @@ const CHECKIN_ROWS = [
   { key: "q6_expectation", short: "Expectativa" },
 ];
 
-export default async function ClientePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ClientePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ plano?: string }>;
+}) {
   await requireUser();
   const { id } = await params;
+  const { plano } = await searchParams;
   const clientId = Number(id);
   if (!Number.isInteger(clientId)) notFound();
 
@@ -190,7 +197,7 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
   );
 
   return (
-    <ClientUI data={uiData} history={history}>
+    <ClientUI data={uiData} history={history} startWithNewPlan={plano === "novo"}>
       {/* ============================ DESKTOP ============================ */}
       <div className="hidden flex-col gap-8 pb-6 lg:flex">
         {/* Cabeçalho */}

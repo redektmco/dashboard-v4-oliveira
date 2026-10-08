@@ -93,14 +93,19 @@ const DIM_SHORT: Record<DimensionKey, string> = {
 export function ClientUI({
   data,
   history,
+  startWithNewPlan = false,
   children,
 }: {
   data: ClientUIData;
   history: React.ReactNode;
+  /** Abre o modal de novo plano ao carregar (atalho "Criar plano" da carteira). */
+  startWithNewPlan?: boolean;
   children: React.ReactNode;
 }) {
   const [dim, setDim] = useState<DimensionKey | null>(null);
-  const [plan, setPlan] = useState<{ plan: Plan | null; dimension: DimensionKey | null } | null>(null);
+  const [plan, setPlan] = useState<{ plan: Plan | null; dimension: DimensionKey | null } | null>(
+    startWithNewPlan ? { plan: null, dimension: null } : null,
+  );
   const [checkin, setCheckin] = useState<number | null>(null);
   const [scheduling, setScheduling] = useState(false);
   const [allActions, setAllActions] = useState(false);

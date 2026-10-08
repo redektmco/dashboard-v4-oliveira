@@ -1,53 +1,77 @@
 import Link from "next/link";
-import { metaWeeks, portfolio, portfolioSummary, listOpenPlans, today } from "@/lib/repo";
+import { lastRecompute, listOpenPlans, metaWeeks, portfolio, portfolioSummary, today } from "@/lib/repo";
+import { configSnapshot } from "@/lib/config-status";
 import { recentWeeks } from "@/lib/meta/sync";
-import { weekLabel } from "@/lib/week";
+import { topPriorities, type PriorityAction } from "@/lib/priorities";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
-import { PortfolioTable, type Row } from "@/components/portfolio-table";
-import {
-  BandBar,
-  BandChip,
-  CardList,
-  CardMeta,
-  CardRow,
-  ClientLink,
-  ConfidenceTag,
-  Delta,
-  Empty,
-  PageHeader,
-  Panel,
-  Stat,
-  TableScroll,
-  brl,
-  dateBR,
-} from "@/components/ui";
 import { daysBetween } from "@/lib/model/scoring";
-import { Icon } from "@/components/icon";
+import { BAND_STYLE, brl } from "@/components/ui";
+import { Icon, type IconName } from "@/components/icon";
+import { GlobalSearch } from "@/components/home/global-search";
+import { Portfolio, type Row } from "@/components/home/portfolio";
 import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
+const ACTION: Record<PriorityAction, { label: string; icon: IconName }> = {
+  criar_plano: { label: "Criar plano", icon: "listTodo" },
+  cobrar_plano: { label: "Cobrar plano", icon: "clock" },
+  revisar: { label: "Revisar", icon: "eye" },
+  ver_conta: { label: "Ver conta", icon: "arrowRight" },
+};
+
+const pct = (n: number, of: number) => (of > 0 ? (n / of) * 100 : 0);
+const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
+
 export default async function CarteiraPage() {
   await requireUser();
   const at = today();
-  const [rows, plans, meta] = await Promise.all([portfolio(at), listOpenPlans(), metaWeeks()]);
+  const [rows, plans, meta, config, stamp] = await Promise.all([
+    portfolio(at),
+    listOpenPlans(),
+    metaWeeks(),
+    configSnapshot(),
+    lastRecompute(),
+  ]);
   const summary = portfolioSummary(rows);
 
-  // Mídia Meta da última semana fechada, somando as contas vinculadas da
-  // carteira ativa. A semana em curso fica de fora: parcial engana.
+  const total = rows.length;
+  const evaluated = total - summary.byBand.sem_dado;
+  const atRisk = summary.byBand.vermelho + summary.byBand.amarelo;
+  const unscored = rows.filter((r) => !r.score.band);
+  const unscoredMrr = unscored.reduce((a, r) => a + r.client.mrr, 0);
+  const neverFilled = rows.filter((r) => r.score.provenance.performance.ageDays === null).length;
+
+  // Mídia parada: conta com Meta vinculado e zero de verba na última semana
+  // fechada (a em curso vem parcial e engana).
   const [, closedWeek] = recentWeeks(2, at);
   const activeIds = new Set(rows.map((r) => r.client.id));
-  const metaClosed = [...meta]
-    .filter(([id]) => activeIds.has(id))
-    .map(([id, weeks]) => ({ id, w: weeks.get(closedWeek) }));
-  const media = metaClosed.reduce(
-    (a, { w }) => ({ spend: a.spend + (w?.week.spend ?? 0), leads: a.leads + (w?.leads ?? 0) }),
-    { spend: 0, leads: 0 },
+  const stopped = new Set(
+    [...meta].filter(([id, weeks]) => activeIds.has(id) && (weeks.get(closedWeek)?.week.spend ?? 0) === 0).map(([id]) => id),
   );
-  const stopped = metaClosed
-    .filter(({ w }) => (w?.week.spend ?? 0) === 0)
-    .map(({ id }) => rows.find((r) => r.client.id === id)!.client.name);
-  const unscoredMrr = rows.filter((r) => !r.score.band).reduce((a, r) => a + r.client.mrr, 0);
+
+  const lateDays = new Map<number, number>();
+  for (const p of plans) {
+    if (!p.due_date || p.due_date >= at) continue;
+    lateDays.set(p.client_id, Math.max(lateDays.get(p.client_id) ?? 0, daysBetween(p.due_date, at)));
+  }
+
+  const priorities = topPriorities(
+    rows.map((r) => ({
+      id: r.client.id,
+      name: r.client.name,
+      band: r.score.band,
+      score: r.score.score,
+      delta7: r.delta7,
+      mrr: r.client.mrr,
+      owner: r.client.gt_name ?? r.client.account_name,
+      overrides: r.score.overrides.map((o) => o.trigger),
+      openPlans: r.openPlans,
+      planLateDays: lateDays.get(r.client.id) ?? 0,
+      renewalIn: r.client.renewal_date ? daysBetween(at, r.client.renewal_date) : null,
+      spendStopped: stopped.has(r.client.id),
+    })),
+  );
 
   const view: Row[] = rows.map((r) => ({
     id: r.client.id,
@@ -61,400 +85,203 @@ export default async function CarteiraPage() {
     renewalIn: r.client.renewal_date ? daysBetween(at, r.client.renewal_date) : null,
     score: r.score.score,
     band: r.score.band,
-    rawBand: r.score.rawBand,
     confidence: r.score.confidence,
     delta7: r.delta7,
-    overrides: r.score.overrides.map((o) => o.trigger),
-    history: r.history.map((h) => h.score),
-    perfAge: r.score.provenance.performance.ageDays,
-    checkinAge: r.score.provenance.checkin.ageDays,
-    openPlans: r.openPlans,
   }));
 
-  // Triagem diária por exceção — briefing 6.
-  const bandChanged = rows.filter((r) => r.bandChanged48h);
-  const withOverride = rows.filter((r) => r.score.overrides.length > 0);
-  const movers = rows.filter((r) => !r.bandChanged48h && (r.delta7 ?? 0) <= -3);
-  const stale = summary.staleFills;
-  const renewals = rows
-    .filter((r) => {
-      const d = r.client.renewal_date ? daysBetween(at, r.client.renewal_date) : null;
-      return d !== null && d <= 60;
-    })
-    .sort((a, b) => daysBetween(at, a.client.renewal_date!) - daysBetween(at, b.client.renewal_date!));
-
-  const total = rows.length || 1;
+  const updated = stamp
+    ? new Date(stamp.at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+    : null;
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        icon="grid"
-        eyebrow="Unidade Oliveira & Co"
-        title="Saúde da carteira"
-        description={`Recompute de ${dateBR(at)} · ${rows.length} contas ativas · ordenado por risco`}
-        actions={
-          <Link href="/config/modelo" className="btn btn-ghost shrink-0">
-            <Icon name="target" size={14} />
+    <div className="space-y-6 pb-10">
+      <header className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <h1 className="font-display text-[22px] font-semibold leading-tight text-ink-100 sm:text-[24px]">Saúde da carteira</h1>
+          <p className="mt-1 text-[14px] text-ink-400">{total} contas ativas · Unidade Oliveira &amp; Co</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <GlobalSearch />
+          <Link href="/config/modelo" className="btn btn-ghost">
+            <Icon name="alertCircle" size={15} />
             Como o score é calculado
           </Link>
-        }
-      />
-
-      {/* Bandas + o que ainda não pontua; a contagem de "confiança < alta"
-          vive na caixa "Dado desatualizado" da triagem, logo abaixo. */}
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 xl:grid-cols-5">
-        <Stat
-          label="Vermelho"
-          value={summary.byBand.vermelho}
-          tone="vermelho"
-          hint={`${Math.round((summary.byBand.vermelho / total) * 100)}% da carteira`}
-        />
-        <Stat
-          label="Amarelo"
-          value={summary.byBand.amarelo}
-          tone="amarelo"
-          hint="janela onde a intervenção ainda muda o desfecho"
-        />
-        <Stat
-          label="Verde"
-          value={summary.byBand.verde}
-          tone="verde"
-          hint={`${Math.round((summary.byBand.verde / total) * 100)}% da carteira`}
-        />
-        <Stat
-          label="Sem score"
-          value={summary.byBand.sem_dado}
-          hint={
-            summary.byBand.sem_dado
-              ? `${brl(unscoredMrr)} de MRR sem leitura — falta meta ou preenchimento`
-              : "toda a carteira pontua"
-          }
-        />
-        <div className="col-span-2 grid xl:col-span-1">
-          <Stat
-            label="MRR em risco"
-            value={brl(summary.mrrAtRisk)}
-            hint={`de ${brl(summary.mrrTotal)} na carteira`}
-            tone={summary.mrrAtRisk > summary.mrrTotal * 0.3 ? "vermelho" : "default"}
-            accent
-          />
         </div>
-      </div>
-      <BandBar counts={summary.byBand} />
+      </header>
 
-      {metaClosed.length > 0 && (
-        <section className="panel">
-          <header className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-hair)] px-4 py-2.5 sm:px-5">
-            <div className="flex items-center gap-2">
-              <span className="inline-block size-2 rounded-full bg-[#1877f2]" aria-hidden />
-              <span className="eyebrow">Meta Ads · semana fechada {weekLabel(closedWeek)}</span>
+      {/* ---------------------------- Saúde ---------------------------- */}
+      <section className="panel space-y-7 p-5 sm:p-7" aria-label="Saúde da carteira">
+        <div className="grid gap-6 sm:grid-cols-3 sm:gap-8">
+          <Kpi label="Contas em risco">
+            <div className="flex items-baseline gap-2">
+              <span className="tnum font-display text-[30px] font-semibold leading-none text-ink-100">{atRisk}</span>
+              <span className="text-[14px] text-ink-500">de {evaluated} avaliadas</span>
             </div>
-            <Link href="/config/integracoes" className="text-[12px] text-ink-400 hover:text-ink-100">
-              {metaClosed.length} conta(s) vinculada(s) →
-            </Link>
-          </header>
-          <dl className="grid grid-cols-2 gap-px bg-[var(--border-hair)] lg:grid-cols-4">
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              <Dot cls={BAND_STYLE.vermelho.dot}>
+                {summary.byBand.vermelho} {plural(summary.byBand.vermelho, "crítica", "críticas")}
+              </Dot>
+              <Dot cls={BAND_STYLE.amarelo.dot}>{summary.byBand.amarelo} em atenção</Dot>
+            </div>
+          </Kpi>
+          <Kpi label="MRR em risco">
+            <span className="tnum font-display text-[30px] font-semibold leading-none text-ink-100">{brl(summary.mrrAtRisk)}</span>
+            <p className="text-[13px] text-ink-400">
+              {pct(summary.mrrAtRisk, summary.mrrTotal).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% dos {brl(summary.mrrTotal)} da carteira
+            </p>
+          </Kpi>
+          <Kpi label="Contas avaliadas">
+            <div className="flex items-baseline gap-2">
+              <span className="tnum font-display text-[30px] font-semibold leading-none text-ink-100">{evaluated}</span>
+              <span className="text-[14px] text-ink-500">de {total}</span>
+            </div>
+            <p className={`text-[13px] ${unscored.length ? "text-amarelo-fg" : "text-ink-400"}`}>
+              {unscored.length ? `${unscored.length} sem score — ${brl(unscoredMrr)} fora da leitura` : "Toda a carteira pontua"}
+            </p>
+          </Kpi>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2">
+            <p className="text-[13px] text-ink-400">Distribuição das {evaluated} contas avaliadas</p>
+            <div className="flex flex-wrap gap-x-5 gap-y-1">
+              {(["vermelho", "amarelo", "verde"] as const).map((b) => (
+                <span key={b} className="inline-flex items-center gap-1.5 text-[13px] text-ink-400">
+                  <span className={`h-[7px] w-[7px] rounded-full ${BAND_STYLE[b].dot}`} />
+                  {BAND_STYLE[b].label}
+                  <strong className="tnum font-semibold text-ink-100">{summary.byBand[b]}</strong>
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="flex h-2 gap-1" role="img" aria-label={`${summary.byBand.vermelho} críticas, ${summary.byBand.amarelo} em atenção, ${summary.byBand.verde} saudáveis`}>
+            {evaluated === 0 ? (
+              <span className="flex-1 rounded bg-ink-800" />
+            ) : (
+              (["vermelho", "amarelo", "verde"] as const)
+                .filter((b) => summary.byBand[b] > 0)
+                .map((b) => (
+                  <span key={b} className={`rounded ${BAND_STYLE[b].dot}`} style={{ flexGrow: summary.byBand[b], flexBasis: 0 }} />
+                ))
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* -------------------- Prioridades + qualidade dos dados -------------------- */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <section className="space-y-4" aria-labelledby="prioridades-title">
+          <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
+            <div>
+              <h2 id="prioridades-title" className="font-display text-[17px] font-semibold text-ink-100">
+                Prioridades de hoje
+              </h2>
+              <p className="mt-1 text-[13px] text-ink-400">Qual conta precisa de atenção, por quê e qual a próxima ação.</p>
+            </div>
+            {updated && <span className="text-[12px] text-ink-500">Atualizado {updated}</span>}
+          </div>
+
+          {priorities.length === 0 ? (
+            <div className="panel px-5 py-8 text-center text-[13px] text-ink-400">Nenhuma conta pede ação hoje.</div>
+          ) : (
+            <ol className="space-y-2">
+              {priorities.map((p, i) => {
+                const s = p.band ? BAND_STYLE[p.band] : null;
+                const a = ACTION[p.action];
+                return (
+                  <li key={p.id} className="panel flex flex-col gap-3 rounded-[10px] p-4 sm:flex-row sm:items-center sm:gap-4">
+                    <span className="tnum hidden w-3.5 shrink-0 text-[13px] font-semibold text-ink-500 sm:block">{i + 1}</span>
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <Link href={`/clientes/${p.id}`} className="text-[15px] font-semibold text-ink-100 hover:underline">
+                          {p.name}
+                        </Link>
+                        {s && (
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] font-medium ${s.chip}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
+                            {s.label}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[13px] leading-[19px] text-ink-400">{p.why}</p>
+                      <p className="text-[12px] text-ink-500">{p.meta}</p>
+                    </div>
+                    <Link
+                      href={p.action === "criar_plano" ? `/clientes/${p.id}?plano=novo` : `/clientes/${p.id}`}
+                      className="btn shrink-0 self-start sm:self-center"
+                    >
+                      <Icon name={a.icon} size={15} />
+                      {a.label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+
+        </section>
+
+        <aside className="panel space-y-5 self-start p-5" aria-labelledby="qualidade-title">
+          <div>
+            <h2 id="qualidade-title" className="font-display text-[16px] font-semibold text-ink-100">
+              Qualidade dos dados
+            </h2>
+            <p className="mt-1.5 text-[13px] leading-5 text-ink-400">
+              Contas sem score ficam fora da distribuição — não significa que estão saudáveis.
+            </p>
+          </div>
+          <div className="space-y-2.5">
+            <div className="flex items-baseline gap-2">
+              <span className={`tnum font-display text-[30px] font-semibold leading-none ${unscored.length ? "text-amarelo-fg" : "text-ink-100"}`}>
+                {unscored.length}
+              </span>
+              <span className="text-[14px] text-ink-500">{plural(unscored.length, "conta sem score", "contas sem score")}</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-[3px] bg-ink-800" role="img" aria-label={`${evaluated} de ${total} contas avaliadas`}>
+              <div className="h-full bg-ink-300" style={{ width: `${pct(evaluated, total)}%` }} />
+            </div>
+            <p className="text-[12px] leading-[17px] text-ink-500">
+              {evaluated} de {total} avaliadas · {brl(unscoredMrr)} de MRR fora da leitura
+            </p>
+          </div>
+          <dl className="space-y-3 text-[13px]">
             {[
-              { label: "Investimento", value: brl(media.spend) },
-              { label: "Leads e conversas", value: media.leads.toLocaleString("pt-BR") },
-              {
-                label: "Custo por lead",
-                value: media.leads > 0 ? (media.spend / media.leads).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—",
-              },
-              {
-                label: "Verba parada",
-                value: stopped.length,
-                hint: stopped.length ? stopped.slice(0, 3).join(", ") + (stopped.length > 3 ? "…" : "") : "todas as contas rodaram",
-                tone: stopped.length ? "text-vermelho-fg" : "text-ink-100",
-              },
-            ].map((m) => (
-              <div key={m.label} className="bg-ink-900 px-4 py-3 sm:px-5">
-                <dt className="text-[11.5px] text-ink-500">{m.label}</dt>
-                <dd className={`tnum mt-1 font-display text-[18px] font-bold ${m.tone ?? "text-ink-100"}`}>{m.value}</dd>
-                {m.hint && <dd className="mt-0.5 truncate text-[11px] text-ink-500">{m.hint}</dd>}
+              ["Sem meta cadastrada", config.semMeta.length],
+              ["Sem fonte de leads", config.semFonte.length],
+              ["Performance nunca preenchida", neverFilled],
+            ].map(([label, n]) => (
+              <div key={label} className="flex items-center justify-between gap-3">
+                <dt className="text-ink-400">{label}</dt>
+                <dd className="tnum font-semibold text-ink-100">{n}</dd>
               </div>
             ))}
           </dl>
-        </section>
-      )}
-
-      {/* -------------------- Triagem diária -------------------- */}
-      <Panel
-        title="Triagem diária"
-        subtitle="Por exceção — só o que mudou ou não pode esperar. ~5 minutos."
-      >
-        <div className="grid gap-px bg-[var(--border-hair)] sm:grid-cols-2 xl:grid-cols-4">
-          <TriageBox
-            title="Trocou de banda (48h)"
-            empty="Nenhuma troca de banda."
-            items={bandChanged.map((r) => ({
-              id: r.client.id,
-              name: r.client.name,
-              detail: (
-                <span className="flex items-center gap-2">
-                  <BandChip band={r.score.band} />
-                  <Delta value={r.delta7} suffix=" em 7d" />
-                </span>
-              ),
-            }))}
-          />
-          <TriageBox
-            title="Overrides disparados"
-            empty="Nenhum override ativo."
-            items={withOverride.map((r) => ({
-              id: r.client.id,
-              name: r.client.name,
-              detail: (
-                <span className="text-xs text-vermelho-fg">
-                  {r.score.overrides.map((o) => o.trigger).join(" · ")}
-                </span>
-              ),
-            }))}
-          />
-          <TriageBox
-            title="Movers negativos"
-            empty="Ninguém caindo forte dentro da banda."
-            items={movers.map((r) => ({
-              id: r.client.id,
-              name: r.client.name,
-              detail: (
-                <span className="flex items-center gap-2">
-                  <Delta value={r.delta7} suffix=" em 7d" />
-                  <BandChip band={r.score.band} />
-                </span>
-              ),
-            }))}
-          />
-          <TriageBox
-            title="Dado desatualizado"
-            empty="Carteira toda com leitura fresca."
-            items={stale.map((r) => ({
-              id: r.client.id,
-              name: r.client.name,
-              detail: (
-                <span className="flex flex-wrap items-center gap-2">
-                  <ConfidenceTag c={r.score.confidence} compact />
-                  <span className="text-xs text-ink-400">
-                    perf{" "}
-                    {r.score.provenance.performance.ageDays === null
-                      ? "nunca"
-                      : `${r.score.provenance.performance.ageDays}d`}{" "}
-                    · check-in{" "}
-                    {r.score.provenance.checkin.ageDays === null
-                      ? "nunca"
-                      : `${r.score.provenance.checkin.ageDays}d`}
-                  </span>
-                </span>
-              ),
-            }))}
-          />
-        </div>
-      </Panel>
-
-      {/* -------------------- Carteira -------------------- */}
-      <PortfolioTable rows={view} />
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        {/* Acompanhamento, não alarme: recolhido por padrão para aliviar a
-            primeira dobra — mas abre sozinho se há plano vencido, que é o caso
-            em que ele não pode esperar. */}
-        <details className="panel group" open={plans.some((p) => p.due_date && p.due_date < at)}>
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 sm:px-5">
-            <div>
-              <h2 className="font-display text-[16px] font-semibold text-ink-100">Planos em aberto</h2>
-              <p className="mt-0.5 text-[12.5px] text-ink-400">
-                {plans.length} em aberto · cada risco tem plano, dono e prazo. O loop fecha na revisão semanal.
-              </p>
-            </div>
-            <Icon name="chevronDown" size={16} className="shrink-0 text-ink-400 transition-transform group-open:rotate-180" />
-          </summary>
-          <div className="border-t border-[var(--border-hair)]">
-          {plans.length === 0 ? (
-            <Empty>Nenhum plano em aberto.</Empty>
-          ) : (
-            <>
-              <CardList>
-                {plans.map((p) => {
-                  const late = p.due_date && p.due_date < at;
-                  return (
-                    <CardRow key={p.id}>
-                      <ClientLink id={p.client_id} name={p.client_name} />
-                      <p className="mt-1 text-[13px] leading-snug text-ink-300">{p.risk}</p>
-                      <CardMeta
-                        items={[
-                          { label: "Dono", value: p.owner },
-                          {
-                            label: "Prazo",
-                            value: dateBR(p.due_date),
-                            className: late ? "text-vermelho-fg" : undefined,
-                          },
-                          { label: "Status", value: p.status.replace("_", " ") },
-                        ]}
-                      />
-                    </CardRow>
-                  );
-                })}
-              </CardList>
-
-              <div className="hidden lg:block">
-                <TableScroll>
-                  <table className="data-table is-dense">
-                    <thead>
-                      <tr>
-                        <th>Cliente</th>
-                        <th>Risco</th>
-                        <th>Dono</th>
-                        <th>Prazo</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {plans.map((p) => {
-                        const late = p.due_date && p.due_date < at;
-                        return (
-                          <tr key={p.id}>
-                            <td>
-                              <ClientLink id={p.client_id} name={p.client_name} />
-                            </td>
-                            <td className="max-w-[300px] text-ink-300">{p.risk}</td>
-                            <td className="text-ink-300">{p.owner}</td>
-                            <td className={late ? "text-vermelho-fg" : "text-ink-300"}>
-                              {dateBR(p.due_date)}
-                            </td>
-                            <td className="text-ink-300">{p.status.replace("_", " ")}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </TableScroll>
-              </div>
-            </>
-          )}
-          </div>
-        </details>
-
-        <Panel
-          title="Renovações nos próximos 60 dias"
-          subtitle="Renovação x health — onde o problema custa o contrato."
-        >
-          {renewals.length === 0 ? (
-            <Empty>Nenhuma renovação na janela.</Empty>
-          ) : (
-            <>
-              <CardList>
-                {renewals.map((r) => {
-                  const d = daysBetween(at, r.client.renewal_date!);
-                  return (
-                    <CardRow key={r.client.id} critical={r.score.band === "vermelho"}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <ClientLink id={r.client.id} name={r.client.name} />
-                          <div className="mt-0.5 text-[11px] text-ink-500">
-                            {dateBR(r.client.renewal_date)} · {brl(r.client.mrr)}/mês
-                          </div>
-                        </div>
-                        <BandChip band={r.score.band}>
-                          {r.score.score === null ? "—" : Math.round(r.score.score)}
-                        </BandChip>
-                      </div>
-                      <p
-                        className={`tnum mt-2 text-[13px] font-semibold ${
-                          d <= 30 ? "text-amarelo-fg" : "text-ink-300"
-                        }`}
-                      >
-                        {d < 0 ? `renovação vencida há ${-d}d` : `renova em ${d} dias`}
-                      </p>
-                    </CardRow>
-                  );
-                })}
-              </CardList>
-
-              <div className="hidden lg:block">
-                <TableScroll>
-                  <table className="data-table is-dense">
-                    <thead>
-                      <tr>
-                        <th>Cliente</th>
-                        <th>Renova em</th>
-                        <th>Score</th>
-                        <th className="text-right">MRR</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {renewals.map((r) => {
-                        const d = daysBetween(at, r.client.renewal_date!);
-                        return (
-                          <tr key={r.client.id}>
-                            <td>
-                              <ClientLink id={r.client.id} name={r.client.name} />
-                              <div className="text-xs text-ink-500">
-                                {dateBR(r.client.renewal_date)}
-                              </div>
-                            </td>
-                            <td className={`tnum ${d <= 30 ? "text-amarelo-fg" : "text-ink-300"}`}>
-                              {d < 0 ? `vencida (${-d}d)` : `${d} dias`}
-                            </td>
-                            <td>
-                              <BandChip band={r.score.band}>
-                                {r.score.score === null ? "—" : Math.round(r.score.score)}
-                              </BandChip>
-                            </td>
-                            <td className="tnum text-right text-ink-300">{brl(r.client.mrr)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </TableScroll>
-              </div>
-            </>
-          )}
-        </Panel>
+          <Link href="/config" className="btn w-full">
+            <Icon name="wrench" size={15} />
+            Resolver pendências
+          </Link>
+        </aside>
       </div>
+
+      <Portfolio rows={view} mrrTotal={summary.mrrTotal} />
     </div>
   );
 }
 
-function TriageBox({
-  title,
-  items,
-  empty,
-}: {
-  title: string;
-  items: { id: number; name: string; detail: React.ReactNode }[];
-  empty: string;
-}) {
+function Kpi({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className={`bg-ink-900 px-4 ${items.length ? "py-3" : "py-2.5 sm:py-3"}`}>
-      <div className="flex items-center gap-2">
-        <span className="label shrink-0">{title}</span>
-        {/* Caixa vazia vira uma linha só no celular: quatro "nada a fazer"
-            empilhados empurram a carteira para fora da primeira dobra. */}
-        {items.length === 0 && (
-          <span className="min-w-0 truncate text-[11px] text-ink-600 sm:hidden">— {empty}</span>
-        )}
-        <span
-          className={`tnum ml-auto text-xs font-semibold ${items.length ? "text-ink-100" : "text-ink-600"}`}
-        >
-          {items.length}
-        </span>
-      </div>
-      {items.length === 0 ? (
-        <p className="mt-2 hidden text-xs text-ink-600 sm:block">{empty}</p>
-      ) : (
-        <ul className="mt-2 space-y-2">
-          {items.slice(0, 5).map((i) => (
-            <li key={i.id} className="text-sm">
-              <ClientLink id={i.id} name={i.name} />
-              <div className="mt-0.5">{i.detail}</div>
-            </li>
-          ))}
-          {items.length > 5 && (
-            <li className="text-xs text-ink-500">+ {items.length - 5} na tabela abaixo</li>
-          )}
-        </ul>
-      )}
+    <div className="space-y-2">
+      <p className="text-[13px] text-ink-400">{label}</p>
+      {children}
     </div>
+  );
+}
+
+function Dot({ cls, children }: { cls: string; children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[13px] text-ink-400">
+      <span className={`h-[7px] w-[7px] rounded-full ${cls}`} />
+      {children}
+    </span>
   );
 }

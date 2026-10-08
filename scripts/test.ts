@@ -19,6 +19,7 @@ import { aspectWarning, formatBadge, rejectReason } from "../src/lib/social/medi
 import { matchCaptionsToFiles, parseBatchCaptions } from "../src/lib/social/batch";
 import { isOwnBlobUrl } from "../src/lib/social/storage";
 import { navReducer, type Nav } from "../src/components/social/story-nav";
+import { topPriorities, type PriorityInput } from "../src/lib/priorities";
 import { EMPTY_WEEK, leadsOf, metaFields, parseInsight, weekRange } from "../src/lib/meta/metrics";
 import { clientKey, firstPhone, parseBRL, parseClientsSheet, parseCsv } from "../src/lib/import/clients-sheet";
 import {
@@ -635,4 +636,56 @@ test("planilha: CSV com célula multilinha entre aspas", () => {
   assert.equal(firstPhone("5513996090102"), "5513996090102");
   assert.equal(firstPhone("sem telefone"), null);
   assert.equal(clientKey("Wisqueria "), clientKey("wisquería"));
+});
+
+/* ----------------------- prioridades de hoje ----------------------- */
+
+const acct = (over: Partial<PriorityInput> = {}): PriorityInput => ({
+  id: 1,
+  name: "Conta",
+  band: "verde",
+  score: 80,
+  delta7: 0,
+  mrr: 1000,
+  owner: "Igor",
+  overrides: [],
+  openPlans: 0,
+  planLateDays: 0,
+  renewalIn: null,
+  spendStopped: false,
+  ...over,
+});
+
+test("prioridades: crítica com queda e verba parada vem primeiro e pede plano", () => {
+  const [p] = topPriorities([
+    acct({ id: 2, band: "amarelo", score: 64 }),
+    acct({ id: 1, band: "vermelho", score: 0, delta7: -56.6, spendStopped: true }),
+  ]);
+  assert.equal(p.id, 1);
+  assert.equal(p.action, "criar_plano");
+  assert.equal(p.why, "O score caiu 56,6 pts em 7 dias e a verba de mídia está parada.");
+  assert.match(p.meta, /Score 0 · R\$\s?1\.000 MRR · Sem plano de ação · Responsável: Igor/);
+});
+
+test("prioridades: plano atrasado e contrato vencido pedem cobrança", () => {
+  const [p] = topPriorities([acct({ band: "amarelo", score: 64, planLateDays: 37, renewalIn: -1, openPlans: 1 })]);
+  assert.equal(p.action, "cobrar_plano");
+  assert.equal(p.why, "O plano de ação está 37 dias atrasado e o contrato venceu ontem.");
+});
+
+test("prioridades: override pede revisão; saudável estável fica fora; saudável em queda entra", () => {
+  const list = topPriorities([
+    acct({ id: 1, band: "amarelo", overrides: ["Tracking quebrado"] }),
+    acct({ id: 2, band: "verde" }),
+    acct({ id: 3, band: "verde", delta7: -14.6 }),
+    acct({ id: 4, band: null, score: null }),
+  ]);
+  assert.deepEqual(list.map((p) => p.id), [1, 3]);
+  assert.equal(list[0].action, "revisar");
+  assert.equal(list[1].action, "ver_conta");
+});
+
+test("prioridades: limita a lista", () => {
+  const many = Array.from({ length: 9 }, (_, i) => acct({ id: i + 1, band: "vermelho", score: 10 }));
+  assert.equal(topPriorities(many).length, 5);
 });
