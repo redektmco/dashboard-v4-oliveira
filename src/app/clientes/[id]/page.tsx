@@ -34,7 +34,6 @@ import {
 } from "@/lib/client-view";
 import { CheckinHeatmap } from "@/components/charts";
 import { ClientActions } from "@/components/client-actions";
-import { PageCrumbs } from "@/components/nav";
 import { Icon, type IconName } from "@/components/icon";
 import { BAND_TEXT, Bar, BandPill, Card, ColLabel, DotLabel, Initials, KV, Pill, SectionHead, TONE, type Tone } from "@/components/kit";
 import {
@@ -172,7 +171,6 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
     nextCheckinAt: client.next_checkin_at,
   };
 
-  const shortName = client.name.split(" | ")[0];
   const metaParts: { k?: string; v: string }[] = [
     { v: ACCOUNT_TYPE_LABEL[client.account_type] },
     { k: "GT", v: firstName(client.gt_name) },
@@ -193,8 +191,6 @@ export default async function ClientePage({ params }: { params: Promise<{ id: st
 
   return (
     <ClientUI data={uiData} history={history}>
-      <PageCrumbs items={[{ label: "Carteira", href: "/" }, { label: shortName }]} />
-
       {/* ============================ DESKTOP ============================ */}
       <div className="hidden flex-col gap-8 pb-6 lg:flex">
         {/* Cabeçalho */}
