@@ -65,6 +65,12 @@
   --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
 }
 
+/* Reserva o espaço da barra de rolagem mesmo quando a rolagem é travada
+   (painel lateral aberto): sem isso a barra some e a página atrás desloca. */
+html {
+  scrollbar-gutter: stable;
+}
+
 html,
 body {
   background: var(--color-ink-950);
