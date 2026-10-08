@@ -13,7 +13,7 @@
  */
 import { createSign } from "node:crypto";
 import { weekRange } from "../meta/metrics";
-import { bucketDaily, parseClientAccounts, type DailyRow, type GoogleAccount } from "./metrics";
+import { bucketDaily, normalizePrivateKey, parseClientAccounts, type DailyRow, type GoogleAccount } from "./metrics";
 import type { MetaWeek } from "../meta/metrics";
 
 const VERSION = process.env.GOOGLE_ADS_API_VERSION || "v23";
@@ -29,15 +29,18 @@ function serviceAccount(): ServiceAccount | null {
   if (json) {
     try {
       const j = JSON.parse(json) as { client_email?: string; private_key?: string };
-      if (j.client_email && j.private_key) return { email: j.client_email, key: j.private_key };
+      const pem = j.private_key ? normalizePrivateKey(j.private_key) : null;
+      if (j.client_email && pem) return { email: j.client_email, key: pem };
     } catch {
       /* JSON inválido: cai para o par de variáveis */
     }
   }
   const email = process.env.GOOGLE_SA_EMAIL;
   const key = process.env.GOOGLE_SA_PRIVATE_KEY;
-  // A Vercel guarda a chave em uma linha, com "\n" literal.
-  return email && key ? { email, key: key.replace(/\\n/g, "\n") } : null;
+  // Colada na Vercel a chave chega de formas diferentes (\n literal, aspas,
+  // espaços no lugar das quebras): normalizePrivateKey remonta o PEM.
+  const pem = key ? normalizePrivateKey(key) : null;
+  return email && pem ? { email: email.trim(), key: pem } : null;
 }
 
 export const googleAdsConfigured = () => Boolean(process.env.GOOGLE_ADS_DEVELOPER_TOKEN && serviceAccount());
@@ -54,6 +57,7 @@ export function googleAdsMissing(): string[] {
     else {
       if (!process.env.GOOGLE_SA_EMAIL) missing.push("GOOGLE_SA_EMAIL");
       if (!process.env.GOOGLE_SA_PRIVATE_KEY) missing.push("GOOGLE_SA_PRIVATE_KEY");
+      else missing.push("GOOGLE_SA_PRIVATE_KEY (valor sem o bloco -----BEGIN PRIVATE KEY----- … -----END PRIVATE KEY-----)");
     }
   }
   return missing;

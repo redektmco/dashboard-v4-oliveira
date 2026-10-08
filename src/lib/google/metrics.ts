@@ -89,3 +89,19 @@ export function parseClientAccounts(rows: CustomerClientRow[]): GoogleAccount[] 
   }
   return out.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
 }
+
+/**
+ * Reconstrói o PEM de uma chave privada colada em variável de ambiente, venha
+ * como vier: com "\\n" literal, quebras de linha reais, quebras trocadas por
+ * espaços, entre aspas, ou com o "NOME=" junto. Só confia nos bytes base64 do
+ * miolo e remonta o cabeçalho, o rodapé e as linhas de 64 caracteres.
+ * Devolve null se não achar uma chave.
+ */
+export function normalizePrivateKey(raw: string): string | null {
+  const m = raw.match(/-----BEGIN ([A-Z ]*PRIVATE KEY)-----([\s\S]*?)-----END \1-----/);
+  if (!m) return null;
+  const body = m[2].replace(/\\n|\\r|\s+/g, "").replace(/[^A-Za-z0-9+/=]/g, "");
+  if (body.length < 100) return null;
+  const lines = body.match(/.{1,64}/g) ?? [];
+  return `-----BEGIN ${m[1]}-----\n${lines.join("\n")}\n-----END ${m[1]}-----\n`;
+}

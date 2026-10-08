@@ -19,7 +19,8 @@ import { aspectWarning, formatBadge, rejectReason } from "../src/lib/social/medi
 import { matchCaptionsToFiles, parseBatchCaptions } from "../src/lib/social/batch";
 import { isOwnBlobUrl } from "../src/lib/social/storage";
 import { navReducer, type Nav } from "../src/components/social/story-nav";
-import { bucketDaily, formatCustomerId, normalizeCustomerId, parseClientAccounts } from "../src/lib/google/metrics";
+import { createSign, generateKeyPairSync } from "node:crypto";
+import { bucketDaily, formatCustomerId, normalizeCustomerId, normalizePrivateKey, parseClientAccounts } from "../src/lib/google/metrics";
 import { explainError } from "../src/lib/google/ads";
 import { topPriorities, type PriorityInput } from "../src/lib/priorities";
 import { EMPTY_WEEK, leadsOf, metaFields, parseInsight, weekRange } from "../src/lib/meta/metrics";
@@ -748,4 +749,23 @@ test("google: lista só contas de cliente ativas da MCC, sem repetir e em ordem"
     { customerClient: { id: "1234567890", manager: false, status: "ENABLED" } },
   ]);
   assert.deepEqual(list.map((a) => a.name), ["Alfa Odonto", "Conta 123-456-7890", "Zeta Móveis"]);
+});
+
+test("google: a chave privada colada na Vercel é reconstruída de qualquer formato", () => {
+  const pem = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({ type: "pkcs8", format: "pem" }) as string;
+  const variants: Record<string, string> = {
+    original: pem,
+    "\\n literal": pem.trim().replace(/\n/g, "\\n"),
+    "entre aspas": `"${pem.trim().replace(/\n/g, "\\n")}"`,
+    "quebras viraram espaços": pem.trim().replace(/\n/g, " "),
+    "com o nome da variável": `GOOGLE_SA_PRIVATE_KEY=${pem.trim().replace(/\n/g, "\\n")}`,
+    "espaços nas pontas": `\n  ${pem}  \n`,
+  };
+  for (const [nome, raw] of Object.entries(variants)) {
+    const fixed = normalizePrivateKey(raw);
+    assert.ok(fixed, nome);
+    assert.doesNotThrow(() => createSign("RSA-SHA256").update("x").sign(fixed!, "base64url"), nome);
+  }
+  assert.equal(normalizePrivateKey("isto não é uma chave"), null);
+  assert.equal(normalizePrivateKey("-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----"), null);
 });
