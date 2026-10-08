@@ -981,6 +981,19 @@ select,
   padding: 14px 20px;
   border-top: 1px solid var(--border-hair);
 }
+/* Formulário longo (ex.: novo plano de ação): cabeçalho e rodapé com divisória,
+   corpo com respiro maior. */
+.modal-card--form .modal-head {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-hair);
+}
+.modal-card--form .modal-body {
+  padding: 24px;
+}
+.modal-card--form .modal-actions {
+  margin: 24px -24px -24px;
+  padding: 16px 24px;
+}
 @media (max-width: 640px) {
   .modal[open] {
     align-items: flex-end;

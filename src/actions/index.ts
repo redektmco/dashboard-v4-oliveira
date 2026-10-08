@@ -459,7 +459,7 @@ export async function savePlan(_prev: ActionResult, formData: FormData): Promise
   const clientId = Number(str(formData, "client_id"));
   const id = Number(str(formData, "id")) || 0;
   const f = planFields(formData);
-  if (!f.risk || !f.owner) return { error: "Preencha o título e o responsável." };
+  if (!f.risk || !f.owner || !f.due_date) return { error: "Preencha o título, o responsável e o prazo." };
   if (id) await updatePlan(id, f);
   else {
     await createPlan({ client_id: clientId, created_by: me.id, ...f });

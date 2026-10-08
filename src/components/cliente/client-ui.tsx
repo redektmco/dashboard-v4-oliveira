@@ -447,6 +447,24 @@ function clickupUrl(base: string, client: string, p: Plan) {
   return `${base}?${q}`;
 }
 
+const PLAN_CONTEXT_MAX = 500;
+const PRIORITY_DOT: Record<Plan["priority"], string> = { alta: "bg-vermelho", media: "bg-amarelo", baixa: "bg-ink-500" };
+
+/** Iniciais para o avatar do responsável ("Igor Silva" → "IS"). */
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : (parts[0]?.[1] ?? ""))).toUpperCase();
+}
+
+function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
+  return (
+    <span className="flex items-center gap-1 text-[13px] font-medium text-ink-300">
+      {children}
+      {required && <span className="text-vermelho-fg">*</span>}
+    </span>
+  );
+}
+
 function PlanModal({
   open,
   onClose,
@@ -463,7 +481,13 @@ function PlanModal({
   const [deleting, setDeleting] = useState(false);
   return (
     <>
-      <Modal open={open} onClose={onClose} title={plan ? "Plano de ação" : "Novo plano de ação"} description={plan ? undefined : "Tarefa ligada a um problema da conta, com dono, prazo e passos."}>
+      <Modal
+        open={open}
+        onClose={onClose}
+        title={plan ? "Plano de ação" : "Novo plano de ação"}
+        description={plan ? undefined : "Tarefa ligada a um problema da conta, com dono, prazo e passos."}
+        cardClassName="modal-card--form"
+      >
         <PlanForm key={plan?.id ?? `new-${dimension}`} plan={plan} dimension={dimension} data={data} onDone={onClose} onDelete={() => setDeleting(true)} />
       </Modal>
       <ConfirmDialog
@@ -503,6 +527,8 @@ function PlanForm({
   const [tasks, setTasks] = useState<PlanTask[]>(plan?.tasks ?? []);
   const [draft, setDraft] = useState("");
   const [priority, setPriority] = useState<Plan["priority"]>(plan?.priority ?? "media");
+  const [context, setContext] = useState(plan?.plan ?? "");
+  const [owner, setOwner] = useState(plan?.owner ?? data.defaultOwner);
   const [pending, start] = useTransition();
   const owners = data.owners;
 
@@ -530,28 +556,60 @@ function PlanForm({
       <input type="hidden" name="tasks" value={JSON.stringify(tasks)} />
       <input type="hidden" name="priority" value={priority} />
       <label className="block">
-        <span className="label">Título</span>
-        <input name="risk" required autoFocus={!plan} defaultValue={plan?.risk} className="field mt-1" placeholder="Ex.: Recuperar performance" />
+        <FieldLabel required>Título</FieldLabel>
+        <input name="risk" required autoFocus={!plan} defaultValue={plan?.risk} className="field mt-1.5 h-10" placeholder="Ex.: Recuperar performance" />
       </label>
       <label className="block">
-        <span className="label">Contexto</span>
-        <textarea name="plan" rows={2} defaultValue={plan?.plan} className="field mt-1" placeholder="Qual o problema e o que vamos fazer" />
+        <FieldLabel>Contexto</FieldLabel>
+        <div className="field mt-1.5 flex flex-col gap-1 !p-0 focus-within:border-v4-red focus-within:shadow-[0_0_0_3px_rgba(229,9,20,0.18)]">
+          <textarea
+            name="plan"
+            rows={2}
+            maxLength={PLAN_CONTEXT_MAX}
+            value={context}
+            onChange={(e) => setContext(e.target.value)}
+            className="min-h-[56px] w-full resize-none bg-transparent px-3 pt-3 text-[14px] leading-[21px] text-ink-100 outline-none placeholder:text-ink-500"
+            placeholder="Qual o problema e o que vamos fazer"
+          />
+          <span className="tnum px-3 pb-2 text-[11px] text-ink-500">
+            {context.length} / {PLAN_CONTEXT_MAX}
+          </span>
+        </div>
       </label>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
-          <span className="label">Dimensão</span>
-          <select name="dimension" defaultValue={plan?.dimension ?? dimension ?? ""} className="field mt-1">
-            <option value="">Sem dimensão</option>
-            {(Object.keys(DIM_LABEL) as DimensionKey[]).map((k) => (
-              <option key={k} value={k}>
-                {DIM_LABEL[k]}
-              </option>
-            ))}
-          </select>
+          <FieldLabel>Dimensão</FieldLabel>
+          <div className="relative mt-1.5">
+            <Icon name="gauge" size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-500" />
+            <select name="dimension" defaultValue={plan?.dimension ?? dimension ?? ""} className="field h-10 pl-9">
+              <option value="">Sem dimensão</option>
+              {(Object.keys(DIM_LABEL) as DimensionKey[]).map((k) => (
+                <option key={k} value={k}>
+                  {DIM_LABEL[k]}
+                </option>
+              ))}
+            </select>
+          </div>
         </label>
         <label className="block">
-          <span className="label">Responsável</span>
-          <input name="owner" required list="plan-owners" className="field mt-1" defaultValue={plan?.owner ?? data.defaultOwner} />
+          <FieldLabel required>Responsável</FieldLabel>
+          <div className="relative mt-1.5">
+            <span
+              aria-hidden
+              className="pointer-events-none absolute left-2.5 top-1/2 grid h-[22px] w-[22px] -translate-y-1/2 place-items-center rounded-full bg-vermelho-dim text-[9px] font-semibold text-vermelho-fg"
+            >
+              {initials(owner) || <Icon name="user" size={12} />}
+            </span>
+            <input
+              name="owner"
+              required
+              list="plan-owners"
+              value={owner}
+              onChange={(e) => setOwner(e.target.value)}
+              className="field h-10 pl-10"
+              autoComplete="off"
+            />
+          </div>
           <datalist id="plan-owners">
             {owners.map((o) => (
               <option key={o} value={o} />
@@ -559,14 +617,22 @@ function PlanForm({
           </datalist>
         </label>
         <label className="block">
-          <span className="label">Prazo</span>
-          <input type="date" name="due_date" defaultValue={plan?.due_date ?? ""} className="field mt-1" />
+          <FieldLabel required>Prazo</FieldLabel>
+          <input type="date" name="due_date" required defaultValue={plan?.due_date ?? ""} className="field mt-1.5 h-10 [color-scheme:dark]" />
         </label>
         <div>
-          <span className="label">Prioridade</span>
-          <div className="seg mt-1 w-full">
+          <FieldLabel>Prioridade</FieldLabel>
+          <div className="seg mt-1.5 h-10 w-full" role="radiogroup" aria-label="Prioridade">
             {(["alta", "media", "baixa"] as const).map((p) => (
-              <button key={p} type="button" className={`flex-1 ${priority === p ? "on" : ""}`} onClick={() => setPriority(p)}>
+              <button
+                key={p}
+                type="button"
+                role="radio"
+                aria-checked={priority === p}
+                className={`flex-1 justify-center ${priority === p ? "on" : ""}`}
+                onClick={() => setPriority(p)}
+              >
+                <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${PRIORITY_DOT[p]}`} />
                 {PRIORITY[p].label}
               </button>
             ))}
@@ -574,8 +640,8 @@ function PlanForm({
         </div>
         {plan && (
           <label className="block sm:col-span-2">
-            <span className="label">Status</span>
-            <select name="status" defaultValue={plan.status} className="field mt-1">
+            <FieldLabel>Status</FieldLabel>
+            <select name="status" defaultValue={plan.status} className="field mt-1.5 h-10">
               {(Object.keys(PLAN_STATUS) as Plan["status"][]).map((s) => (
                 <option key={s} value={s}>
                   {PLAN_STATUS[s].label}
@@ -587,41 +653,63 @@ function PlanForm({
       </div>
 
       <div>
-        <div className="flex items-center justify-between">
-          <span className="label">Tarefas</span>
+        <div className="flex items-center gap-2">
+          <FieldLabel>Tarefas</FieldLabel>
+          <span className="tnum rounded-full bg-ink-800 px-[7px] py-px text-[11px] font-semibold text-ink-300">{tasks.length}</span>
           {tasks.length > 0 && (
-            <span className="text-[12px] text-ink-400">
+            <span className="ml-auto text-[12px] text-ink-400">
               {tasks.filter((t) => t.done).length}/{tasks.length} feitas{pending ? " · salvando…" : ""}
             </span>
           )}
         </div>
-        <ul className="mt-1.5 space-y-1">
-          {tasks.map((t, i) => (
-            <li key={i} className="group flex items-center gap-2 rounded-md bg-ink-850 px-2.5 py-1.5">
-              <input type="checkbox" checked={t.done} onChange={() => toggle(i)} className="h-4 w-4 accent-[var(--color-v4-red)]" aria-label={`Concluir: ${t.text}`} />
-              <span className={`min-w-0 flex-1 text-[13px] ${t.done ? "text-ink-400 line-through" : "text-ink-100"}`}>{t.text}</span>
-              <button type="button" onClick={() => setTasks(tasks.filter((_, j) => j !== i))} className="text-ink-500 hover:text-ink-100" aria-label="Remover tarefa">
-                <Icon name="x" size={14} />
-              </button>
-            </li>
-          ))}
-        </ul>
-        <div className="mt-1.5 flex gap-2">
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                add();
-              }
-            }}
-            className="field"
-            placeholder="Adicionar tarefa e Enter"
-          />
-          <button type="button" onClick={add} className="btn shrink-0">
-            <Icon name="plus" size={14} />
-          </button>
+        <div className="mt-1.5 overflow-hidden rounded-lg border border-[var(--border-strong)] bg-ink-950">
+          <ul>
+            {tasks.map((t, i) => (
+              <li key={i} className="flex items-center gap-2.5 border-b border-[var(--border-hair)] px-3 py-2.5">
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={t.done}
+                  aria-label={`Concluir: ${t.text}`}
+                  onClick={() => toggle(i)}
+                  className={`grid h-[14px] w-[14px] shrink-0 place-items-center rounded-full border-[1.5px] ${
+                    t.done ? "border-verde bg-verde text-ink-950" : "border-[var(--border-strong)] hover:border-ink-300"
+                  }`}
+                >
+                  {t.done && <Icon name="check" size={9} stroke={3.5} />}
+                </button>
+                <span className={`min-w-0 flex-1 text-[14px] ${t.done ? "text-ink-400 line-through" : "text-ink-100"}`}>{t.text}</span>
+                <button type="button" onClick={() => setTasks(tasks.filter((_, j) => j !== i))} className="text-ink-500 hover:text-ink-100" aria-label={`Remover: ${t.text}`}>
+                  <Icon name="x" size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="flex items-center gap-2.5 pl-3 pr-2">
+            <Icon name="plus" size={15} className="shrink-0 text-ink-500" />
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  add();
+                }
+              }}
+              maxLength={200}
+              className="h-10 min-w-0 flex-1 bg-transparent text-[14px] text-ink-100 outline-none placeholder:text-ink-500"
+              placeholder="Adicionar tarefa e Enter"
+              aria-label="Nova tarefa"
+            />
+            <button
+              type="button"
+              onClick={add}
+              className="flex shrink-0 items-center gap-1 rounded-[5px] border border-[var(--border-strong)] bg-ink-850 px-1.5 py-[3px] text-[11px] font-medium text-ink-500 hover:text-ink-100"
+              aria-label="Adicionar tarefa"
+            >
+              ↵ Enter
+            </button>
+          </div>
         </div>
       </div>
 
@@ -640,7 +728,10 @@ function PlanForm({
         <button type="button" className="btn" onClick={onDone}>
           Cancelar
         </button>
-        <SubmitButton>{plan ? "Salvar" : "Registrar plano"}</SubmitButton>
+        <SubmitButton>
+          <Icon name="check" size={15} />
+          {plan ? "Salvar" : "Registrar plano"}
+        </SubmitButton>
       </div>
     </ActionForm>
   );

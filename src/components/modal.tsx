@@ -17,6 +17,7 @@ export function Modal({
   children,
   footer,
   size = "md",
+  cardClassName = "",
 }: {
   open: boolean;
   onClose: () => void;
@@ -25,6 +26,8 @@ export function Modal({
   children?: React.ReactNode;
   footer?: React.ReactNode;
   size?: "sm" | "md" | "lg";
+  /** Variação visual do cartão (ex.: `modal-card--form`). */
+  cardClassName?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -51,7 +54,7 @@ export function Modal({
       }}
     >
       {open && (
-        <div className={`modal-card modal-card--${size}`}>
+        <div className={`modal-card modal-card--${size} ${cardClassName}`}>
           <header className="modal-head">
             <div className="min-w-0">
               <h2 id={titleId} className="font-display text-[17px] font-semibold leading-snug text-ink-100">
