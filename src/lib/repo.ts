@@ -61,10 +61,19 @@ export async function getConfig(): Promise<ScoreConfig> {
  */
 const USER_PUBLIC = "id, name, role";
 
-export const listUsers = (role?: User["role"]) =>
-  role
-    ? all<User>(`SELECT ${USER_PUBLIC} FROM users WHERE role = ? ORDER BY name`, [role])
-    : all<User>(`SELECT ${USER_PUBLIC} FROM users ORDER BY role, name`);
+/**
+ * O time que pode ser escolhido nas listas (GT, Account, responsáveis).
+ * Quem teve o acesso desativado sai daqui; o histórico guarda o nome pelos
+ * JOINs. `includeInactive` só para casar nomes (importação de planilha).
+ */
+export const listUsers = (role?: User["role"], { includeInactive = false } = {}) => {
+  const active = includeInactive ? "" : "active = 1";
+  const where = [role ? "role = ?" : "", active].filter(Boolean).join(" AND ");
+  return all<User>(
+    `SELECT ${USER_PUBLIC} FROM users ${where ? `WHERE ${where}` : ""} ORDER BY ${role ? "name" : "role, name"}`,
+    role ? [role] : [],
+  );
+};
 
 /**
  * Quem pode aparecer no "Preenchido por" de um formulário.
@@ -876,6 +885,7 @@ export async function listIntegrations(): Promise<IntegrationRow[]> {
      FROM crm_integrations i
      JOIN clients c ON c.id = i.client_id
      LEFT JOIN crm_leads l ON l.client_id = i.client_id
+     WHERE c.active = 1
      GROUP BY i.id, c.name, c.account_type, c.active
      ORDER BY c.name`,
     [cur, prev],
@@ -903,6 +913,7 @@ export const listMetaLinks = () =>
     `SELECT a.id, a.client_id, c.name AS client_name, c.account_type, a.ad_account_id, a.name,
             a.currency, a.lead_metric, a.active, a.last_sync_at::text AS last_sync_at, a.last_error
      FROM meta_ad_accounts a JOIN clients c ON c.id = a.client_id
+     WHERE c.active = 1
      ORDER BY c.name, a.name`,
   );
 
@@ -1050,6 +1061,7 @@ export const listGoogleLinks = () =>
     `SELECT a.id, a.client_id, c.name AS client_name, a.customer_id, a.name, a.currency, a.active,
             a.last_sync_at::text AS last_sync_at, a.last_error
      FROM google_ad_accounts a JOIN clients c ON c.id = a.client_id
+     WHERE c.active = 1
      ORDER BY c.name, a.name`,
   );
 
@@ -1166,7 +1178,7 @@ export async function importClients(rows: SheetClient[]): Promise<ImportSummary>
     all<{ id: number; name: string; billing_email: string | null; billing_phone: string | null }>(
       `SELECT id, name, billing_email, billing_phone FROM clients`,
     ),
-    listUsers(),
+    listUsers(undefined, { includeInactive: true }),
     getAllTargets(),
   ]);
   const byKey = new Map(existing.map((c) => [clientKey(c.name), c]));
@@ -1375,7 +1387,7 @@ export const listOpenPlans = () =>
   all<Plan & { client_name: string }>(
     `${PLAN_SELECT}, c.name AS client_name FROM action_plans p
      JOIN clients c ON c.id = p.client_id
-     WHERE p.status IN ('aberto','em_andamento')
+     WHERE c.active = 1 AND p.status IN ('aberto','em_andamento')
      ORDER BY p.due_date IS NULL, p.due_date`,
   );
 
@@ -1408,9 +1420,10 @@ export async function avisos(): Promise<Aviso[]> {
          )`,
     ),
     one<{ n: number }>(
-      `SELECT count(*)::int AS n FROM action_plans
-       WHERE status IN ('aberto','em_andamento')
-         AND due_date IS NOT NULL AND due_date < current_date`,
+      `SELECT count(*)::int AS n FROM action_plans p
+       JOIN clients c ON c.id = p.client_id
+       WHERE c.active = 1 AND p.status IN ('aberto','em_andamento')
+         AND p.due_date IS NOT NULL AND p.due_date < current_date`,
     ),
   ]);
 

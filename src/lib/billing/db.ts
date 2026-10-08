@@ -45,7 +45,7 @@ function toCharge(r: {
 /** Todas as parcelas cadastradas, mais recentes primeiro por vencimento. */
 export async function listCharges(): Promise<BillingChargeRow[]> {
   const rows = await all<Parameters<typeof toCharge>[0]>(
-    `${CHARGE_SELECT} ORDER BY bc.active DESC, bc.due_date ASC`,
+    `${CHARGE_SELECT} WHERE c.active = 1 ORDER BY bc.active DESC, bc.due_date ASC`,
   );
   return rows.map(toCharge);
 }
@@ -96,7 +96,7 @@ export const advanceRecurring = (id: number, recurrence: BillingRecurrence) => {
 /** Parcelas ativas que vencem hoje (data do banco — o cron roda 0h de São Paulo). */
 export async function chargesDueToday(): Promise<BillingChargeRow[]> {
   const rows = await all<Parameters<typeof toCharge>[0]>(
-    `${CHARGE_SELECT} WHERE bc.active = 1 AND bc.due_date = CURRENT_DATE`,
+    `${CHARGE_SELECT} WHERE bc.active = 1 AND c.active = 1 AND bc.due_date = CURRENT_DATE`,
   );
   return rows.map(toCharge);
 }
