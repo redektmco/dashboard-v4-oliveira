@@ -27,6 +27,7 @@ export type DrawerField = {
   actual: string;
   target: string;
   note?: string;
+  period?: string;
 };
 
 export type DrawerDim = {
@@ -403,7 +404,9 @@ function IndicatorsDrawer({
                   <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                     <span className="text-[13px] font-medium text-ink-100">{f.label}</span>
                     <Bar value={f.score ?? 0} tone={tone} thin className="max-w-[120px]" />
-                    <span className="text-[11px] text-ink-400">{f.score === null ? (f.note ?? "sem dado") : `Peso ${Math.round(f.weight)}%`}</span>
+                    <span className="text-[11px] text-ink-400">
+                      {[f.period, f.score === null ? (f.note ?? "sem dado") : `Peso ${Math.round(f.weight)}%`].filter(Boolean).join(" · ")}
+                    </span>
                   </div>
                   <span
                     className={`tnum w-[76px] text-right text-[13px] font-semibold ${

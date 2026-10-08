@@ -318,7 +318,7 @@ function Connection({
           </div>
         ))}
       </div>
-      <div className="mt-auto flex flex-wrap gap-2 xl:flex-nowrap">{actions}</div>
+      <div className="mt-auto flex flex-wrap gap-2">{actions}</div>
     </section>
   );
 }

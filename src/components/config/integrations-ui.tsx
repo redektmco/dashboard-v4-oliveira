@@ -44,9 +44,9 @@ export function SystemUserButton({
   const [connecting, setConnecting] = useState(false);
   return (
     <>
-      <button type="button" className="btn btn-ghost h-8 px-2.5 text-ink-300" onClick={() => setOpen(true)}>
+      <button type="button" className="btn btn-ghost h-8 px-2.5 text-ink-300" title="Usuário do sistema" onClick={() => setOpen(true)}>
         <Icon name="sliders" size={15} />
-        Usuário do sistema
+        Usuário
       </button>
       <Modal open={open} onClose={() => setOpen(false)} title="Usuário do sistema da Meta" description="O acesso às contas de anúncio vem de um único usuário de sistema da unidade no Business Manager.">
         <div className="space-y-3 text-[13px] leading-relaxed text-ink-300">

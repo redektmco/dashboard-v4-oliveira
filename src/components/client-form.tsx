@@ -53,8 +53,12 @@ function ClientFields({
   onDone: () => void;
 }) {
   const [type, setType] = useState<AccountType>(client?.account_type ?? "lead_gen");
-  const gts = users.filter((u) => u.role === "gt");
-  const accounts = users.filter((u) => u.role === "account");
+  // Quem saiu do time não aparece na lista, mas segue como opção enquanto
+  // for o atual do cliente — senão salvar a ficha apagaria o vínculo calado.
+  const keep = (list: User[], id: number | null | undefined, name: string | null | undefined, role: User["role"]) =>
+    id && name && !list.some((u) => u.id === id) ? [...list, { id, name: `${name} (inativo)`, role }] : list;
+  const gts = keep(users.filter((u) => u.role === "gt"), client?.gt_user_id, client?.gt_name, "gt");
+  const accounts = keep(users.filter((u) => u.role === "account"), client?.account_user_id, client?.account_name, "account");
   const semMeta = Object.keys(targets).length === 0;
 
   return (
