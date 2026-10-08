@@ -108,6 +108,10 @@ export type Client = {
   contract_start: string | null;
   fidelity_months: number | null;
   notice_days: number | null;
+  /** Nicho do cliente — benchmark com unidades da rede que atendem o mesmo nicho. */
+  niche: string | null;
+  /** Perto = visita; longe = vídeo com câmera aberta + gift card da Maxx. */
+  proximity: "perto" | "longe" | null;
 };
 
 export type User = { id: number; name: string; role: "gt" | "account" | "coord" | "social" };

@@ -23,6 +23,9 @@ import { createSign, generateKeyPairSync } from "node:crypto";
 import { bucketDaily, formatCustomerId, normalizeCustomerId, normalizePrivateKey, parseClientAccounts } from "../src/lib/google/metrics";
 import { explainError } from "../src/lib/google/ads";
 import { topPriorities, type PriorityInput } from "../src/lib/priorities";
+import { STEPS, dueOf, ekyteText, howOf, stepTemplate } from "../src/lib/playbook/templates";
+import { creativeAttention, crmAttention } from "../src/lib/playbook/attention";
+import { DORES } from "../src/lib/playbook/dores";
 import { EMPTY_WEEK, leadsOf, metaFields, parseInsight, weekRange } from "../src/lib/meta/metrics";
 import { clientKey, firstPhone, parseBRL, parseClientsSheet, parseCsv } from "../src/lib/import/clients-sheet";
 import {
@@ -768,4 +771,81 @@ test("google: a chave privada colada na Vercel é reconstruída de qualquer form
   }
   assert.equal(normalizePrivateKey("isto não é uma chave"), null);
   assert.equal(normalizePrivateKey("-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----"), null);
+});
+
+/* ------------------------------ playbook ------------------------------ */
+
+test("playbook: pedido de cancelamento aberto deixa o cliente Red, mesmo com nota alta", () => {
+  const r = computeScore(input({ churnRequests: [{ from: "2026-06-10", to: null }] }));
+  assert.equal(r.rawBand, "verde");
+  assert.equal(r.band, "vermelho");
+  assert.ok(r.overrides.some((o) => o.trigger === "Pedido de cancelamento"));
+});
+
+test("playbook: pedido concluído ou futuro não pesa no dia", () => {
+  assert.equal(computeScore(input({ churnRequests: [{ from: "2026-06-01", to: "2026-06-10" }] })).band, "verde");
+  assert.equal(computeScore(input({ churnRequests: [{ from: "2026-06-20", to: null }] })).band, "verde");
+  // Na série histórica, o dia dentro da janela é Red.
+  assert.equal(computeScore(input({ today: "2026-06-05", churnRequests: [{ from: "2026-06-01", to: "2026-06-10" }] })).band, "vermelho");
+});
+
+test("playbook: prazos contados da entrada na flag", () => {
+  const start = new Date("2026-06-15T12:00:00Z");
+  assert.equal(dueOf(stepTemplate("vermelho", "ligacao")!, start), "2026-06-16T12:00:00.000Z");
+  assert.equal(dueOf(stepTemplate("vermelho", "analise_campanha")!, start), "2026-06-17T12:00:00.000Z");
+  assert.equal(dueOf(stepTemplate("amarelo", "reavaliar")!, start), "2026-06-30T12:00:00.000Z");
+  assert.equal(dueOf(stepTemplate("verde", "ropre")!, start), "2026-07-15T12:00:00.000Z");
+});
+
+test("playbook: toda flag tem passos com chave única; Yellow e Red pedem o registro de erro", () => {
+  for (const [band, steps] of Object.entries(STEPS)) {
+    assert.equal(new Set(steps.map((s) => s.key)).size, steps.length, band);
+    assert.ok(steps.every((s) => s.dueHours !== undefined || s.everyDays !== undefined), band);
+  }
+  assert.equal(STEPS.vermelho.length, 10);
+  assert.ok(stepTemplate("amarelo", "erro_nosso") && stepTemplate("vermelho", "erro_nosso"));
+  assert.equal(stepTemplate("verde", "erro_nosso"), null);
+});
+
+test("playbook: relacionamento muda com a proximidade do cliente", () => {
+  const t = stepTemplate("vermelho", "relacionamento")!;
+  assert.match(howOf(t, "perto"), /visita/);
+  assert.match(howOf(t, "longe"), /gift card da Maxx/);
+  assert.match(howOf(t, null), /Defina a proximidade/);
+});
+
+test("playbook: descrição do Ekyte tem os seis campos na ordem", () => {
+  const txt = ekyteText({ dor: "Falta de vendas", motivo: "Sem follow-up", acao: "Cadência no CRM", prazo: "2026-06-20", owner: "Analista de CRM", objetivo: "Converter mais" });
+  assert.deepEqual(
+    txt.split("\n").map((l) => l.split(":")[0]),
+    ["DOR", "MOTIVO", "AÇÃO", "PRAZO", "OWNER", "OBJETIVO"],
+  );
+  assert.match(txt, /PRAZO: 20\/06\/2026/);
+});
+
+test("playbook: criativos abaixo de 70% de aprovação viram ponto aberto", () => {
+  assert.equal(creativeAttention({ projects: 0, approved: 0, changes: 0, rejected: 0, pending: 0 }).status, "sem_dado");
+  assert.equal(creativeAttention({ projects: 1, approved: 0, changes: 0, rejected: 0, pending: 2 }).status, "sem_dado");
+  assert.equal(creativeAttention({ projects: 1, approved: 6, changes: 3, rejected: 1, pending: 0 }).status, "aberto");
+  assert.equal(creativeAttention({ projects: 1, approved: 7, changes: 3, rejected: 0, pending: 0 }).status, "ok");
+});
+
+test("playbook: CRM com qualquer 'não' é ponto aberto", () => {
+  assert.equal(crmAttention(null, null).status, "sem_dado");
+  const ok = { filled_at: "2026-06-01", data: { organized: "sim", automations: "sim", standard_flow: "sim", sales_satisfied: "sim" } };
+  assert.equal(crmAttention(ok, 3).status, "ok");
+  const r = crmAttention({ ...ok, data: { ...ok.data, automations: "nao" } }, 3);
+  assert.equal(r.status, "aberto");
+  assert.match(r.detail, /Tem automações/);
+});
+
+test("playbook: banco de dores tem motivo, ação, owner e objetivo em toda dor", () => {
+  assert.equal(new Set(DORES.map((d) => d.key)).size, DORES.length);
+  for (const d of DORES) assert.ok(d.motivos.length && d.acoes.length && d.owner && d.objetivo, d.key);
+});
+
+test("prioridades: passo do playbook atrasado entra na lista com a ação certa", () => {
+  const [p] = topPriorities([acct({ band: "verde", playbookLate: 2 })]);
+  assert.equal(p.action, "cobrar_playbook");
+  assert.match(p.why, /2 passos do playbook estão atrasados/);
 });

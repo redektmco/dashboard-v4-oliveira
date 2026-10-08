@@ -208,6 +208,7 @@ campo que ainda não existe, e a UI mostra o peso efetivo de cada campo.
 |---|---|
 | Inadimplência | vermelho |
 | Flag de risco explícito | vermelho |
+| Pedido de cancelamento aberto (módulo Churn) | vermelho |
 | Tracking quebrado | teto de amarelo |
 | Performance < 50% por 2 ciclos | vermelho |
 
@@ -219,6 +220,31 @@ rebaixou.
 Separada da nota, sempre ao lado dela. Alta (as duas origens frescas) · Média (uma velha) · Baixa
 (ambas velhas ou faltando). Confiança baixa **não zera** o score — avisa o coordenador para não agir
 cego. Um 82 com confiança baixa é um "não sei", não um "está tudo bem".
+
+---
+
+## Playbook do Account (Green, Yellow e Red Flag)
+
+Implementa o "Framework de Saúde da Carteira". A **flag** é a faixa do Health Score (verde = Green,
+amarelo = Yellow, vermelho = Red) com os overrides acima — ameaça de cancelamento é sempre Red.
+
+- **Playbook por flag** (`src/lib/playbook/templates.ts`): quando a flag muda, o episódio anterior fecha
+  (passos não feitos ficam arquivados) e os passos da nova flag nascem com prazo contado da entrada
+  (ligação em 24h, análises em 48h, Sabatina em 3 dias…). Passos recorrentes (micro-reporte diário,
+  reavaliação a cada 15 dias, ROPRE mensal, status semanal do upsell) têm botão *Registrar*. A troca de
+  flag é detectada no recálculo diário, depois de cada input e ao abrir a ficha. Tabelas:
+  `flag_episodes`, `playbook_steps`.
+- **Plano de ação no formato padrão**: DOR, MOTIVO, AÇÃO, PRAZO, OWNER e OBJETIVO, com o **banco de dores**
+  (`src/lib/playbook/dores.ts`) sugerindo motivos, ações, owner e objetivo, e o botão **Copiar para o
+  Ekyte** (descrição pronta da task).
+- **Erro nosso** (`learning_records`): o que foi, por que, quem, o que aprendemos e o plano preventivo,
+  com os prazos de 2, 5 e 7 dias.
+- **Upsell dos clientes Green** (`upsell_opportunities`): mapeada → repassada → apresentada → negociação →
+  fechada/perdida, com status semanal; registrar a oportunidade e o repasse conclui os passos do playbook.
+- **Pontos de atenção fora da nota**: Criativos (aprovação no Social media nos últimos 30 dias, ponto
+  aberto abaixo de 70%) e CRM e processo comercial (diagnóstico de 4 perguntas, `crm_diagnostics`).
+- **Cadastro**: nicho (benchmark com a rede) e proximidade (perto = visita; longe = vídeo + gift card da Maxx).
+- Owners são texto livre ("Analista de CRM", "Farmer ou KAM"…): dá para trocar pelo nome da pessoa.
 
 ---
 

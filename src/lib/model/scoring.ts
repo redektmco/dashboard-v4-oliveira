@@ -150,6 +150,12 @@ export type ScoreInput = {
   } | null;
   /** Snapshots de performance anteriores ao atual, mais recente primeiro. */
   perfHistory: { ref_date: string; data: Record<string, unknown> }[];
+  /**
+   * Pedidos de cancelamento do cliente (módulo Churn): data do pedido e data
+   * de conclusão (`null` = ainda aberto). Ameaça de cancelamento é sempre
+   * Red no playbook do Account, qualquer que seja o resto do diagnóstico.
+   */
+  churnRequests?: { from: string; to: string | null }[];
   weights?: WeightMap;
   config?: ScoreConfig;
 };
@@ -368,6 +374,14 @@ export function computeScore(input: ScoreInput): ScoreResult {
       trigger: "Flag de risco explícito",
       effect: "vermelho",
       detail: String(chk["risk_note"] || "Risco explícito marcado sem detalhe."),
+    });
+  }
+  const churn = (input.churnRequests ?? []).find((r) => r.from <= input.today && (r.to === null || r.to > input.today));
+  if (churn) {
+    overrides.push({
+      trigger: "Pedido de cancelamento",
+      effect: "vermelho",
+      detail: `Pedido de cancelamento aberto desde ${churn.from}. Ameaça de cancelamento é sempre Red.`,
     });
   }
   const perf = input.performance?.data;

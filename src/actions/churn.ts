@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { refreshClient } from "@/lib/refresh";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { logChange } from "@/lib/audit";
@@ -125,7 +126,10 @@ export async function createChurnRequest(_prev: ActionResult, formData: FormData
     clientId,
     data: { request: id },
   });
+  // Ameaça de cancelamento é sempre Red: a flag muda e o playbook Red começa.
+  await refreshClient(clientId);
   revalidateChurn(id, clientId);
+  revalidatePath("/");
   redirect(`/churn/${id}?ok=${encodeURIComponent(`Solicitação ${churnCode(id)} criada. O contrato continua ativo.`)}`);
 }
 
@@ -353,6 +357,7 @@ export async function concludeChurn(_prev: ActionResult, formData: FormData): Pr
     { clientId: req.client_id, data: { request: id, outcome } },
   );
 
+  await refreshClient(req.client_id);
   revalidateChurn(id, req.client_id);
   revalidatePath("/");
   revalidatePath("/config", "layout");

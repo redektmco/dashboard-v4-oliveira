@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { lastRecompute, listOpenPlans, mediaWeeks, portfolio, portfolioSummary, today } from "@/lib/repo";
+import { lateSteps } from "@/lib/playbook/db";
 import { configSnapshot } from "@/lib/config-status";
 import { recentWeeks } from "@/lib/meta/sync";
 import { topPriorities, type PriorityAction } from "@/lib/priorities";
@@ -17,6 +18,7 @@ export const dynamic = "force-dynamic";
 const ACTION: Record<PriorityAction, { label: string; icon: IconName }> = {
   criar_plano: { label: "Criar plano", icon: "listTodo" },
   cobrar_plano: { label: "Cobrar plano", icon: "clock" },
+  cobrar_playbook: { label: "Ver playbook", icon: "listCheck" },
   revisar: { label: "Revisar", icon: "eye" },
   ver_conta: { label: "Ver conta", icon: "arrowRight" },
 };
@@ -27,13 +29,15 @@ const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
 export default async function CarteiraPage() {
   await requireUser();
   const at = today();
-  const [rows, plans, meta, config, stamp] = await Promise.all([
+  const [rows, plans, meta, config, stamp, late] = await Promise.all([
     portfolio(at),
     listOpenPlans(),
     mediaWeeks(),
     configSnapshot(),
     lastRecompute(),
+    lateSteps(),
   ]);
+  const playbookLate = new Map(late.map((l) => [l.client_id, Number(l.n)]));
   const summary = portfolioSummary(rows);
 
   const total = rows.length;
@@ -71,6 +75,7 @@ export default async function CarteiraPage() {
       planLateDays: lateDays.get(r.client.id) ?? 0,
       renewalIn: r.client.renewal_date ? daysBetween(at, r.client.renewal_date) : null,
       spendStopped: stopped.has(r.client.id),
+      playbookLate: playbookLate.get(r.client.id) ?? 0,
     })),
   );
 
@@ -209,7 +214,13 @@ export default async function CarteiraPage() {
                       <p className="text-[12px] text-ink-500">{p.meta}</p>
                     </div>
                     <Link
-                      href={p.action === "criar_plano" ? `/clientes/${p.id}?plano=novo` : `/clientes/${p.id}`}
+                      href={
+                        p.action === "criar_plano"
+                          ? `/clientes/${p.id}?plano=novo`
+                          : p.action === "cobrar_playbook"
+                            ? `/clientes/${p.id}#playbook`
+                            : `/clientes/${p.id}`
+                      }
                       className="btn shrink-0 self-start sm:self-center"
                     >
                       <Icon name={a.icon} size={15} />

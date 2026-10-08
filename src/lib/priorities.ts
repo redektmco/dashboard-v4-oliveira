@@ -21,9 +21,11 @@ export type PriorityInput = {
   renewalIn: number | null;
   /** A conta tem mídia vinculada e a última semana fechada ficou sem verba. */
   spendStopped: boolean;
+  /** Passos do playbook da flag com prazo vencido (0 = em dia). */
+  playbookLate?: number;
 };
 
-export type PriorityAction = "criar_plano" | "cobrar_plano" | "revisar" | "ver_conta";
+export type PriorityAction = "criar_plano" | "cobrar_plano" | "cobrar_playbook" | "revisar" | "ver_conta";
 
 export type Priority = {
   id: number;
@@ -50,6 +52,11 @@ export function reasonsOf(a: PriorityInput): Reason[] {
   if (a.renewalIn !== null && a.renewalIn < 0)
     out.push({ weight: 30, text: `o contrato venceu ${a.renewalIn === -1 ? "ontem" : `há ${-a.renewalIn} dias`}` });
   else if (a.renewalIn !== null && a.renewalIn <= 30) out.push({ weight: 15, text: `o contrato renova em ${a.renewalIn} ${plural(a.renewalIn, "dia", "dias")}` });
+  if (a.playbookLate)
+    out.push({
+      weight: 28,
+      text: `${a.playbookLate} ${plural(a.playbookLate, "passo do playbook está atrasado", "passos do playbook estão atrasados")}`,
+    });
   if (a.band === "vermelho" && a.openPlans === 0) out.push({ weight: 10, text: "não há plano de ação" });
   return out.sort((x, y) => y.weight - x.weight);
 }
@@ -58,6 +65,7 @@ const BAND_POINTS: Record<Band, number> = { vermelho: 100, amarelo: 50, verde: 0
 
 function actionOf(a: PriorityInput): PriorityAction {
   if (a.planLateDays > 0) return "cobrar_plano";
+  if (a.playbookLate) return "cobrar_playbook";
   if (a.overrides.length) return "revisar";
   if (a.openPlans === 0 && (a.band === "vermelho" || a.band === "amarelo")) return "criar_plano";
   return "ver_conta";

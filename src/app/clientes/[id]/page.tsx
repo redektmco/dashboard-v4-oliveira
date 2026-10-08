@@ -53,6 +53,19 @@ import {
 import { EvolutionSection, type ChartEvent } from "@/components/cliente/evolution";
 import { brl, TableScroll } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
+import {
+  creativeStats,
+  episodeHistory,
+  episodeSteps,
+  latestCrmDiagnostic,
+  learningRecords,
+  openEpisode,
+  syncFlag,
+  upsells,
+} from "@/lib/playbook/db";
+import { FLAG, howOf, stepTemplate } from "@/lib/playbook/templates";
+import { creativeAttention, crmAttention } from "@/lib/playbook/attention";
+import { PlaybookSection, type PlaybookData } from "@/components/cliente/playbook";
 
 export const dynamic = "force-dynamic";
 
@@ -100,6 +113,52 @@ export default async function ClientePage({
   ]);
   if (!client || !s) notFound();
   const openChurn = churns.find((r) => isOpen(r.status)) ?? null;
+
+  // Playbook: a ficha também alinha a flag (cobre o primeiro uso e o dia em
+  // que a flag muda antes do recálculo diário). Só escreve se mudou.
+  let episode = await openEpisode(clientId);
+  if (s.band && episode?.band !== s.band) {
+    await syncFlag(clientId, s.band);
+    episode = await openEpisode(clientId);
+  }
+  const [steps, episodes, learning, opps, crmDiag, creatives] = await Promise.all([
+    episode ? episodeSteps(episode.id) : Promise.resolve([]),
+    episodeHistory(clientId, 4),
+    learningRecords(clientId),
+    upsells(clientId),
+    latestCrmDiagnostic(clientId),
+    creativeStats(clientId),
+  ]);
+  const nowIso = new Date().toISOString();
+  const playbook: PlaybookData = {
+    clientId,
+    clientName: client.name,
+    now: nowIso,
+    band: s.band,
+    flag: episode ? FLAG[episode.band] : null,
+    episode,
+    steps: steps.map((st) => {
+      const t = episode ? stepTemplate(episode.band, st.key) : null;
+      return {
+        ...st,
+        how: t ? howOf(t, client.proximity) : "",
+        when: t?.when ?? "",
+        deadline: t?.deadline ?? "",
+        goal: t?.goal ?? "",
+      };
+    }),
+    previous: episodes.filter((e) => e.ended_at).slice(0, 3),
+    proximity: client.proximity,
+    niche: client.niche,
+    churnOpen: openChurn ? { id: openChurn.id, code: openChurn.code } : null,
+    learning,
+    upsells: opps,
+    crm: crmDiag,
+    attention: [
+      crmAttention(crmDiag, crmDiag ? Math.max(0, Math.floor((Date.parse(nowIso) - Date.parse(crmDiag.filled_at)) / 86_400_000)) : null),
+      creativeAttention(creatives),
+    ],
+  };
 
   const drops = perfDropDays(series);
   const dropFields = await dimensionFieldsOn(clientId, "performance", drops.slice(-40));
@@ -287,6 +346,8 @@ export default async function ClientePage({
 
         {risk && <RiskBanner risk={risk} />}
 
+        <PlaybookSection data={playbook} variant="desktop" />
+
         <EvolutionSection
           points={series.map((p) => ({ day: p.day, score: p.score }))}
           events={chartEvents}
@@ -428,6 +489,8 @@ export default async function ClientePage({
             </DimButton>
           ))}
         </Card>
+
+        <PlaybookSection data={playbook} variant="mobile" />
 
         <EvolutionSection
           points={series.map((p) => ({ day: p.day, score: p.score }))}

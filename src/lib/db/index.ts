@@ -695,13 +695,107 @@ CREATE TABLE IF NOT EXISTS churn_events (
   user_name TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_churn_events_req ON churn_events (request_id, at DESC);
+
+-- =====================================================================
+-- Playbook do Account (Framework de Saude da Carteira).
+-- Plano de acao no formato padrao: DOR (risk), MOTIVO, ACAO (plan), PRAZO,
+-- OWNER e OBJETIVO. Cliente ganha nicho (benchmark com a rede) e
+-- proximidade (visita x gift card).
+-- flag_episodes: cada entrada do cliente numa flag (verde/amarelo/vermelho);
+-- no maximo um episodio aberto por cliente. playbook_steps: os passos do
+-- playbook daquela flag, com prazo contado da entrada. Passo nao feito
+-- quando a flag muda fica 'arquivado' (historico, nao some).
+-- learning_records: "Erro nosso" (secao 6). upsell_opportunities: expansao
+-- dos clientes Green. crm_diagnostics: bloco CRM e processo comercial.
+-- =====================================================================
+ALTER TABLE action_plans ADD COLUMN IF NOT EXISTS motivo TEXT NOT NULL DEFAULT '';
+ALTER TABLE action_plans ADD COLUMN IF NOT EXISTS objetivo TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS niche TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS proximity TEXT;
+ALTER TABLE clients DROP CONSTRAINT IF EXISTS clients_proximity_check;
+ALTER TABLE clients ADD CONSTRAINT clients_proximity_check CHECK (proximity IN ('perto','longe'));
+
+CREATE TABLE IF NOT EXISTS flag_episodes (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  band TEXT NOT NULL CHECK (band IN ('verde','amarelo','vermelho')),
+  prev_band TEXT,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ended_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_flag_open ON flag_episodes (client_id) WHERE ended_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_flag_client ON flag_episodes (client_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS playbook_steps (
+  id SERIAL PRIMARY KEY,
+  episode_id INTEGER NOT NULL REFERENCES flag_episodes(id) ON DELETE CASCADE,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  n INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  owner TEXT NOT NULL,
+  due_at TIMESTAMPTZ,
+  every_days INTEGER,
+  status TEXT NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente','feito','arquivado')),
+  done_at TIMESTAMPTZ,
+  done_by TEXT,
+  note TEXT NOT NULL DEFAULT '',
+  runs INTEGER NOT NULL DEFAULT 0,
+  last_run_at TIMESTAMPTZ,
+  UNIQUE (episode_id, key)
+);
+CREATE INDEX IF NOT EXISTS idx_steps_due ON playbook_steps (status, due_at);
+CREATE INDEX IF NOT EXISTS idx_steps_client ON playbook_steps (client_id);
+
+CREATE TABLE IF NOT EXISTS learning_records (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  episode_id INTEGER REFERENCES flag_episodes(id) ON DELETE SET NULL,
+  what TEXT NOT NULL,
+  cause TEXT CHECK (cause IN ('processo','comunicacao','execucao','prazo','analise')),
+  why TEXT NOT NULL DEFAULT '',
+  who TEXT NOT NULL DEFAULT '',
+  learned TEXT NOT NULL DEFAULT '',
+  prevention_plan_id INTEGER REFERENCES action_plans(id) ON DELETE SET NULL,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_learning_client ON learning_records (client_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS upsell_opportunities (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  product TEXT NOT NULL,
+  rationale TEXT NOT NULL DEFAULT '',
+  value DOUBLE PRECISION,
+  stage TEXT NOT NULL DEFAULT 'mapeada'
+    CHECK (stage IN ('mapeada','repassada','apresentada','negociacao','ganha','perdida')),
+  commercial_owner TEXT NOT NULL DEFAULT '',
+  updates JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  closed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_upsell_client ON upsell_opportunities (client_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS crm_diagnostics (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  filled_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  filled_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  data JSONB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_crm_diag_client ON crm_diagnostics (client_id, filled_at DESC);
 `;
 
 /**
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-10-08.churn";
+export const SCHEMA_VERSION = "2026-10-08.playbook";
 
 let migrated = false;
 

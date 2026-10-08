@@ -115,6 +115,21 @@ function ClientFields({
         <input type="date" name="renewal_date" defaultValue={client?.renewal_date ?? ""} className="field mt-1" />
       </label>
 
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="block">
+          <span className="label">Nicho</span>
+          <input name="niche" defaultValue={client?.niche ?? ""} placeholder="Ex.: Construção civil" maxLength={120} className="field mt-1" />
+        </label>
+        <label className="block">
+          <span className="label">Proximidade</span>
+          <select name="proximity" defaultValue={client?.proximity ?? ""} className="field mt-1">
+            <option value="">—</option>
+            <option value="perto">Perto — visita presencial</option>
+            <option value="longe">Longe — vídeo + gift card da Maxx</option>
+          </select>
+        </label>
+      </div>
+
       <details className="rounded-lg border border-[var(--border-hair)] px-3 py-2.5" open={!client?.contract_code}>
         <summary className="cursor-pointer text-[13px] font-semibold text-ink-200">Contrato</summary>
         <p className="mt-2 text-[11.5px] text-ink-500">

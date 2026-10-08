@@ -4,6 +4,7 @@ import { ritualWeekEnd } from "./week";
 import { DIMENSIONS, fieldsFor } from "./model/catalog";
 import { computeScore, DEFAULT_CONFIG, type ScoreConfig, type WeightMap } from "./model/scoring";
 import { insertDemoData, wipe } from "./seed";
+import { syncFlags } from "./playbook/db";
 import { EMPTY_WEEK, leadsOf, metaFields, type LeadMetric, type MetaWeek } from "./meta/metrics";
 import { clientKey, type SheetClient } from "./import/clients-sheet";
 import type {
@@ -132,7 +133,7 @@ const CLIENT_SELECT = `
          c.renewal_date::text AS renewal_date, c.active, c.created_at::text AS created_at,
          c.next_checkin_at::text AS next_checkin_at,
          c.contract_code, c.services, c.contract_start::text AS contract_start,
-         c.fidelity_months, c.notice_days,
+         c.fidelity_months, c.notice_days, c.niche, c.proximity,
          g.name AS gt_name, a.name AS account_name
   FROM clients c
   LEFT JOIN users g ON g.id = c.gt_user_id
@@ -151,16 +152,16 @@ export async function createClient(
     gt_user_id: number | null;
     account_user_id: number | null;
     renewal_date: string | null;
-  } & Partial<Pick<Client, "contract_code" | "services" | "contract_start" | "fidelity_months" | "notice_days">>,
+  } & Partial<Pick<Client, "contract_code" | "services" | "contract_start" | "fidelity_months" | "notice_days" | "niche" | "proximity">>,
 ) {
   const id = await insert(
     `INSERT INTO clients (name, account_type, mrr, gt_user_id, account_user_id, renewal_date)
      VALUES (?, ?, ?, ?, ?, ?::date) RETURNING id`,
     [c.name, c.account_type, c.mrr, c.gt_user_id, c.account_user_id, c.renewal_date],
   );
-  const { contract_code, services, contract_start, fidelity_months, notice_days } = c;
+  const { contract_code, services, contract_start, fidelity_months, notice_days, niche, proximity } = c;
   const contract = Object.fromEntries(
-    Object.entries({ contract_code, services, contract_start, fidelity_months, notice_days }).filter(([, v]) => v !== undefined),
+    Object.entries({ contract_code, services, contract_start, fidelity_months, notice_days, niche, proximity }).filter(([, v]) => v !== undefined),
   ) as Partial<Client>;
   if (Object.keys(contract).length) await updateClient(id, contract);
   return id;
@@ -181,6 +182,8 @@ export async function updateClient(id: number, c: Partial<Client>) {
       "contract_start",
       "fidelity_months",
       "notice_days",
+      "niche",
+      "proximity",
     ] as const
   ).filter((k) => k in c);
   if (!keys.length) return;
@@ -478,6 +481,7 @@ function scoreFrom(
   weights: WeightMap,
   config: ScoreConfig,
   overlay?: AutoOverlay | null,
+  churn: ChurnWindow[] = [],
 ): ScoreResult {
   const perfEff = overlay ? applyOverlay(client, perf, at, overlay) : perf;
   const p = perfEff.filter((s) => s.ref_date <= at);
@@ -507,9 +511,25 @@ function scoreFrom(
         }
       : null,
     perfHistory: p.slice(1).map((s) => ({ ref_date: s.ref_date, data: s.data })),
+    churnRequests: churn,
     weights,
     config,
   });
+}
+
+/** Janela de um pedido de cancelamento: do pedido até a conclusão (`null` = aberto). */
+export type ChurnWindow = { from: string; to: string | null };
+
+/** Pedidos de cancelamento por cliente — alimentam o override "ameaça = Red". */
+async function churnWindows(clientId?: number): Promise<Map<number, ChurnWindow[]>> {
+  const rows = await all<{ client_id: number; from: string; to: string | null }>(
+    `SELECT client_id, requested_at::text AS "from", closed_at::date::text AS "to"
+     FROM churn_requests ${clientId ? "WHERE client_id = ?" : ""}`,
+    clientId ? [clientId] : [],
+  );
+  const m = new Map<number, ChurnWindow[]>();
+  for (const r of rows) m.set(r.client_id, [...(m.get(r.client_id) ?? []), { from: r.from, to: r.to }]);
+  return m;
 }
 
 /**
@@ -562,16 +582,17 @@ export async function suggestTargets(clientId: number, at = today()): Promise<Ta
 const SCORE_WINDOW = 12;
 
 export async function scoreFor(clientId: number, at = today()): Promise<ScoreResult | null> {
-  const [client, perf, chk, weights, config, overlay] = await Promise.all([
+  const [client, perf, chk, weights, config, overlay, churn] = await Promise.all([
     getClient(clientId),
     perfSnapshots(clientId, SCORE_WINDOW),
     checkinSnapshots(clientId, SCORE_WINDOW),
     getWeights(),
     getConfig(),
     autoOverlay(clientId),
+    churnWindows(clientId),
   ]);
   if (!client) return null;
-  return scoreFrom(client, perf, chk, at, weights, config, overlay);
+  return scoreFrom(client, perf, chk, at, weights, config, overlay, churn.get(clientId));
 }
 
 /**
@@ -580,18 +601,19 @@ export async function scoreFor(clientId: number, at = today()): Promise<ScoreRes
  * preenchidas.
  */
 export async function previewScore(clientId: number, refDate: string, data: Record<string, unknown>, at = today()): Promise<ScoreResult | null> {
-  const [client, perf, chk, weights, config, overlay] = await Promise.all([
+  const [client, perf, chk, weights, config, overlay, churn] = await Promise.all([
     getClient(clientId),
     perfSnapshots(clientId, SCORE_WINDOW),
     checkinSnapshots(clientId, SCORE_WINDOW),
     getWeights(),
     getConfig(),
     autoOverlay(clientId),
+    churnWindows(clientId),
   ]);
   if (!client) return null;
   const draft: Snap = { id: -1, client_id: clientId, ref_date: refDate, filled_by: null, filled_at: at, filler: null, data };
   const all = [draft, ...chk].sort((a, b) => (a.ref_date < b.ref_date ? 1 : a.ref_date > b.ref_date ? -1 : 0));
-  return scoreFrom(client, perf, all, at, weights, config, overlay);
+  return scoreFrom(client, perf, all, at, weights, config, overlay, churn.get(clientId));
 }
 
 export type ScoreSnapRow = {
@@ -642,28 +664,33 @@ export const persistScore = (clientId: number, day: string, r: ScoreResult) =>
  */
 export async function recomputeRange(days: number, endDay = today()) {
   const started = Date.now();
-  const [clients, snaps, weights, config, overlays] = await Promise.all([
+  const [clients, snaps, weights, config, overlays, churn] = await Promise.all([
     listClients(),
     allSnapshots(),
     getWeights(),
     getConfig(),
     autoOverlays(),
+    churnWindows(),
   ]);
 
   const dayList = Array.from({ length: days }, (_, i) => addDaysIso(endDay, -(days - 1 - i)));
 
   let n = 0;
+  const bands: { clientId: number; band: Band | null }[] = [];
   for (const client of clients) {
     const perf = snaps.perf.get(client.id) ?? [];
     const chk = snaps.chk.get(client.id) ?? [];
     const overlay = overlays.get(client.id) ?? null;
     const rows = dayList.map((day) => ({
       day,
-      r: scoreFrom(client, perf, chk, day, weights, config, overlay),
+      r: scoreFrom(client, perf, chk, day, weights, config, overlay, churn.get(client.id)),
     }));
     await persistScores(client.id, rows);
     n += rows.length;
+    // O dia de hoje decide a flag em vigor: mudou, o playbook da nova começa.
+    if (endDay === today()) bands.push({ clientId: client.id, band: rows[rows.length - 1]?.r.band ?? null });
   }
+  await syncFlags(bands);
   // Carimbo do último recompute: "Operação" e "Funcionando" leem daqui.
   await setSetting("recompute_last", {
     at: new Date().toISOString(),
@@ -1242,7 +1269,7 @@ export type PortfolioRow = {
 };
 
 export async function portfolio(at = today()): Promise<PortfolioRow[]> {
-  const [clients, snaps, weights, config, overlays, hist, plans] = await Promise.all([
+  const [clients, snaps, weights, config, overlays, hist, plans, churn] = await Promise.all([
     listClients(),
     // Mesma janela do `scoreFor` (12 por cliente): o score de hoje sai idêntico.
     allSnapshots(SCORE_WINDOW),
@@ -1258,6 +1285,7 @@ export async function portfolio(at = today()): Promise<PortfolioRow[]> {
       `SELECT client_id, COUNT(*)::int AS n FROM action_plans
        WHERE status IN ('aberto','em_andamento') GROUP BY client_id`,
     ),
+    churnWindows(),
   ]);
 
   type Hist = { client_id: number; ref_day: string; score: number | null; band: Band | null };
@@ -1278,6 +1306,7 @@ export async function portfolio(at = today()): Promise<PortfolioRow[]> {
         weights,
         config,
         overlays.get(client.id) ?? null,
+        churn.get(client.id),
       );
       const h = histBy.get(client.id) ?? [];
       const prev7 = h.find((x) => x.ref_day <= day7);
@@ -1313,7 +1342,12 @@ export async function simulateToday(
   at = today(),
 ): Promise<{ id: number; name: string; score: number | null; band: Band | null }[][]> {
   // Uma leitura do banco para todos os cenários: só o cálculo se repete.
-  const [clients, snaps, overlays] = await Promise.all([listClients(), allSnapshots(SCORE_WINDOW), autoOverlays()]);
+  const [clients, snaps, overlays, churn] = await Promise.all([
+    listClients(),
+    allSnapshots(SCORE_WINDOW),
+    autoOverlays(),
+    churnWindows(),
+  ]);
   return scenarios.map(({ weights, config }) =>
     clients.map((client) => {
       const r = scoreFrom(
@@ -1324,6 +1358,7 @@ export async function simulateToday(
         weights,
         config,
         overlays.get(client.id) ?? null,
+        churn.get(client.id),
       );
       return { id: client.id, name: client.name, score: r.score, band: r.band };
     }),
@@ -1357,12 +1392,15 @@ export type Plan = {
   dimension: DimensionKey | null;
   tasks: PlanTask[];
   created_by_name: string | null;
+  /** Formato padrão do playbook: DOR = risk, AÇÃO = plan. */
+  motivo: string;
+  objetivo: string;
 };
 
 const PLAN_SELECT = `
   SELECT p.id, p.client_id, p.risk, p.plan, p.owner, p.due_date::text AS due_date,
          p.status, p.clickup_url, p.created_at::text AS created_at,
-         p.closed_at::text AS closed_at, p.priority, p.dimension, p.tasks,
+         p.closed_at::text AS closed_at, p.priority, p.dimension, p.tasks, p.motivo, p.objetivo,
          (SELECT name FROM users u WHERE u.id = p.created_by) AS created_by_name`;
 
 export const listPlans = (clientId: number) =>
@@ -1388,7 +1426,7 @@ export type Aviso = { id: string; label: string; count: number; href: string };
 
 export async function avisos(): Promise<Aviso[]> {
   const { checkinMaxAgeDays: limite } = await getConfig();
-  const [leitura, semMeta, planos] = await Promise.all([
+  const [leitura, semMeta, planos, playbook] = await Promise.all([
     one<{ n: number }>(
       `SELECT count(*)::int AS n FROM clients c
        WHERE c.active = 1
@@ -1412,6 +1450,12 @@ export async function avisos(): Promise<Aviso[]> {
        WHERE status IN ('aberto','em_andamento')
          AND due_date IS NOT NULL AND due_date < current_date`,
     ),
+    one<{ n: number }>(
+      `SELECT count(DISTINCT s.client_id)::int AS n FROM playbook_steps s
+       JOIN flag_episodes e ON e.id = s.episode_id AND e.ended_at IS NULL
+       JOIN clients c ON c.id = s.client_id AND c.active = 1
+       WHERE s.status = 'pendente' AND s.due_at < now()`,
+    ),
   ]);
 
   return [
@@ -1428,15 +1472,17 @@ export async function avisos(): Promise<Aviso[]> {
       href: "/gt?filtro=sem_meta",
     },
     { id: "planos", label: "planos de ação vencidos", count: planos?.n ?? 0, href: "/" },
+    { id: "playbook", label: "contas com passo do playbook atrasado", count: playbook?.n ?? 0, href: "/" },
   ].filter((a) => a.count > 0);
 }
 
-export type PlanInput = Pick<Plan, "risk" | "plan" | "owner" | "due_date" | "priority" | "dimension" | "tasks">;
+export type PlanInput = Pick<Plan, "risk" | "plan" | "owner" | "due_date" | "priority" | "dimension" | "tasks"> &
+  Partial<Pick<Plan, "motivo" | "objetivo">>;
 
 export const createPlan = (p: PlanInput & { client_id: number; created_by: number | null; status?: Plan["status"] }) =>
   insert(
-    `INSERT INTO action_plans (client_id, risk, plan, owner, due_date, priority, dimension, tasks, created_by, status)
-     VALUES (?, ?, ?, ?, ?::date, ?, ?, ?::jsonb, ?, ?) RETURNING id`,
+    `INSERT INTO action_plans (client_id, risk, plan, owner, due_date, priority, dimension, tasks, created_by, status, motivo, objetivo)
+     VALUES (?, ?, ?, ?, ?::date, ?, ?, ?::jsonb, ?, ?, ?, ?) RETURNING id`,
     [
       p.client_id,
       p.risk,
@@ -1448,6 +1494,8 @@ export const createPlan = (p: PlanInput & { client_id: number; created_by: numbe
       JSON.stringify(p.tasks),
       p.created_by,
       p.status ?? "aberto",
+      p.motivo ?? "",
+      p.objetivo ?? "",
     ],
   );
 
@@ -1464,8 +1512,8 @@ export const getPlan = (id: number) => one<Plan>(`${PLAN_SELECT} FROM action_pla
 export const updatePlan = (id: number, p: PlanInput) =>
   run(
     `UPDATE action_plans SET risk = ?, plan = ?, owner = ?, due_date = ?::date,
-       priority = ?, dimension = ?, tasks = ?::jsonb WHERE id = ?`,
-    [p.risk, p.plan, p.owner, p.due_date, p.priority, p.dimension, JSON.stringify(p.tasks), id],
+       priority = ?, dimension = ?, tasks = ?::jsonb, motivo = ?, objetivo = ? WHERE id = ?`,
+    [p.risk, p.plan, p.owner, p.due_date, p.priority, p.dimension, JSON.stringify(p.tasks), p.motivo ?? "", p.objetivo ?? "", id],
   );
 
 export const setPlanTasks = (id: number, tasks: PlanTask[]) =>

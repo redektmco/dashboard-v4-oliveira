@@ -12,6 +12,8 @@ import { SidePanel } from "../side-panel";
 import { toast } from "../toast";
 import { Icon, type IconName } from "../icon";
 import { BAND_TEXT, Bar, BandPill, ColLabel, KV, Pill, type Tone } from "../kit";
+import { DORES, doresByGroup, type Dor } from "@/lib/playbook/dores";
+import { ekyteText } from "@/lib/playbook/templates";
 
 /* ------------------------------------------------------------------ */
 /* Dados                                                               */
@@ -54,10 +56,13 @@ export type ClientUIData = {
   nextCheckinAt: string | null;
 };
 
+/** Valores iniciais de um plano novo (ex.: plano preventivo do "Erro nosso"). */
+export type PlanPrefill = { risk?: string; motivo?: string; plan?: string; objetivo?: string; owner?: string; learningId?: number };
+
 type Ctx = {
   data: ClientUIData;
   openDim: (k: DimensionKey) => void;
-  openPlan: (p: Plan | null, dimension?: DimensionKey | null) => void;
+  openPlan: (p: Plan | null, dimension?: DimensionKey | null, prefill?: PlanPrefill) => void;
   openCheckin: (id: number) => void;
   openSchedule: () => void;
   openActions: () => void;
@@ -103,7 +108,7 @@ export function ClientUI({
   children: React.ReactNode;
 }) {
   const [dim, setDim] = useState<DimensionKey | null>(null);
-  const [plan, setPlan] = useState<{ plan: Plan | null; dimension: DimensionKey | null } | null>(
+  const [plan, setPlan] = useState<{ plan: Plan | null; dimension: DimensionKey | null; prefill?: PlanPrefill } | null>(
     startWithNewPlan ? { plan: null, dimension: null } : null,
   );
   const [checkin, setCheckin] = useState<number | null>(null);
@@ -115,7 +120,7 @@ export function ClientUI({
     () => ({
       data,
       openDim: setDim,
-      openPlan: (p, d = null) => setPlan({ plan: p, dimension: p?.dimension ?? d }),
+      openPlan: (p, d = null, prefill) => setPlan({ plan: p, dimension: p?.dimension ?? d, prefill }),
       openCheckin: setCheckin,
       openSchedule: () => setScheduling(true),
       openActions: () => setAllActions(true),
@@ -136,6 +141,7 @@ export function ClientUI({
         onClose={() => setPlan(null)}
         plan={plan?.plan ?? null}
         dimension={plan?.dimension ?? null}
+        prefill={plan?.prefill}
         data={data}
       />
       <CheckinModal row={ck} clientId={data.clientId} onClose={() => setCheckin(null)} />
@@ -171,12 +177,14 @@ export function DimButton({ dim, className, children, label }: { dim: DimensionK
 export function PlanButton({
   planId,
   dimension,
+  prefill,
   className,
   children,
   label,
 }: {
   planId?: number;
   dimension?: DimensionKey | null;
+  prefill?: PlanPrefill;
   className?: string;
   children: React.ReactNode;
   label?: string;
@@ -187,7 +195,7 @@ export function PlanButton({
       type="button"
       className={className}
       aria-label={label}
-      onClick={() => openPlan(planId ? (data.plans.find((p) => p.id === planId) ?? null) : null, dimension ?? null)}
+      onClick={() => openPlan(planId ? (data.plans.find((p) => p.id === planId) ?? null) : null, dimension ?? null, prefill)}
     >
       {children}
     </button>
@@ -475,12 +483,14 @@ function PlanModal({
   onClose,
   plan,
   dimension,
+  prefill,
   data,
 }: {
   open: boolean;
   onClose: () => void;
   plan: Plan | null;
   dimension: DimensionKey | null;
+  prefill?: PlanPrefill;
   data: ClientUIData;
 }) {
   const [deleting, setDeleting] = useState(false);
@@ -490,10 +500,18 @@ function PlanModal({
         open={open}
         onClose={onClose}
         title={plan ? "Plano de ação" : "Novo plano de ação"}
-        description={plan ? undefined : "Tarefa ligada a um problema da conta, com dono, prazo e passos."}
+        description={plan ? undefined : "Formato padrão: DOR, MOTIVO, AÇÃO, PRAZO, OWNER e OBJETIVO — os mesmos seis campos da task no Ekyte."}
         cardClassName="modal-card--form"
       >
-        <PlanForm key={plan?.id ?? `new-${dimension}`} plan={plan} dimension={dimension} data={data} onDone={onClose} onDelete={() => setDeleting(true)} />
+        <PlanForm
+          key={plan?.id ?? `new-${dimension}-${prefill?.learningId ?? ""}`}
+          plan={plan}
+          dimension={dimension}
+          prefill={prefill}
+          data={data}
+          onDone={onClose}
+          onDelete={() => setDeleting(true)}
+        />
       </Modal>
       <ConfirmDialog
         open={deleting}
@@ -519,12 +537,14 @@ function PlanModal({
 function PlanForm({
   plan,
   dimension,
+  prefill,
   data,
   onDone,
   onDelete,
 }: {
   plan: Plan | null;
   dimension: DimensionKey | null;
+  prefill?: PlanPrefill;
   data: ClientUIData;
   onDone: () => void;
   onDelete: () => void;
@@ -532,8 +552,13 @@ function PlanForm({
   const [tasks, setTasks] = useState<PlanTask[]>(plan?.tasks ?? []);
   const [draft, setDraft] = useState("");
   const [priority, setPriority] = useState<Plan["priority"]>(plan?.priority ?? "media");
-  const [context, setContext] = useState(plan?.plan ?? "");
-  const [owner, setOwner] = useState(plan?.owner ?? data.defaultOwner);
+  const [dor, setDor] = useState(plan?.risk ?? prefill?.risk ?? "");
+  const [motivo, setMotivo] = useState(plan?.motivo ?? prefill?.motivo ?? "");
+  const [context, setContext] = useState(plan?.plan ?? prefill?.plan ?? "");
+  const [objetivo, setObjetivo] = useState(plan?.objetivo ?? prefill?.objetivo ?? "");
+  const [owner, setOwner] = useState(plan?.owner ?? prefill?.owner ?? data.defaultOwner);
+  const [due, setDue] = useState(plan?.due_date ?? "");
+  const [picked, setPicked] = useState<Dor | null>(null);
   const [pending, start] = useTransition();
   const owners = data.owners;
 
@@ -560,12 +585,69 @@ function PlanForm({
       {plan && <input type="hidden" name="id" value={plan.id} />}
       <input type="hidden" name="tasks" value={JSON.stringify(tasks)} />
       <input type="hidden" name="priority" value={priority} />
+      {prefill?.learningId && <input type="hidden" name="learning_id" value={prefill.learningId} />}
+      {!plan && (
+        <label className="block">
+          <FieldLabel>Partir do banco de dores</FieldLabel>
+          <select
+            className="field mt-1.5 h-10"
+            value={picked?.key ?? ""}
+            onChange={(e) => {
+              const d = DORES.find((x) => x.key === e.target.value) ?? null;
+              setPicked(d);
+              if (!d) return;
+              setDor(d.dor);
+              setObjetivo(d.objetivo);
+              if (!owner || owner === data.defaultOwner) setOwner(d.owner);
+            }}
+          >
+            <option value="">Opcional — escolha a dor mais parecida</option>
+            {doresByGroup().map(([group, list]) => (
+              <optgroup key={group} label={group}>
+                {list.map((d) => (
+                  <option key={d.key} value={d.key}>
+                    {d.dor}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          <span className="mt-1 block text-[12px] text-ink-500">Uma mesma dor pode ter mais de um motivo: investigue antes de agir.</span>
+        </label>
+      )}
       <label className="block">
-        <FieldLabel required>Título</FieldLabel>
-        <input name="risk" required autoFocus={!plan} defaultValue={plan?.risk} className="field mt-1.5 h-10" placeholder="Ex.: Recuperar performance" />
+        <FieldLabel required>Dor</FieldLabel>
+        <input
+          name="risk"
+          required
+          autoFocus={!plan && !prefill}
+          value={dor}
+          onChange={(e) => setDor(e.target.value)}
+          className="field mt-1.5 h-10"
+          placeholder="O problema que o cliente sente. Ex.: Falta de vendas"
+        />
       </label>
       <label className="block">
-        <FieldLabel>Contexto</FieldLabel>
+        <FieldLabel>Motivo</FieldLabel>
+        <textarea
+          name="motivo"
+          rows={2}
+          maxLength={1000}
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          className="field mt-1.5 min-h-[56px] resize-y text-[14px] leading-[21px]"
+          placeholder="A causa. Ex.: Comercial do cliente demora no primeiro contato"
+        />
+        {picked && (
+          <Suggestions
+            label="Motivos prováveis — clique para usar"
+            items={picked.motivos}
+            onPick={(m) => setMotivo((cur) => (cur.trim() ? `${cur.trim()}\n${m}` : m))}
+          />
+        )}
+      </label>
+      <label className="block">
+        <FieldLabel>Ação</FieldLabel>
         <div className="field mt-1.5 flex flex-col gap-1 !p-0 focus-within:border-v4-red focus-within:shadow-[0_0_0_3px_rgba(229,9,20,0.18)]">
           <textarea
             name="plan"
@@ -574,12 +656,30 @@ function PlanForm({
             value={context}
             onChange={(e) => setContext(e.target.value)}
             className="min-h-[56px] w-full resize-none bg-transparent px-3 pt-3 text-[14px] leading-[21px] text-ink-100 outline-none placeholder:text-ink-500"
-            placeholder="Qual o problema e o que vamos fazer"
+            placeholder="O que vamos fazer. Os passos detalhados vão em Tarefas."
           />
           <span className="tnum px-3 pb-2 text-[11px] text-ink-500">
             {context.length} / {PLAN_CONTEXT_MAX}
           </span>
         </div>
+        {picked && (
+          <Suggestions
+            label="Exemplos de ação — clique para virar tarefa"
+            items={picked.acoes.filter((a) => !tasks.some((t) => t.text === a))}
+            onPick={(a) => setTasks((cur) => [...cur, { text: a, done: false }])}
+          />
+        )}
+      </label>
+      <label className="block">
+        <FieldLabel>Objetivo</FieldLabel>
+        <input
+          name="objetivo"
+          maxLength={500}
+          value={objetivo}
+          onChange={(e) => setObjetivo(e.target.value)}
+          className="field mt-1.5 h-10"
+          placeholder="O resultado esperado ao fim da ação"
+        />
       </label>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
@@ -597,7 +697,7 @@ function PlanForm({
           </div>
         </label>
         <label className="block">
-          <FieldLabel required>Responsável</FieldLabel>
+          <FieldLabel required>Owner</FieldLabel>
           <div className="relative mt-1.5">
             <span
               aria-hidden
@@ -623,7 +723,14 @@ function PlanForm({
         </label>
         <label className="block">
           <FieldLabel required>Prazo</FieldLabel>
-          <input type="date" name="due_date" required defaultValue={plan?.due_date ?? ""} className="field mt-1.5 h-10 [color-scheme:dark]" />
+          <input
+            type="date"
+            name="due_date"
+            required
+            value={due}
+            onChange={(e) => setDue(e.target.value)}
+            className="field mt-1.5 h-10 [color-scheme:dark]"
+          />
         </label>
         <div>
           <FieldLabel>Prioridade</FieldLabel>
@@ -719,17 +826,31 @@ function PlanForm({
       </div>
 
       <div className="modal-actions">
-        {plan && (
-          <div className="mr-auto flex gap-1">
-            <a href={clickupUrl(data.clickupBase, data.clientName, plan)} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
-              <Icon name="external" size={13} />
-              ClickUp
-            </a>
-            <button type="button" onClick={onDelete} className="btn btn-ghost btn-sm text-vermelho-fg">
-              Excluir
-            </button>
-          </div>
-        )}
+        <div className="mr-auto flex flex-wrap gap-1">
+          <CopyEkyte
+            text={() =>
+              ekyteText({
+                dor,
+                motivo,
+                acao: [context.trim(), ...tasks.map((t) => `- ${t.text}`)].filter(Boolean).join("\n"),
+                prazo: due || null,
+                owner,
+                objetivo,
+              })
+            }
+          />
+          {plan && (
+            <>
+              <a href={clickupUrl(data.clickupBase, data.clientName, plan)} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
+                <Icon name="external" size={13} />
+                ClickUp
+              </a>
+              <button type="button" onClick={onDelete} className="btn btn-ghost btn-sm text-vermelho-fg">
+                Excluir
+              </button>
+            </>
+          )}
+        </div>
         <button type="button" className="btn" onClick={onDone}>
           Cancelar
         </button>
@@ -739,6 +860,55 @@ function PlanForm({
         </SubmitButton>
       </div>
     </ActionForm>
+  );
+}
+
+/** Sugestões do banco de dores, em chips clicáveis. */
+function Suggestions({ label, items, onPick }: { label: string; items: string[]; onPick: (v: string) => void }) {
+  if (!items.length) return null;
+  return (
+    <div className="mt-2 flex flex-col gap-1.5">
+      <span className="text-[11px] font-medium uppercase tracking-[0.04em] text-ink-500">{label}</span>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => onPick(m)}
+            className="rounded-full border border-[var(--border-strong)] bg-ink-850 px-2.5 py-1 text-left text-[12px] leading-[16px] text-ink-300 hover:border-ink-400 hover:text-ink-100"
+          >
+            + {m}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Copia a descrição pronta da task do Ekyte (os seis campos). Sem integração:
+ * a pessoa cola na task. `clipboard` pode falhar fora de HTTPS — avisa.
+ */
+export function CopyEkyte({ text, className = "btn btn-ghost btn-sm" }: { text: () => string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text());
+          setCopied(true);
+          toast("Copiado. Cole na descrição da task do Ekyte.");
+          setTimeout(() => setCopied(false), 1600);
+        } catch {
+          toast("Não deu para copiar neste navegador.", { tone: "error" });
+        }
+      }}
+    >
+      <Icon name={copied ? "check" : "copy"} size={13} />
+      {copied ? "Copiado" : "Copiar para o Ekyte"}
+    </button>
   );
 }
 
@@ -780,7 +950,7 @@ export function PlanCards({ variant }: { variant: "desktop" | "mobile" }) {
         </div>
         <div className="flex w-full gap-3">
           <div className="flex flex-1 flex-col gap-[3px]">
-            <span className="text-[11px] text-ink-400">Responsável</span>
+            <span className="text-[11px] text-ink-400">Owner</span>
             <span className="truncate text-[13px] font-medium text-ink-100">{p.owner}</span>
           </div>
           <div className="flex flex-1 flex-col gap-[3px]">

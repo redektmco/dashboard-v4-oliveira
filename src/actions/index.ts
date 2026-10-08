@@ -18,12 +18,10 @@ import {
   importClients,
   linkGoogleAccount,
   linkMetaAccount,
-  persistScore,
   recomputeAll,
   recomputeRange,
   rotateIntegrationToken,
   saveSnapshot,
-  scoreFor,
   setIntegrationActive,
   setGoogleAccountActive,
   setMetaAccountActive,
@@ -44,6 +42,8 @@ import {
   type PlanTask,
 } from "@/lib/repo";
 import { logChange } from "@/lib/audit";
+import { completeStepByKey, linkPrevention } from "@/lib/playbook/db";
+import { refreshClient } from "@/lib/refresh";
 import {
   describeChanges,
   getVersion,
@@ -55,7 +55,7 @@ import {
 import { getConfig, getWeights } from "@/lib/repo";
 import { targetKeysFor } from "@/lib/model/catalog";
 import { parseCheckinForm } from "@/lib/model/form";
-import type { AccountType, Band, DimensionKey } from "@/lib/model/types";
+import type { AccountType, Band, Client, DimensionKey } from "@/lib/model/types";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
 import { DIMENSIONS } from "@/lib/model/catalog";
 import { requireAdmin, requireUser } from "@/lib/auth";
@@ -88,10 +88,7 @@ function revalidateSettings() {
 }
 
 /** Recalcula e grava o snapshot do dia para um cliente — chamado após cada input. */
-async function refresh(clientId: number) {
-  const r = await scoreFor(clientId);
-  if (r) await persistScore(clientId, today(), r);
-}
+const refresh = refreshClient;
 
 /* ------------------- input do Account (check-in) ------------------- */
 
@@ -129,6 +126,8 @@ export async function saveCheckin(formData: FormData) {
   }
 
   await refresh(clientId);
+  // Check-in registrado conta como o ROPRE do mês no playbook Green.
+  await completeStepByKey(clientId, "ropre", me.name);
   revalidatePath("/");
   revalidatePath("/account");
   revalidatePath(`/clientes/${clientId}`);
@@ -182,6 +181,11 @@ export async function saveClient(_prev: ActionResult, formData: FormData): Promi
     contract_start: str(formData, "contract_start") || null,
     fidelity_months: numOrNull(formData, "fidelity_months"),
     notice_days: numOrNull(formData, "notice_days"),
+    // Só quando o formulário traz o campo: formulário sem ele não apaga o valor.
+    ...(formData.has("niche") ? { niche: str(formData, "niche") || null } : {}),
+    ...(formData.has("proximity")
+      ? { proximity: (["perto", "longe"].includes(str(formData, "proximity")) ? str(formData, "proximity") : null) as Client["proximity"] }
+      : {}),
   };
   const clientId = id ? (await updateClient(id, payload), id) : await createClient(payload);
 
@@ -552,6 +556,8 @@ function planFields(formData: FormData) {
   return {
     risk: str(formData, "risk"),
     plan: str(formData, "plan"),
+    motivo: str(formData, "motivo").slice(0, 1000),
+    objetivo: str(formData, "objetivo").slice(0, 500),
     owner: str(formData, "owner"),
     due_date: str(formData, "due_date") || null,
     priority: PRIORITIES.includes(priority) ? priority : "media",
@@ -565,11 +571,14 @@ export async function savePlan(_prev: ActionResult, formData: FormData): Promise
   const clientId = Number(str(formData, "client_id"));
   const id = Number(str(formData, "id")) || 0;
   const f = planFields(formData);
-  if (!f.risk || !f.owner || !f.due_date) return { error: "Preencha o título, o responsável e o prazo." };
+  if (!f.risk || !f.owner || !f.due_date) return { error: "Preencha a dor, o owner e o prazo." };
   if (id) await updatePlan(id, f);
   else {
-    await createPlan({ client_id: clientId, created_by: me.id, ...f });
+    const planId = await createPlan({ client_id: clientId, created_by: me.id, ...f });
     await logChange(me, "plano", `Plano de ação criado: ${f.risk}`, { clientId });
+    // Plano preventivo do "Erro nosso": fica ligado ao registro de aprendizado.
+    const learningId = Number(str(formData, "learning_id")) || 0;
+    if (learningId) await linkPrevention(learningId, planId);
   }
   const status = str(formData, "status") as Plan["status"];
   if (id && ["aberto", "em_andamento", "concluido", "cancelado"].includes(status)) {
