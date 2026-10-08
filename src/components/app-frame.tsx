@@ -1,19 +1,21 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { CrumbProvider, MobileNav, Sidebar, TopBar } from "./nav";
+import { MobileNav, Sidebar } from "./nav";
 import type { Aviso } from "@/lib/repo";
 
 type Perfil = { name: string; isAdmin: boolean; role: string };
 
 /**
- * Moldura do console: rail lateral, barra superior (onde estou, busca e
- * avisos) e, no celular, cabeçalho com gaveta. O link de aprovação do
- * cliente (`/a/...`) vive sem ela mesmo quando quem abre está logado — a
- * equipe confere o link exatamente como o cliente vai ver.
+ * Moldura do console (rail lateral e, no celular, cabeçalho + abas). O link
+ * de aprovação do cliente (`/a/...`) vive sem ela mesmo quando quem abre está
+ * logado — a equipe confere o link exatamente como o cliente vai ver.
  *
- * Configurações tem moldura própria (menu de seções e "Voltar para a
- * carteira"), montada no layout de `/config`.
+ * Não há topbar no desktop: a conta mora no rodapé do rail e o título da
+ * página é o primeiro elemento da área de conteúdo, como num console de BI.
+ *
+ * Configurações usa a mesma moldura; as páginas dela trazem o próprio respiro
+ * (`ConfigPage`), então a área de conteúdo não soma margem por cima.
  */
 export function AppFrame({
   user,
@@ -26,15 +28,22 @@ export function AppFrame({
 }) {
   const path = usePathname();
   if (path.startsWith("/a/")) return <>{children}</>;
-  if (path.startsWith("/config")) return <div className="flex min-w-0 flex-1">{children}</div>;
+  const config = path.startsWith("/config");
   return (
-    <CrumbProvider>
-      <Sidebar user={user} />
+    <>
+      <Sidebar user={user} avisos={avisos} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <MobileNav user={user} avisos={avisos} />
-        <TopBar avisos={avisos} />
-        <main className="app-main mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-6 lg:px-10 lg:pt-7">{children}</main>
+        <MobileNav user={user} />
+        <main
+          className={
+            config
+              ? "app-main min-w-0 flex-1"
+              : "app-main mx-auto w-full max-w-[1480px] px-4 pt-4 sm:px-6 lg:px-7 lg:pt-5"
+          }
+        >
+          {children}
+        </main>
       </div>
-    </CrumbProvider>
+    </>
   );
 }
