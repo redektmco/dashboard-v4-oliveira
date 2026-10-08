@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { importClientsSheet, loadTargetSuggestions, removeClient, saveClientTargets, setClientArchived } from "@/actions";
 import type { User } from "@/lib/model/types";
+import { fmtBR, parseBR, type TargetField } from "@/lib/model/target-fields";
 import type { ClientFootprint, TargetSuggestion } from "@/lib/repo";
 import { ClientDialog, type ClientFormClient } from "../client-form";
 import { ActionForm, SubmitButton } from "../form-controls";
@@ -14,15 +15,6 @@ import { toast } from "../toast";
 import { Icon, type IconName } from "../icon";
 import { ColLabel, Letter, PageTitle } from "../kit";
 import { MetaConnectDialog, MetaLinkRow, WebhookBox, type MetaLinkView, type WebhookView } from "./connections";
-
-export type TargetField = {
-  key: string;
-  label: string;
-  prefix?: string;
-  suffix?: string;
-  decimals: number;
-  lowerIsBetter: boolean;
-};
 
 export type BoardClient = ClientFormClient & {
   next_checkin_at: string | null;
@@ -51,15 +43,6 @@ const first = (n: string | null) => (n ? n.trim().split(/\s+/)[0] : "—");
 const hasMeta = (r: BoardClient) => r.fields.some((f) => r.targets[f.key] !== undefined);
 const hasSource = (r: BoardClient) => Boolean(r.hook?.active) || r.meta.some((m) => m.active);
 
-/** Número digitado no padrão brasileiro ("66.000", "3,0") → número. */
-function parseBR(raw: string): number | null {
-  const v = raw.trim().replace(/\s/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", ".");
-  if (!v) return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-const fmtBR = (n: number, d: number) =>
-  n.toLocaleString("pt-BR", { minimumFractionDigits: n % 1 === 0 ? 0 : Math.min(d, 2) || 1, maximumFractionDigits: Math.max(d, 1) });
 
 /**
  * Configurações › Clientes. A lista mostra o que falta (meta, fonte de

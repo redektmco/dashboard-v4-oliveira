@@ -112,7 +112,6 @@ export default async function ClientePage({
   const actions = nextActions({
     client,
     at,
-    lastPerf: perf[0] ?? null,
     lastCheckin: checkins[0] ?? null,
     plans,
     config,
@@ -134,7 +133,7 @@ export default async function ClientePage({
   const pAge = s.provenance.performance.ageDays;
   const cAge = s.provenance.checkin.ageDays;
   const perfStale =
-    pAge === null ? "Performance ainda não preenchida nesta conta." : pAge > config.perfMaxAgeDays ? `Dados de performance sem atualização há ${pAge} dias.` : null;
+    pAge === null ? "Ainda não chegou dado de performance — conecte Meta Ads, Google Ads ou CRM." : pAge > config.perfMaxAgeDays ? `Dados de performance sem atualização há ${pAge} dias.` : null;
   const chkStale =
     cAge === null ? "Nenhum check-in registrado nesta conta." : cAge > config.checkinMaxAgeDays ? `Último check-in há ${cAge} dias.` : null;
 
@@ -158,7 +157,7 @@ export default async function ClientePage({
         note: f.note,
       })),
       primary: fromGT
-        ? { label: "Atualizar performance", href: `/gt/${clientId}`, icon: "chart" as IconName }
+        ? { label: "Ajustar metas", href: `/gt?c=${clientId}`, icon: "target" as IconName }
         : { label: "Registrar check-in", href: `/account/${clientId}`, icon: "plus" as IconName },
     };
   });
@@ -210,9 +209,9 @@ export default async function ClientePage({
             <MetaLine parts={metaParts} />
           </div>
           <div className="flex items-center gap-2">
-            <Link href={`/gt/${clientId}`} className="btn">
-              <Icon name="chart" size={16} stroke={1.75} />
-              Preencher performance
+            <Link href={`/gt?c=${clientId}`} className="btn">
+              <Icon name="target" size={16} stroke={1.75} />
+              Metas
             </Link>
             <Link href={`/account/${clientId}`} className="btn btn-light">
               <Icon name="plus" size={16} />
@@ -368,9 +367,9 @@ export default async function ClientePage({
               Registrar check-in
             </Link>
             <div className="flex gap-2">
-              <Link href={`/gt/${clientId}`} className="btn h-[42px] flex-1">
-                <Icon name="chart" size={16} stroke={1.75} />
-                Preencher performance
+              <Link href={`/gt?c=${clientId}`} className="btn h-[42px] flex-1">
+                <Icon name="target" size={16} stroke={1.75} />
+                Metas
               </Link>
               <ClientActions client={client} users={users} targets={targets} size="lg" />
             </div>

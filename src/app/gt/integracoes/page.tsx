@@ -139,7 +139,7 @@ export default async function IntegracoesPage() {
 
   return (
     <ConfigPage>
-      <PageTitle title="Integrações" description="Conexões da unidade. Vincular cada cliente acontece no painel do cliente, em Clientes." />
+      <PageTitle title="Integrações" description="De onde vem o número da semana de cada conta — não há preenchimento manual. Vincular cada cliente acontece no painel do cliente, em Configurações › Clientes." />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Connection
@@ -217,7 +217,7 @@ export default async function IntegracoesPage() {
             { k: "WhatsApp", v: snap.waOn ? "Ativo" : "—" },
           ]}
           actions={
-            <Link href="/config/canais" className={`btn h-8 ${channels === 0 ? "btn-primary" : ""}`}>
+            <Link href="/gt/canais" className={`btn h-8 ${channels === 0 ? "btn-primary" : ""}`}>
               <Icon name={channels === 0 ? "plus" : "settings"} size={16} />
               {channels === 0 ? "Configurar canal" : "Ver canais"}
             </Link>

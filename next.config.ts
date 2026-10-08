@@ -19,10 +19,14 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       { source: "/usuarios", destination: "/config/usuarios", permanent: true },
-      { source: "/integracoes", destination: "/config/integracoes", permanent: true },
+      { source: "/integracoes", destination: "/gt/integracoes", permanent: true },
       { source: "/modelo", destination: "/config/modelo", permanent: true },
       // Redesign de Configurações: calibração e modelo viraram uma página só.
       { source: "/config/calibracao", destination: "/config/modelo", permanent: true },
+      // Integrações e canais de envio saíram de Configurações e foram para
+      // Performance, junto das metas — o preenchimento manual acabou.
+      { source: "/config/integracoes", destination: "/gt/integracoes", permanent: true },
+      { source: "/config/canais", destination: "/gt/canais", permanent: true },
     ];
   },
 };

@@ -3,7 +3,6 @@ import { bandOf, daysBetween, type ScoreConfig, type WeightMap } from "./model/s
 import type { Band, DimensionKey, ScoreResult } from "./model/types";
 import type { ClientRow, Plan, SeriesPoint, Snap, TargetChange } from "./repo";
 import type { AuditEntry } from "./audit";
-import { currentRitualDate } from "./week";
 
 /**
  * Tudo o que a ficha do cliente mostra, derivado do que já está no banco:
@@ -131,7 +130,6 @@ function dueStatus(due: string, at: string): NextAction["status"] {
 export function nextActions(input: {
   client: ClientRow;
   at: string;
-  lastPerf: Snap | null;
   lastCheckin: Snap | null;
   plans: Plan[];
   config: ScoreConfig;
@@ -139,23 +137,6 @@ export function nextActions(input: {
 }): NextAction[] {
   const { client, at, config } = input;
   const out: NextAction[] = [];
-
-  // Performance da semana: vence no dia do ritual do GT.
-  const ritual = currentRitualDate(new Date(at + "T12:00:00"));
-  const perfDone = input.lastPerf && input.lastPerf.ref_date >= ritual;
-  if (!perfDone) {
-    const st = dueStatus(ritual, at);
-    out.push({
-      id: "perf",
-      title: "Atualizar performance",
-      status: st,
-      owner: firstName(client.gt_name),
-      due: st === "Atrasada" ? `Venceu ${ddmm(ritual)}` : `Até ${ddmm(ritual)}`,
-      kind: "performance",
-      href: `/gt/${client.id}`,
-      quick: "Preencher",
-    });
-  }
 
   // Check-in: o agendado manda; sem agenda, vence quando o último fica velho.
   const scheduled = client.next_checkin_at;
@@ -187,7 +168,7 @@ export function nextActions(input: {
       owner: firstName(client.gt_name),
       due: "Sem meta, sem score",
       kind: "metas",
-      href: `/config/clientes?c=${client.id}`,
+      href: `/gt?c=${client.id}`,
       quick: "Definir",
     });
 

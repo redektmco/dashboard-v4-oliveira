@@ -195,7 +195,7 @@ export function MetaLinkRow({ link }: { link: MetaLinkView }) {
         pendingLabel="Desvinculando…"
         onConfirm={() => removeMetaAccount(link.adAccountId)}
       >
-        <p>Os números importados são apagados e as semanas voltam a depender só do preenchimento do GT. O score dos últimos 90 dias é recalculado.</p>
+        <p>Os números importados são apagados e essas semanas ficam sem dado de performance. O score dos últimos 90 dias é recalculado.</p>
       </ConfirmDialog>
     </div>
   );

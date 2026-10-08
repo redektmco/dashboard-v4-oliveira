@@ -28,7 +28,8 @@ export function AppFrame({
 }) {
   const path = usePathname();
   if (path.startsWith("/a/")) return <>{children}</>;
-  const config = path.startsWith("/config");
+  // Configurações e Performance desenham a própria faixa de abas de ponta a ponta.
+  const config = path.startsWith("/config") || path.startsWith("/gt");
   return (
     <>
       <Sidebar user={user} avisos={avisos} />

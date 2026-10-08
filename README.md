@@ -92,26 +92,27 @@ um round-trip HTTP; com a função no padrão `iad1` (EUA), cada uma cruzava o c
 | Rota | Papel | Cadência | Responde |
 |---|---|---|---|
 | `/` | **Coordenador** | diária + semanal | "Quem eu ataco primeiro?" |
-| `/gt` → `/gt/[id]` | **GT** | semanal, sexta | "A conta entrega o contratado?" |
+| `/gt` | **GT** | quando a meta muda | Metas de cada conta. O número da semana vem só das integrações — não há preenchimento manual |
 | `/account` → `/account/[id]` | **Account** | a cada check-in | "O cliente está satisfeito e engajado?" |
 | `/clientes/[id]` | todos | — | decomposição, histórico, planos |
+| `/gt/integracoes` | admin | — | Meta Ads, Google Ads, webhooks de CRM e saúde de cada integração |
+| `/gt/canais` | admin | — | e-mail e WhatsApp das cobranças (credenciais nas variáveis de ambiente) |
 | `/social` | social + admin | por entrega | aprovação de criativos e calendário |
 | `/config` | coordenação | — | Pendências: o que falta para o score refletir a carteira, o que está funcionando e as últimas alterações |
 | `/config/clientes` | coordenação | — | cadastro, metas (com sugestão pela média de 90 dias) e fonte de leads, cliente a cliente ou em sequência |
 | `/config/cobranca` | admin | mensal | cobranças por cliente (única, mensal, trimestral, anual) e histórico de disparos |
 | `/config/modelo` | coordenação | trimestral | pesos e regras com prévia do impacto; cada salvamento vira uma versão (dá para voltar) |
 | `/config/modelo/detalhes` | todos | — | pesos, réguas e justificativas, abertos |
-| `/config/integracoes` | admin | — | Meta Ads, webhooks de CRM e saúde de cada integração |
-| `/config/canais` | admin | — | e-mail e WhatsApp das cobranças (credenciais nas variáveis de ambiente) |
 | `/config/usuarios` | admin | — | quem entra no painel, senha, permissão, exclusão |
 
 O menu principal tem só as jornadas (Carteira, Performance, Check-in, Social media, Onboarding);
 administração mora em Configurações, que tem moldura própria (menu de seções com contadores e
-"Voltar para a carteira"). Os endereços antigos (`/usuarios`, `/integracoes`, `/modelo`,
-`/config/calibracao`) redirecionam.
+"Voltar para a carteira"). Integrações e canais de envio moram em Performance, junto das metas.
+Os endereços antigos (`/usuarios`, `/integracoes`, `/modelo`, `/config/calibracao`,
+`/config/integracoes`, `/config/canais`, `/gt/[id]`) redirecionam.
 
 A ficha do cliente (`/clientes/[id]`) mostra o Health Score, o status da conta, as próximas
-ações (performance da semana, check-in agendado, planos), o diagnóstico por dimensão com o
+ações (metas pendentes, check-in agendado, planos), o diagnóstico por dimensão com o
 drawer de indicadores, o principal risco, a evolução com eventos (check-in, meta alterada, queda
 de performance, plano criado), os últimos check-ins, os planos de ação com tarefas e prioridade
 e o histórico da conta. Alterações de configuração ficam em `audit_log`; cada calibração salva

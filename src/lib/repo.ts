@@ -1,6 +1,6 @@
 import { all, insert, one, run, transaction } from "./db";
 import { newToken } from "./social/id";
-import { currentRitualDate, ritualWeekEnd } from "./week";
+import { ritualWeekEnd } from "./week";
 import { DIMENSIONS, fieldsFor } from "./model/catalog";
 import { computeScore, DEFAULT_CONFIG, type ScoreConfig, type WeightMap } from "./model/scoring";
 import { insertDemoData, wipe } from "./seed";
@@ -1367,9 +1367,8 @@ export const listOpenPlans = () =>
 export type Aviso = { id: string; label: string; count: number; href: string };
 
 export async function avisos(): Promise<Aviso[]> {
-  const ref = currentRitualDate();
   const { checkinMaxAgeDays: limite } = await getConfig();
-  const [leitura, semana, planos] = await Promise.all([
+  const [leitura, semMeta, planos] = await Promise.all([
     one<{ n: number }>(
       `SELECT count(*)::int AS n FROM clients c
        WHERE c.active = 1
@@ -1379,14 +1378,14 @@ export async function avisos(): Promise<Aviso[]> {
              ) < current_date - ?::int`,
       [limite],
     ),
+    // Performance vem das integrações; o que o time deve à mão são as metas.
     one<{ n: number }>(
       `SELECT count(*)::int AS n FROM clients c
        WHERE c.active = 1
          AND NOT EXISTS (
-           SELECT 1 FROM performance_snapshots p
-           WHERE p.client_id = c.id AND p.ref_date = ?::date
+           SELECT 1 FROM client_targets t
+           WHERE t.client_id = c.id AND t.effective_from <= current_date
          )`,
-      [ref],
     ),
     one<{ n: number }>(
       `SELECT count(*)::int AS n FROM action_plans
@@ -1403,10 +1402,10 @@ export async function avisos(): Promise<Aviso[]> {
       href: "/account",
     },
     {
-      id: "performance",
-      label: "contas sem o número da semana",
-      count: semana?.n ?? 0,
-      href: "/gt",
+      id: "metas",
+      label: "contas sem meta",
+      count: semMeta?.n ?? 0,
+      href: "/gt?filtro=sem_meta",
     },
     { id: "planos", label: "planos de ação vencidos", count: planos?.n ?? 0, href: "/" },
   ].filter((a) => a.count > 0);
@@ -1507,14 +1506,4 @@ const lastByClient = (table: string) =>
      ORDER BY s.client_id, s.ref_date DESC, s.id DESC`,
   );
 
-export const lastPerfByClient = () => lastByClient("performance_snapshots");
 export const lastCheckinByClient = () => lastByClient("checkin_snapshots");
-
-/** Ids dos clientes que já têm performance registrada na semana de referência. */
-export async function filledOn(refDate: string): Promise<Set<number>> {
-  const rows = await all<{ client_id: number }>(
-    "SELECT DISTINCT client_id FROM performance_snapshots WHERE ref_date = ?::date",
-    [refDate],
-  );
-  return new Set(rows.map((r) => r.client_id));
-}

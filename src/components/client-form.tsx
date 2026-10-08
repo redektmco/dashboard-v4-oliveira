@@ -33,7 +33,7 @@ export function ClientDialog({
       open={open}
       onClose={onClose}
       title={client ? `Editar ${client.name}` : "Novo cliente"}
-      description="As metas pré-preenchem o formulário semanal do GT e são a base das réguas do score."
+      description="As metas são a base das réguas do score: o número que chega das integrações é medido contra elas."
       size="md"
     >
       <ClientFields key={client?.id ?? "novo"} users={users} client={client} targets={targets} onDone={onClose} />

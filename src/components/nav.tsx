@@ -13,16 +13,27 @@ type SubLink = { href: string; label: string; admin?: boolean };
 type NavLink = { href: string; label: string; hint: string; icon: IconName; children?: SubLink[] };
 
 /**
- * Navegação principal = o que o time faz toda semana. Cadastro, calibração,
- * acesso e integrações são configuração: moram dentro de Configurações, com
- * sub-abas, em vez de competir com as jornadas no menu.
+ * Navegação principal = o que o time faz toda semana. Cadastro, calibração e
+ * acesso são configuração: moram dentro de Configurações, com sub-abas, em
+ * vez de competir com as jornadas no menu. Integrações e canais de envio
+ * moram em Performance, junto das metas — é de lá que vem o número da semana.
  *
  * Seções com `children` abrem sozinhas quando você está dentro delas — o
  * segundo nível fica à vista no rail em vez de esperar a página carregar.
  */
 const MAIN: NavLink[] = [
   { href: "/", label: "Carteira", hint: "Saúde da carteira e triagem", icon: "grid" },
-  { href: "/gt", label: "Performance", hint: "GT · ritual semanal", icon: "chart" },
+  {
+    href: "/gt",
+    label: "Performance",
+    hint: "Metas, integrações e canais de envio",
+    icon: "chart",
+    children: [
+      { href: "/gt", label: "Metas" },
+      { href: "/gt/integracoes", label: "Integrações", admin: true },
+      { href: "/gt/canais", label: "Canais de envio", admin: true },
+    ],
+  },
   { href: "/account", label: "Check-in", hint: "Account · depois da call", icon: "users" },
   {
     href: "/social",
@@ -48,15 +59,13 @@ const MAIN: NavLink[] = [
 const SETTINGS: NavLink = {
   href: "/config",
   label: "Configurações",
-  hint: "Clientes, calibração, usuários e integrações",
+  hint: "Clientes, cobrança, calibração e usuários",
   icon: "settings",
   children: [
     { href: "/config", label: "Pendências" },
     { href: "/config/clientes", label: "Clientes" },
     { href: "/config/cobranca", label: "Cobrança", admin: true },
     { href: "/config/modelo", label: "Modelo e calibração" },
-    { href: "/config/integracoes", label: "Integrações", admin: true },
-    { href: "/config/canais", label: "Canais de envio", admin: true },
     { href: "/config/usuarios", label: "Usuários", admin: true },
   ],
 };

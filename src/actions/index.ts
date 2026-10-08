@@ -54,7 +54,7 @@ import {
 } from "@/lib/calibration";
 import { getConfig, getWeights } from "@/lib/repo";
 import { targetKeysFor } from "@/lib/model/catalog";
-import { parseCheckinForm, parsePerformanceForm } from "@/lib/model/form";
+import { parseCheckinForm } from "@/lib/model/form";
 import type { AccountType, Band, DimensionKey } from "@/lib/model/types";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
 import { DIMENSIONS } from "@/lib/model/catalog";
@@ -77,38 +77,19 @@ const numOrNull = (f: FormData, k: string) => {
   return isFinite(n) ? n : null;
 };
 
+/**
+ * Metas, integrações e canais aparecem em Configurações e em Performance:
+ * o que muda um muda o outro.
+ */
+function revalidateSettings() {
+  revalidatePath("/config", "layout");
+  revalidatePath("/gt", "layout");
+}
+
 /** Recalcula e grava o snapshot do dia para um cliente — chamado após cada input. */
 async function refresh(clientId: number) {
   const r = await scoreFor(clientId);
   if (r) await persistScore(clientId, today(), r);
-}
-
-/* ---------------------- input do GT (semanal) ---------------------- */
-
-export async function savePerformance(formData: FormData) {
-  const me = await requireUser();
-  const clientId = Number(str(formData, "client_id"));
-  const accountType = str(formData, "account_type") as AccountType;
-  const refDate = str(formData, "ref_date") || today();
-  const filledBy = Number(str(formData, "filled_by")) || null;
-
-  const data = parsePerformanceForm(accountType, (k) => str(formData, k));
-
-  await saveSnapshot("performance", clientId, refDate, filledBy, data);
-
-  // A meta preenchida na semana passa a valer como meta vigente do cliente.
-  const targets: Record<string, number> = {};
-  for (const t of targetKeysFor(accountType)) {
-    const v = data[t.key];
-    if (typeof v === "number") targets[t.key] = v;
-  }
-  await setTargets(clientId, targets, refDate, filledBy ?? me.id);
-
-  await refresh(clientId);
-  revalidatePath("/");
-  revalidatePath("/gt");
-  revalidatePath(`/clientes/${clientId}`);
-  redirect(`/clientes/${clientId}?ok=${encodeURIComponent("Snapshot de performance salvo e score recalculado.")}`);
 }
 
 /* ------------------- input do Account (check-in) ------------------- */
@@ -200,7 +181,7 @@ export async function saveClient(_prev: ActionResult, formData: FormData): Promi
   if (!id) await logChange(me, "cliente", `Cliente cadastrado: ${name}`, { clientId });
 
   after(() => refresh(clientId));
-  revalidatePath("/config", "layout");
+  revalidateSettings();
   revalidatePath("/");
   return { ok: id ? `${name} atualizado.` : `${name} cadastrado.` };
 }
@@ -214,9 +195,8 @@ export async function setClientArchived(id: number, archived: boolean): Promise<
   await logChange(await requireUser(), "cliente", `${archived ? "Cliente arquivado" : "Cliente reativado"}: ${client.name}`, {
     clientId: id,
   });
-  revalidatePath("/config", "layout");
+  revalidateSettings();
   revalidatePath("/");
-  revalidatePath("/gt");
   revalidatePath("/account");
   return { ok: archived ? `${client.name} arquivado.` : `${client.name} voltou para a carteira.` };
 }
@@ -257,7 +237,7 @@ async function applyCalibration(
   for (const c of changes.length ? changes : [note]) await logChange(me, "calibracao", c, { data: { version } });
   await recomputeRange(90);
   revalidatePath("/");
-  revalidatePath("/config", "layout");
+  revalidateSettings();
   return { ok: `Versão v${version} salva e últimos 90 dias recalculados.`, version };
 }
 
@@ -315,7 +295,7 @@ export async function enableIntegration(_prev: ActionResult, formData: FormData)
   if (crm) await setIntegrationCrm(clientId, crm);
   const c = await getClient(clientId);
   await logChange(me, "integracao", `Webhook conectado: ${c?.name ?? "cliente"}`, { clientId });
-  revalidatePath("/config", "layout");
+  revalidateSettings();
   return { ok: "Webhook gerado. Copie o endereço e cole no CRM." };
 }
 
@@ -324,7 +304,7 @@ export async function setIntegrationPaused(clientId: number, paused: boolean): P
   await setIntegrationActive(clientId, !paused);
   // Ligar/desligar muda o que entra no score — recalcula a série recente.
   after(() => recomputeRange(45));
-  revalidatePath("/config", "layout");
+  revalidateSettings();
   revalidatePath("/");
   return { ok: paused ? "Integração pausada — os leads voltam para o input manual." : "Integração reativada." };
 }
@@ -332,14 +312,14 @@ export async function setIntegrationPaused(clientId: number, paused: boolean): P
 export async function rotateIntegration(clientId: number): Promise<ActionResult> {
   await requireAdmin();
   await rotateIntegrationToken(clientId);
-  revalidatePath("/config", "layout");
+  revalidateSettings();
   return { ok: "Novo endereço gerado. Atualize o webhook no CRM." };
 }
 
 export async function setIntegrationCrmName(clientId: number, crmName: string): Promise<ActionResult> {
   await requireAdmin();
   await setIntegrationCrm(clientId, crmName.trim() || null);
-  revalidatePath("/config", "layout");
+  revalidateSettings();
   return { ok: "CRM de origem atualizado." };
 }
 
@@ -349,7 +329,7 @@ export async function removeIntegration(clientId: number): Promise<ActionResult>
   await deleteIntegration(clientId);
   await logChange(me, "integracao", `Webhook removido: ${c?.name ?? "cliente"}`, { clientId });
   after(() => recomputeRange(45));
-  revalidatePath("/config", "layout");
+  revalidateSettings();
   revalidatePath("/");
   return { ok: "Integração removida. Os leads já recebidos continuam no histórico." };
 }
@@ -414,7 +394,7 @@ export async function connectMetaAccount(_prev: ActionResult, formData: FormData
   // Histórico de 12 semanas já no vínculo, para o score não esperar o cron.
   const r = await syncMeta({ weeks: 12, adAccountId: acc.id });
   after(() => recomputeRange(90));
-  revalidatePath("/config", "layout");
+  revalidateSettings();
   revalidatePath("/");
   if (r.failed.length) return { error: `Conta vinculada, mas a sincronização falhou: ${r.failed[0].error}` };
   return { ok: `${acc.name} vinculada — 12 semanas importadas.` };
@@ -425,7 +405,7 @@ export async function syncMetaNow(): Promise<ActionResult> {
   if (!metaConfigured()) return { error: "Configure META_ACCESS_TOKEN no ambiente." };
   const r = await syncMeta({ weeks: 3 });
   await recomputeRange(28);
-  revalidatePath("/config", "layout");
+  revalidateSettings();
   revalidatePath("/");
   if (r.failed.length) {
     return { error: `${r.ok} de ${r.accounts} conta(s) sincronizadas. Falhou: ${r.failed.map((f) => f.account).join(", ")}` };
@@ -437,7 +417,7 @@ export async function setMetaAccountPaused(adAccountId: string, paused: boolean)
   await requireAdmin();
   await setMetaAccountActive(adAccountId, !paused);
   after(() => recomputeRange(45));
-  revalidatePath("/config", "layout");
+  revalidateSettings();
   revalidatePath("/");
   return { ok: paused ? "Conta pausada — os números voltam para o input manual." : "Conta reativada." };
 }
@@ -447,7 +427,7 @@ export async function changeMetaLeadMetric(adAccountId: string, metric: LeadMetr
   if (!LEAD_METRICS.includes(metric)) return { error: "Métrica inválida." };
   await setMetaLeadMetric(adAccountId, metric);
   after(() => recomputeRange(45));
-  revalidatePath("/config", "layout");
+  revalidateSettings();
   revalidatePath("/");
   return { ok: `Lead agora conta como: ${LEAD_METRIC_LABEL[metric].toLowerCase()}.` };
 }
@@ -457,7 +437,7 @@ export async function removeMetaAccount(adAccountId: string): Promise<ActionResu
   const link = await getMetaLink(adAccountId);
   await unlinkMetaAccount(adAccountId);
   after(() => recomputeRange(90));
-  revalidatePath("/config", "layout");
+  revalidateSettings();
   revalidatePath("/");
   return { ok: `${link?.name ?? "Conta"} desvinculada.` };
 }
@@ -498,7 +478,7 @@ export async function connectGoogleAccount(_prev: ActionResult, formData: FormDa
   // Histórico de 12 semanas já no vínculo, para o score não esperar o cron.
   const r = await syncGoogle({ weeks: 12, customerId });
   after(() => recomputeRange(90));
-  revalidatePath("/config", "layout");
+  revalidateSettings();
   revalidatePath("/");
   if (r.failed.length) return { error: `Conta vinculada, mas a sincronização falhou: ${r.failed[0].error}` };
   return { ok: `${acc.name} (${formatCustomerId(customerId)}) vinculada — 12 semanas importadas.` };
@@ -509,7 +489,7 @@ export async function syncGoogleNow(): Promise<ActionResult> {
   if (!googleAdsConfigured()) return { error: "Configure GOOGLE_ADS_DEVELOPER_TOKEN e a credencial do Google (GOOGLE_SA_*) no ambiente." };
   const r = await syncGoogle({ weeks: 3 });
   await recomputeRange(28);
-  revalidatePath("/config", "layout");
+  revalidateSettings();
   revalidatePath("/");
   if (r.failed.length) {
     return { error: `${r.ok} de ${r.accounts} conta(s) sincronizadas. ${r.failed[0].account}: ${r.failed[0].error}` };
@@ -521,7 +501,7 @@ export async function setGoogleAccountPaused(customerId: string, paused: boolean
   await requireAdmin();
   await setGoogleAccountActive(customerId, !paused);
   after(() => recomputeRange(45));
-  revalidatePath("/config", "layout");
+  revalidateSettings();
   revalidatePath("/");
   return { ok: paused ? "Conta pausada — os números voltam para o input manual." : "Conta reativada." };
 }
@@ -531,7 +511,7 @@ export async function removeGoogleAccount(customerId: string): Promise<ActionRes
   const link = await getGoogleLink(customerId);
   await unlinkGoogleAccount(customerId);
   after(() => recomputeRange(90));
-  revalidatePath("/config", "layout");
+  revalidateSettings();
   revalidatePath("/");
   return { ok: `${link?.name ?? "Conta"} desvinculada.` };
 }
@@ -640,7 +620,7 @@ export async function saveClientTargets(clientId: number, values: Record<string,
   await setTargets(clientId, targets, today(), me.id);
   await logChange(me, "meta", `Metas definidas: ${client.name}`, { clientId });
   after(() => refresh(clientId));
-  revalidatePath("/config", "layout");
+  revalidateSettings();
   revalidatePath(`/clientes/${clientId}`);
   revalidatePath("/");
   return { ok: `Metas de ${client.name} salvas.` };

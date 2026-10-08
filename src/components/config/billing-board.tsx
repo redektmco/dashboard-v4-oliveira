@@ -198,11 +198,11 @@ export function BillingBoard({
             </div>
             {noChannel && (
               <div className="flex gap-1.5">
-                <Link href="/config/canais#email" className="btn h-8">
+                <Link href="/gt/canais#email" className="btn h-8">
                   <Icon name="mail" size={16} />
                   E-mail
                 </Link>
-                <Link href="/config/canais#whatsapp" className="btn h-8">
+                <Link href="/gt/canais#whatsapp" className="btn h-8">
                   <Icon name="messageCircle" size={16} />
                   WhatsApp
                 </Link>

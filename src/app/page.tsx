@@ -248,7 +248,7 @@ export default async function CarteiraPage() {
             {[
               ["Sem meta cadastrada", config.semMeta.length],
               ["Sem fonte de leads", config.semFonte.length],
-              ["Performance nunca preenchida", neverFilled],
+              ["Sem dado de performance", neverFilled],
             ].map(([label, n]) => (
               <div key={label} className="flex items-center justify-between gap-3">
                 <dt className="text-ink-400">{label}</dt>

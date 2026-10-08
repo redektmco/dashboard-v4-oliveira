@@ -9,34 +9,15 @@ import {
 } from "@/lib/repo";
 import { listCharges } from "@/lib/billing/db";
 import { chargeWillSend, whenBR } from "@/lib/config-status";
-import { fieldsFor } from "@/lib/model/catalog";
-import { ACCOUNT_TYPE_LABEL, type AccountType } from "@/lib/model/types";
+import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
+import { targetFields } from "@/lib/model/target-fields";
 import { metaConfigured } from "@/lib/meta/graph";
 import { requireUser } from "@/lib/auth";
-import { ClientsBoard, type BoardClient, type TargetField } from "@/components/config/clients-board";
+import { ClientsBoard, type BoardClient } from "@/components/config/clients-board";
 
 export const dynamic = "force-dynamic";
 
 const EMPTY_FOOTPRINT = { perf: 0, checkins: 0, plans: 0, projects: 0, leads: 0, integration: false };
-
-/** Campos de meta do tipo de conta, com rótulo curto e unidade para o painel. */
-function targetFields(type: AccountType): TargetField[] {
-  return fieldsFor(type, "gt")
-    .filter((f) => f.targetKey && f.input.kind === "pair")
-    .map((f) => {
-      const i = f.input as Extract<typeof f.input, { kind: "pair" }>;
-      const money = /\(R\$\)/.test(i.realLabel);
-      const pct = f.rule === "RATE" || /\(%\)/.test(i.realLabel);
-      return {
-        key: f.targetKey!,
-        label: f.label,
-        prefix: money ? "R$" : undefined,
-        suffix: pct ? "%" : f.key === "roas" ? "x" : money ? undefined : "/sem.",
-        decimals: i.decimals ?? 0,
-        lowerIsBetter: f.rule === "B",
-      };
-    });
-}
 
 export default async function ConfigClientesPage() {
   const me = await requireUser();

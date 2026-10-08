@@ -127,8 +127,8 @@ async function loadConfigSnapshot() {
       clients: pick(semMeta),
       action: {
         label: "Definir metas",
-        href: "/config/clientes?filtro=sem_meta&seq=1",
-        hint: "Em lote, por planilha ou cliente a cliente",
+        href: "/gt?filtro=sem_meta",
+        hint: "Em Performance, cliente a cliente",
         primary: true,
       },
     });
@@ -157,7 +157,7 @@ async function loadConfigSnapshot() {
       clients: naoEnviadas.map((c) => ({ id: c.clientId, name: c.clientName })),
       action:
         !emailOn && !waOn
-          ? { label: "Configurar e-mail", href: "/config/canais", hint: "Leva 2 minutos" }
+          ? { label: "Configurar e-mail", href: "/gt/canais", hint: "Leva 2 minutos" }
           : { label: "Revisar contatos", href: "/config/cobranca" },
     });
   for (const v of verbaSemLeads)
@@ -169,7 +169,7 @@ async function loadConfigSnapshot() {
       consequence: `${v.client.name} gastou ${brl0(v.spend)} sem nenhum lead registrado. Possível formulário desligado da campanha.`,
       shortConsequence: `${v.client.name} · ${brl0(v.spend)} sem leads.`,
       clients: [{ id: v.client.id, name: v.client.name }],
-      action: { label: "Revisar integração", href: "/config/integracoes" },
+      action: { label: "Revisar integração", href: "/gt/integracoes" },
     });
   if (metaErros.length)
     pendencias.push({
@@ -180,7 +180,7 @@ async function loadConfigSnapshot() {
       consequence: `A última sincronização falhou: ${metaErros[0].last_error}`,
       shortConsequence: "A última sincronização falhou.",
       clients: metaErros.map((l) => ({ id: l.client_id, name: l.client_name })),
-      action: { label: "Revisar integração", href: "/config/integracoes" },
+      action: { label: "Revisar integração", href: "/gt/integracoes" },
     });
 
   return {
@@ -189,6 +189,7 @@ async function loadConfigSnapshot() {
     integrations,
     metaLinks,
     googleLinks,
+    media: metaByClient,
     charges: activeCharges,
     semMeta,
     semFonte,
@@ -269,12 +270,12 @@ export async function healthItems(s: ConfigSnapshot, calibratedAt: string | null
     .pop();
   items.push(
     !metaConfigured()
-      ? { label: "Meta Ads", detail: "Token do sistema não configurado", ok: false, href: "/config/integracoes" }
+      ? { label: "Meta Ads", detail: "Token do sistema não configurado", ok: false, href: "/gt/integracoes" }
       : {
           label: "Meta Ads",
           detail: lastSync ? `Sincronizado ${whenBR(lastSync).replace(/^Hoje/, "hoje").replace(/^Ontem/, "ontem")}` : "Nenhuma conta vinculada",
           ok: Boolean(lastSync) && !s.metaLinks.some((l) => l.active && l.last_error),
-          href: "/config/integracoes",
+          href: "/gt/integracoes",
         },
   );
 
@@ -285,12 +286,12 @@ export async function healthItems(s: ConfigSnapshot, calibratedAt: string | null
     .pop();
   items.push(
     !googleAdsConfigured()
-      ? { label: "Google Ads", detail: "Credencial não configurada", ok: false, href: "/config/integracoes" }
+      ? { label: "Google Ads", detail: "Credencial não configurada", ok: false, href: "/gt/integracoes" }
       : {
           label: "Google Ads",
           detail: googleSync ? `Sincronizado ${whenBR(googleSync).replace(/^Hoje/, "hoje").replace(/^Ontem/, "ontem")}` : "Nenhuma conta vinculada",
           ok: Boolean(googleSync) && !s.googleLinks.some((l) => l.active && l.last_error),
-          href: "/config/integracoes",
+          href: "/gt/integracoes",
         },
   );
 
@@ -309,7 +310,7 @@ export async function healthItems(s: ConfigSnapshot, calibratedAt: string | null
       label: `Webhook ${i.client_name}`,
       detail: last ? `Último lead em ${whenBR(last).replace(/, \d{2}:\d{2}$/, "").replace(/^Hoje$/, "hoje").replace(/^Ontem$/, "ontem")}` : "Nenhum lead recebido",
       ok: since !== null && since <= 7,
-      href: "/config/integracoes",
+      href: "/gt/integracoes",
     });
   }
 
