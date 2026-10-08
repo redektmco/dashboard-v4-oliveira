@@ -13,7 +13,7 @@
  */
 import { createSign } from "node:crypto";
 import { weekRange } from "../meta/metrics";
-import { bucketDaily, type DailyRow } from "./metrics";
+import { bucketDaily, parseClientAccounts, type DailyRow, type GoogleAccount } from "./metrics";
 import type { MetaWeek } from "../meta/metrics";
 
 const VERSION = process.env.GOOGLE_ADS_API_VERSION || "v23";
@@ -160,4 +160,28 @@ export async function fetchWeeklyInsights(customerId: string, refs: string[]): P
     if (!pageToken) break;
   }
   return bucketDaily(rows, refs);
+}
+
+/**
+ * Contas de anúncio dos clientes que a MCC enxerga (GOOGLE_ADS_LOGIN_CUSTOMER_ID).
+ * É o equivalente do "todas as contas das BMs" do Meta: o painel lista e a
+ * pessoa só escolhe qual conta é de qual cliente.
+ */
+export async function listClientAccounts(): Promise<GoogleAccount[]> {
+  const mcc = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID?.replace(/\D/g, "");
+  if (!mcc) {
+    throw new GoogleAdsError("Informe o ID da MCC em GOOGLE_ADS_LOGIN_CUSTOMER_ID (só dígitos, ex.: 1244443600) para listar as contas dos clientes.");
+  }
+  const query =
+    "SELECT customer_client.id, customer_client.descriptive_name, customer_client.currency_code, customer_client.status, customer_client.manager " +
+    "FROM customer_client WHERE customer_client.status = 'ENABLED'";
+  const rows: unknown[] = [];
+  let pageToken: string | undefined;
+  for (let guard = 0; guard < 20; guard++) {
+    const page = await search<unknown>(mcc, query, pageToken);
+    rows.push(...(page.results ?? []));
+    pageToken = page.nextPageToken;
+    if (!pageToken) break;
+  }
+  return parseClientAccounts(rows as Parameters<typeof parseClientAccounts>[0]);
 }

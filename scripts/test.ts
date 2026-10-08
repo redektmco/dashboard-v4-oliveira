@@ -19,7 +19,7 @@ import { aspectWarning, formatBadge, rejectReason } from "../src/lib/social/medi
 import { matchCaptionsToFiles, parseBatchCaptions } from "../src/lib/social/batch";
 import { isOwnBlobUrl } from "../src/lib/social/storage";
 import { navReducer, type Nav } from "../src/components/social/story-nav";
-import { bucketDaily, formatCustomerId, normalizeCustomerId } from "../src/lib/google/metrics";
+import { bucketDaily, formatCustomerId, normalizeCustomerId, parseClientAccounts } from "../src/lib/google/metrics";
 import { explainError } from "../src/lib/google/ads";
 import { topPriorities, type PriorityInput } from "../src/lib/priorities";
 import { EMPTY_WEEK, leadsOf, metaFields, parseInsight, weekRange } from "../src/lib/meta/metrics";
@@ -736,4 +736,16 @@ test("google: traduz os erros do Google Ads que a equipe precisa entender", () =
   assert.match(explainError(403, body), /não tem acesso a essa conta/);
   assert.equal(explainError(500, { error: { message: "falha" } }), "falha");
   assert.equal(explainError(502, {}), "Google Ads respondeu 502");
+});
+
+test("google: lista só contas de cliente ativas da MCC, sem repetir e em ordem", () => {
+  const list = parseClientAccounts([
+    { customerClient: { id: "2", descriptiveName: "Zeta Móveis", manager: false, status: "ENABLED", currencyCode: "BRL" } },
+    { customerClient: { id: "1244443600", descriptiveName: "MCC Oliveira", manager: true, status: "ENABLED" } },
+    { customerClient: { id: "3", descriptiveName: "Alfa Odonto", manager: false, status: "ENABLED" } },
+    { customerClient: { id: "3", descriptiveName: "Alfa Odonto (duplicada)", manager: false, status: "ENABLED" } },
+    { customerClient: { id: "4", descriptiveName: "Cancelada", manager: false, status: "CANCELED" } },
+    { customerClient: { id: "1234567890", manager: false, status: "ENABLED" } },
+  ]);
+  assert.deepEqual(list.map((a) => a.name), ["Alfa Odonto", "Conta 123-456-7890", "Zeta Móveis"]);
 });

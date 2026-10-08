@@ -65,3 +65,27 @@ export function bucketDaily(rows: DailyRow[], refs: string[]): Map<string, MetaW
   }
   return out;
 }
+
+/** Conta de anúncio de cliente listada sob a MCC. */
+export type GoogleAccount = { id: string; name: string; currency: string | null };
+
+type CustomerClientRow = {
+  customerClient?: { id?: string | number; descriptiveName?: string; currencyCode?: string; manager?: boolean; status?: string };
+};
+
+/**
+ * Contas de cliente (não gerentes, ativas) de uma resposta `customer_client`,
+ * em ordem alfabética. Subcontas gerentes ficam de fora: elas não têm métricas.
+ */
+export function parseClientAccounts(rows: CustomerClientRow[]): GoogleAccount[] {
+  const seen = new Set<string>();
+  const out: GoogleAccount[] = [];
+  for (const r of rows) {
+    const c = r.customerClient;
+    const id = c?.id === undefined ? null : String(c.id).replace(/\D/g, "");
+    if (!c || !id || c.manager || (c.status && c.status !== "ENABLED") || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, name: c.descriptiveName?.trim() || `Conta ${formatCustomerId(id)}`, currency: c.currencyCode ?? null });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+}

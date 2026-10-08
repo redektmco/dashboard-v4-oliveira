@@ -63,7 +63,8 @@ import type { ActionResult } from "@/lib/action";
 import { listAdAccounts, metaConfigured, type AdAccount } from "@/lib/meta/graph";
 import { LEAD_METRIC_LABEL, type LeadMetric } from "@/lib/meta/metrics";
 import { syncMeta } from "@/lib/meta/sync";
-import { getCustomer, googleAdsConfigured } from "@/lib/google/ads";
+import { getCustomer, googleAdsConfigured, listClientAccounts } from "@/lib/google/ads";
+import type { GoogleAccount } from "@/lib/google/metrics";
 import { formatCustomerId, normalizeCustomerId } from "@/lib/google/metrics";
 import { syncGoogle } from "@/lib/google/sync";
 import { parseClientsSheet } from "@/lib/import/clients-sheet";
@@ -462,6 +463,17 @@ export async function removeMetaAccount(adAccountId: string): Promise<ActionResu
 }
 
 /* --------------------------- Google Ads ---------------------------- */
+
+/** Contas dos clientes sob a MCC — carregadas só quando o diálogo abre. */
+export async function loadGoogleAccounts(): Promise<{ accounts?: GoogleAccount[]; error?: string }> {
+  await requireAdmin();
+  if (!googleAdsConfigured()) return { error: "Credencial do Google Ads não configurada." };
+  try {
+    return { accounts: await listClientAccounts() };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Falha ao falar com o Google Ads." };
+  }
+}
 
 export async function connectGoogleAccount(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const me = await requireAdmin();
