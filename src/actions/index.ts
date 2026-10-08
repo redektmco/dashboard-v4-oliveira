@@ -380,10 +380,10 @@ export async function importClientsSheet(_prev: ActionResult, formData: FormData
 const LEAD_METRICS: LeadMetric[] = ["lead", "messaging", "both"];
 
 /** Contas de anúncio que o token enxerga — carregadas só quando o modal abre. */
-export async function loadMetaAdAccounts(): Promise<{ accounts?: AdAccount[]; error?: string }> {
+export async function loadMetaAdAccounts(): Promise<{ accounts?: AdAccount[]; warning?: string | null; error?: string }> {
   await requireAdmin();
   try {
-    return { accounts: await listAdAccounts() };
+    return await listAdAccounts();
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Falha ao falar com a Meta." };
   }
@@ -401,11 +401,15 @@ export async function connectMetaAccount(_prev: ActionResult, formData: FormData
   // Revalida no servidor: só vincula conta que o token realmente enxerga.
   let acc: AdAccount | undefined;
   try {
-    acc = (await listAdAccounts()).find((a) => a.id === accountId);
+    acc = (await listAdAccounts()).accounts.find((a) => a.id === accountId);
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Falha ao falar com a Meta." };
   }
   if (!acc) return { error: "O token da unidade não tem acesso a essa conta." };
+  if (!acc.access)
+    return {
+      error: `${acc.name} ainda não está atribuída ao usuário de sistema. Na BM: Configurações do negócio › Usuários do sistema › Atribuir ativos › Contas de anúncio.`,
+    };
 
   await linkMetaAccount(clientId, { id: acc.id, name: acc.name, currency: acc.currency }, metric, me.id ?? null);
   const linked = await getClient(clientId);

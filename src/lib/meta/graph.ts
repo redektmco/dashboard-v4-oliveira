@@ -34,36 +34,79 @@ export type AdAccount = {
   currency: string;
   status: number;
   business: string | null;
+  /**
+   * O usuário de sistema tem a conta atribuída (dá para ler os números).
+   * `false` = a conta existe numa BM que o token enxerga, mas ainda não foi
+   * atribuída a ele — aparece na lista para alguém atribuir na BM.
+   */
+  access: boolean;
 };
 
-/** Todas as contas de anúncio que o token enxerga, em todas as BMs. */
-export async function listAdAccounts(): Promise<AdAccount[]> {
-  type Raw = {
-    id: string;
-    name: string;
-    currency: string;
-    account_status: number;
-    business?: { name?: string };
-  };
-  const out: AdAccount[] = [];
-  let page = await get<Page<Raw>>("me/adaccounts", {
-    fields: "name,currency,account_status,business{name}",
-    limit: "200",
-  });
+type RawAccount = {
+  id: string;
+  name: string;
+  currency: string;
+  account_status: number;
+  business?: { name?: string };
+};
+
+const ACCOUNT_FIELDS = "name,currency,account_status,business{name}";
+
+/** Todas as páginas de uma aresta da Graph API. */
+async function allPages<T>(path: string, params: Record<string, string>): Promise<T[]> {
+  const out: T[] = [];
+  let page = await get<Page<T>>(path, { ...params, limit: "200" });
   for (let guard = 0; guard < 20; guard++) {
-    for (const r of page.data) {
-      out.push({
-        id: r.id,
-        name: r.name,
-        currency: r.currency,
-        status: r.account_status,
-        business: r.business?.name ?? null,
-      });
-    }
+    out.push(...page.data);
     if (!page.paging?.next) break;
-    page = await get<Page<Raw>>(page.paging.next);
+    page = await get<Page<T>>(page.paging.next);
   }
-  return out.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  return out;
+}
+
+export type AdAccountList = {
+  accounts: AdAccount[];
+  /** A busca nas BMs falhou (ex.: token sem `business_management`); a lista traz só as atribuídas. */
+  warning: string | null;
+};
+
+/**
+ * Contas de anúncio da unidade. `me/adaccounts` do usuário de sistema só
+ * devolve as contas ATRIBUÍDAS a ele — conta da BM (própria ou de cliente)
+ * que ninguém atribuiu não aparecia e parecia "sumida". Por isso a lista
+ * junta também as contas próprias e de clientes de cada BM, marcando as
+ * que ainda não têm acesso.
+ */
+export async function listAdAccounts(): Promise<AdAccountList> {
+  const toAccount = (r: RawAccount, access: boolean, bm?: string): AdAccount => ({
+    id: r.id,
+    name: r.name,
+    currency: r.currency,
+    status: r.account_status,
+    business: r.business?.name ?? bm ?? null,
+    access,
+  });
+
+  const assigned = await allPages<RawAccount>("me/adaccounts", { fields: ACCOUNT_FIELDS });
+  const byId = new Map(assigned.map((r) => [r.id, toAccount(r, true)]));
+
+  let warning: string | null = null;
+  try {
+    const businesses = await allPages<{ id: string; name: string }>("me/businesses", { fields: "name" });
+    const edges = await Promise.all(
+      businesses.flatMap((b) =>
+        ["owned_ad_accounts", "client_ad_accounts"].map((edge) =>
+          allPages<RawAccount>(`${b.id}/${edge}`, { fields: ACCOUNT_FIELDS }).then((rows) => rows.map((r) => toAccount(r, false, b.name))),
+        ),
+      ),
+    );
+    for (const a of edges.flat()) if (!byId.has(a.id)) byId.set(a.id, a);
+  } catch (e) {
+    warning = `Não deu para listar as contas das BMs (${e instanceof Error ? e.message : "erro na Meta"}). Aparecem só as contas já atribuídas ao usuário de sistema.`;
+  }
+
+  const accounts = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  return { accounts, warning };
 }
 
 /**

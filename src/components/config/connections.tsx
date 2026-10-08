@@ -52,6 +52,7 @@ export function MetaConnectDialog({
 }) {
   const [accounts, setAccounts] = useState<AdAccount[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
   // As contas só são buscadas na Meta quando a janela abre pela primeira vez.
@@ -61,7 +62,10 @@ export function MetaConnectDialog({
     loadMetaAdAccounts().then((r) => {
       if (!alive) return;
       if (r.error) setLoadError(r.error);
-      else setAccounts(r.accounts ?? []);
+      else {
+        setAccounts(r.accounts ?? []);
+        setWarning(r.warning ?? null);
+      }
     });
     return () => {
       alive = false;
@@ -75,6 +79,9 @@ export function MetaConnectDialog({
       (a) => !linkedSet.has(a.id) && (!q || a.name.toLowerCase().includes(q) || a.id.includes(q) || (a.business ?? "").toLowerCase().includes(q)),
     );
   }, [accounts, linkedSet, query]);
+  // Contas que o usuário de sistema já lê primeiro; as sem acesso vêm depois, desabilitadas.
+  const ready = options.filter((a) => a.access);
+  const blocked = options.filter((a) => !a.access);
 
   return (
     <Modal
@@ -112,18 +119,38 @@ export function MetaConnectDialog({
             <span className="label">Conta de anúncio</span>
             <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filtrar por nome, BM ou ID…" className="field mt-1" />
             <select name="ad_account_id" required className="field mt-2" size={Math.min(8, Math.max(3, options.length))}>
-              {options.map((a) => (
+              {ready.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
                   {a.business ? ` — ${a.business}` : ""}
                   {a.status !== 1 ? " (inativa)" : ""}
                 </option>
               ))}
+              {blocked.length > 0 && (
+                <optgroup label="Sem acesso — atribuir ao usuário de sistema na BM">
+                  {blocked.map((a) => (
+                    <option key={a.id} value={a.id} disabled>
+                      {a.name}
+                      {a.business ? ` — ${a.business}` : ""}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
             <span className="mt-1 block text-[11px] text-ink-500">
-              {options.length} conta(s) disponível(is){linkedSet.size > 0 && ` · ${linkedSet.size} já vinculada(s) não aparecem`}
+              {ready.length} conta(s) disponível(is)
+              {blocked.length > 0 && ` · ${blocked.length} sem acesso`}
+              {linkedSet.size > 0 && ` · ${linkedSet.size} já vinculada(s) não aparecem`}
             </span>
           </label>
+          {warning && <p className="rounded-lg bg-amarelo-dim px-3 py-2 text-[12px] leading-[17px] text-amarelo-fg">{warning}</p>}
+          {blocked.length > 0 && (
+            <p className="rounded-lg bg-ink-850 px-3 py-2 text-[12px] leading-[17px] text-ink-300">
+              Conta sem acesso existe na BM, mas não foi atribuída ao usuário de sistema da unidade — sem isso a Meta não entrega os números. Para
+              liberar: Gerenciador de Negócios › Configurações do negócio › Usuários › Usuários do sistema › escolha o usuário › Atribuir ativos ›
+              Contas de anúncio › marque a conta (Ver desempenho já basta). Depois, feche e abra esta janela.
+            </p>
+          )}
           <label className="block">
             <span className="label">O que conta como lead</span>
             <select name="lead_metric" className="field mt-1" defaultValue="both">
