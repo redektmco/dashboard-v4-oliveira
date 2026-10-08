@@ -131,6 +131,8 @@ const CLIENT_SELECT = `
   SELECT c.id, c.name, c.account_type, c.mrr, c.gt_user_id, c.account_user_id,
          c.renewal_date::text AS renewal_date, c.active, c.created_at::text AS created_at,
          c.next_checkin_at::text AS next_checkin_at,
+         c.contract_code, c.services, c.contract_start::text AS contract_start,
+         c.fidelity_months, c.notice_days,
          g.name AS gt_name, a.name AS account_name
   FROM clients c
   LEFT JOIN users g ON g.id = c.gt_user_id
@@ -141,19 +143,27 @@ export const listClients = (onlyActive = true) =>
 
 export const getClient = (id: number) => one<ClientRow>(`${CLIENT_SELECT} WHERE c.id = ?`, [id]);
 
-export function createClient(c: {
-  name: string;
-  account_type: AccountType;
-  mrr: number;
-  gt_user_id: number | null;
-  account_user_id: number | null;
-  renewal_date: string | null;
-}) {
-  return insert(
+export async function createClient(
+  c: {
+    name: string;
+    account_type: AccountType;
+    mrr: number;
+    gt_user_id: number | null;
+    account_user_id: number | null;
+    renewal_date: string | null;
+  } & Partial<Pick<Client, "contract_code" | "services" | "contract_start" | "fidelity_months" | "notice_days">>,
+) {
+  const id = await insert(
     `INSERT INTO clients (name, account_type, mrr, gt_user_id, account_user_id, renewal_date)
      VALUES (?, ?, ?, ?, ?, ?::date) RETURNING id`,
     [c.name, c.account_type, c.mrr, c.gt_user_id, c.account_user_id, c.renewal_date],
   );
+  const { contract_code, services, contract_start, fidelity_months, notice_days } = c;
+  const contract = Object.fromEntries(
+    Object.entries({ contract_code, services, contract_start, fidelity_months, notice_days }).filter(([, v]) => v !== undefined),
+  ) as Partial<Client>;
+  if (Object.keys(contract).length) await updateClient(id, contract);
+  return id;
 }
 
 export async function updateClient(id: number, c: Partial<Client>) {
@@ -166,11 +176,21 @@ export async function updateClient(id: number, c: Partial<Client>) {
       "account_user_id",
       "renewal_date",
       "active",
+      "contract_code",
+      "services",
+      "contract_start",
+      "fidelity_months",
+      "notice_days",
     ] as const
   ).filter((k) => k in c);
   if (!keys.length) return;
-  const set = keys.map((k) => (k === "renewal_date" ? `${k} = ?::date` : `${k} = ?`)).join(", ");
-  await run(`UPDATE clients SET ${set} WHERE id = ?`, [...keys.map((k) => c[k] ?? null), id]);
+  const cast = (k: string) =>
+    k === "renewal_date" || k === "contract_start" ? `${k} = ?::date` : k === "services" ? `${k} = ?::jsonb` : `${k} = ?`;
+  const set = keys.map(cast).join(", ");
+  await run(`UPDATE clients SET ${set} WHERE id = ?`, [
+    ...keys.map((k) => (k === "services" ? JSON.stringify(c.services ?? []) : (c[k] ?? null))),
+    id,
+  ]);
 }
 
 /**

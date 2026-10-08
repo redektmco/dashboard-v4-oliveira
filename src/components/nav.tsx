@@ -36,6 +36,16 @@ const MAIN: NavLink[] = [
   },
   { href: "/account", label: "Check-in", hint: "Account · depois da call", icon: "users" },
   {
+    href: "/churn",
+    label: "Churn",
+    hint: "Solicitações de cancelamento",
+    icon: "userMinus",
+    children: [
+      { href: "/churn", label: "Solicitações" },
+      { href: "/churn/analise", label: "Histórico e análise" },
+    ],
+  },
+  {
     href: "/social",
     label: "Social media",
     hint: "Aprovação e calendário",

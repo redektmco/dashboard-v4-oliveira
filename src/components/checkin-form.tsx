@@ -6,11 +6,13 @@ import { previewCheckin, saveCheckin } from "@/actions";
 import type { Band, User } from "@/lib/model/types";
 import { Icon, type IconName } from "./icon";
 import { SidePanel } from "./side-panel";
+import { COPY, ScriptPanel } from "./checkin-script";
 import { SubmitButton } from "./form-controls";
 import { BAND_STYLE, brl, dateBR } from "./ui";
 
 /** Uma pergunta de escala 1–5, já com o texto do catálogo. */
-export type Scale = { key: string; question: string; anchors: Record<number, string> };
+export type { Scale } from "./checkin-script";
+import type { Scale } from "./checkin-script";
 
 export type CheckinProps = {
   client: { id: number; name: string; typeLabel: string; accountName: string | null; gtName: string | null; mrr: number; renewalDate: string | null };
@@ -20,16 +22,8 @@ export type CheckinProps = {
   scales: Scale[];
   previous: { score: number | null; band: Band | null } | null;
   today: string;
-};
-
-/* Textos da tela (título curto, pergunta curta, âncoras e dica do roteiro). */
-const COPY: Record<string, { title: string; short: string; lo: string; hi: string; tip: string }> = {
-  q1_satisfaction: { title: "Satisfação com o resultado", short: "Quão satisfeito está com o resultado do período", lo: "Insatisfeito", hi: "Superou o esperado", tip: "Se responder por cima, peça o número: “me dá uma nota de 1 a 5”." },
-  q2_climate: { title: "Relacionamento e comunicação", short: "Como avalia a relação e a comunicação no dia a dia", lo: "Relação tensa", hi: "Parceria", tip: "Se houver atrito, deixe o cliente terminar antes de responder." },
-  q3_trust: { title: "Intenção de continuidade", short: "Qual a chance de seguir no próximo ciclo", lo: "Avaliando sair", hi: "Já fala de próximos passos", tip: "Pergunta direta. Não sugira a resposta." },
-  q4_lead_quality: { title: "Qualidade dos leads", short: "Como o time comercial avalia os leads recebidos", lo: "Improváveis", hi: "Qualificados, no perfil", tip: "É a visão do cliente, não a nossa." },
-  q5_engagement: { title: "Ritmo do time do cliente", short: "Acompanhamento de aprovações, materiais e calls", lo: "Quase não responde", hi: "Rápido, sem cobrança", tip: "Aprovações, materiais e presença nas calls." },
-  q6_expectation: { title: "Expectativa vs. entrega", short: "O entregue corresponde ao esperado no fechamento", lo: "Outra coisa", hi: "Acima do combinado", tip: "Nota baixa com resultado bom indica problema de expectativa." },
+  /** Próximas contas do "Registrar em sequência" (ids), se houver. */
+  queue?: number[];
 };
 
 type Answer = number | "np" | null;
@@ -69,7 +63,7 @@ export function CheckinForm(props: CheckinProps) {
   return <CheckinFormInner {...props} />;
 }
 
-function CheckinFormInner({ client, history, accounts, me, scales, previous, today }: CheckinProps) {
+function CheckinFormInner({ client, history, accounts, me, scales, previous, today, queue = [] }: CheckinProps) {
   const storageKey = `healthscore.checkin.draft.${client.id}`;
   const defaultFiller = String(accounts.find((a) => a.id === me.id)?.id ?? accounts[0]?.id ?? "");
   const initial = useMemo<Draft>(
@@ -176,6 +170,7 @@ function CheckinFormInner({ client, history, accounts, me, scales, previous, tod
         <input key={k} type="hidden" name={k} value={v} />
       ))}
       <input type="hidden" name="client_id" value={client.id} />
+      {queue.length > 0 && <input type="hidden" name="fila" value={queue.join(",")} />}
 
       {/* ----------------------------- barra superior ----------------------------- */}
       <div className="flex min-h-[55px] flex-wrap items-center justify-between gap-2 border-b border-[var(--border-hair)] px-4 py-2 sm:px-6 lg:px-10">
@@ -496,45 +491,7 @@ function CheckinFormInner({ client, history, accounts, me, scales, previous, tod
         </div>
       </div>
 
-      {/* ------------------------------ gaveta: roteiro ------------------------------ */}
-      <SidePanel open={script} onClose={() => setScript(false)} label="Roteiro da ligação" width={416}>
-        <div className="space-y-2 border-b border-[var(--border-hair)] p-5">
-          <div className="flex items-center gap-2.5">
-            <Icon name="book" size={18} className="text-ink-300" />
-            <h2 className="flex-1 font-display text-[17px] font-semibold text-ink-100">Roteiro da ligação</h2>
-            <button type="button" onClick={() => setScript(false)} className="modal-x" aria-label="Fechar">
-              <Icon name="x" size={16} />
-            </button>
-          </div>
-          <p className="text-[13px] leading-[19px] text-ink-300">
-            Leia as perguntas em voz alta, na ordem. O roteiro não salva nada — a nota que o cliente der você registra no formulário ao lado.
-          </p>
-        </div>
-        <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5">
-          {scales.map((s, i) => {
-            const c = COPY[s.key];
-            return (
-              <div key={s.key} className="space-y-2">
-                <p className="flex items-center gap-2 text-[11px] font-semibold uppercase text-ink-500">
-                  <span className="tnum">{String(i + 1).padStart(2, "0")}</span>
-                  {c?.title ?? s.key}
-                </p>
-                <p className="text-[15px] font-medium leading-[22px] text-ink-100">“{s.question}”</p>
-                {c && <p className="text-[12px] text-ink-300">{c.tip}</p>}
-                {c && (
-                  <p className="text-[12px] text-ink-500">
-                    1 = {c.lo} · 5 = {c.hi}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        <p className="m-5 mt-0 flex gap-2.5 rounded-[10px] bg-ink-850 p-3 text-[12px] leading-[17px] text-ink-300">
-          <Icon name="alertCircle" size={15} className="mt-0.5 shrink-0" />
-          Presença, adimplência, renovação e risco são fatos objetivos — preencha depois da ligação, sem perguntar ao cliente.
-        </p>
-      </SidePanel>
+      <ScriptPanel open={script} onClose={() => setScript(false)} scales={scales} />
 
       {/* ------------------------- gaveta: ficha e histórico ------------------------- */}
       <SidePanel open={ficha} onClose={() => setFicha(false)} label="Ficha e histórico" width={440}>

@@ -9,9 +9,17 @@ export const dynamic = "force-dynamic";
 
 const SCALE_ORDER = ["q1_satisfaction", "q2_climate", "q3_trust", "q4_lead_quality", "q5_engagement", "q6_expectation"];
 
-export default async function CheckinFormPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CheckinFormPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ fila?: string }>;
+}) {
   const me = await requireUser();
   const { id } = await params;
+  const { fila } = await searchParams;
+  const queue = (fila ?? "").split(",").map(Number).filter((n) => n > 0 && n !== Number(id));
   const clientId = Number(id);
   const at = today();
   // Cadastro, histórico, score e time em paralelo — um round-trip de espera.
@@ -53,6 +61,7 @@ export default async function CheckinFormPage({ params }: { params: Promise<{ id
       scales={scales}
       previous={score ? { score: score.score, band: score.band } : null}
       today={at}
+      queue={queue}
     />
   );
 }
