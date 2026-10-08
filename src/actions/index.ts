@@ -12,6 +12,7 @@ import {
   deletePlan,
   getClient,
   getGoogleLink,
+  previewScore,
   getMetaLink,
   getPlan,
   importClients,
@@ -54,7 +55,7 @@ import {
 import { getConfig, getWeights } from "@/lib/repo";
 import { targetKeysFor } from "@/lib/model/catalog";
 import { parseCheckinForm, parsePerformanceForm } from "@/lib/model/form";
-import type { AccountType, DimensionKey } from "@/lib/model/types";
+import type { AccountType, Band, DimensionKey } from "@/lib/model/types";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
 import { DIMENSIONS } from "@/lib/model/catalog";
 import { requireAdmin, requireUser } from "@/lib/auth";
@@ -112,7 +113,7 @@ export async function savePerformance(formData: FormData) {
 /* ------------------- input do Account (check-in) ------------------- */
 
 export async function saveCheckin(formData: FormData) {
-  await requireUser();
+  const me = await requireUser();
   const clientId = Number(str(formData, "client_id"));
   const refDate = str(formData, "ref_date") || today();
   const filledBy = Number(str(formData, "filled_by")) || null;
@@ -126,11 +127,39 @@ export async function saveCheckin(formData: FormData) {
   // Check-in feito: a agenda do próximo volta a ser a regra de frescor.
   await setNextCheckin(clientId, null);
 
+  // Risco explícito de saída: o plano nasce junto com o check-in, com dono e prazo.
+  if (data.risk_flag === true && str(formData, "create_plan") === "on") {
+    const client = await getClient(clientId);
+    const owner = str(formData, "plan_owner") || client?.account_name || me.name;
+    await createPlan({
+      client_id: clientId,
+      created_by: me.id ?? null,
+      risk: "Risco de saída",
+      plan: String(data.risk_note || "Risco explícito de saída identificado no check-in."),
+      owner,
+      due_date: str(formData, "plan_due") || null,
+      priority: "alta",
+      dimension: "relationship",
+      tasks: [],
+    });
+    await logChange(me, "plano", `Plano de ação criado: Risco de saída`, { clientId });
+  }
+
   await refresh(clientId);
   revalidatePath("/");
   revalidatePath("/account");
   revalidatePath(`/clientes/${clientId}`);
   redirect(`/clientes/${clientId}?ok=${encodeURIComponent("Check-in salvo e score recalculado.")}`);
+}
+
+/** Score que o check-in em preenchimento daria — não grava nada. */
+export async function previewCheckin(
+  clientId: number,
+  values: Record<string, string>,
+): Promise<{ score: number | null; band: Band | null } | null> {
+  await requireUser();
+  const r = await previewScore(clientId, values.ref_date || today(), parseCheckinForm((k) => values[k] ?? ""));
+  return r ? { score: r.score, band: r.band } : null;
 }
 
 /* -------------------------- cadastro ------------------------------- */

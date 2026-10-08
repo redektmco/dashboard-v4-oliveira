@@ -371,6 +371,16 @@ test("Check-in em branco não vira nota zero — vira ausência", () => {
   assert.equal(data.payment_ok, false);
 });
 
+test("Check-in: 'não verificado' e 'não sei' ficam em branco, não viram não", () => {
+  const data = parseCheckinForm((k) => ({ payment_ok: "nv", risk_flag: "nao_sei", q1_satisfaction: "4" })[k] ?? "");
+  assert.equal(data.payment_ok, null);
+  assert.equal(data.risk_flag, null);
+  assert.equal(data.q1_satisfaction, 4);
+  const sim = parseCheckinForm((k) => ({ payment_ok: "sim", risk_flag: "sim" })[k] ?? "");
+  assert.equal(sim.payment_ok, true);
+  assert.equal(sim.risk_flag, true);
+});
+
 /* ------------------------- Social media: mídia ------------------------- */
 
 test("Upload recusa HEIC com instrução clara e aceita JPG/MP4", () => {

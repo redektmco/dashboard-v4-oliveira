@@ -554,6 +554,26 @@ export async function scoreFor(clientId: number, at = today()): Promise<ScoreRes
   return scoreFrom(client, perf, chk, at, weights, config, overlay);
 }
 
+/**
+ * Score que a conta teria se este check-in fosse salvo agora. Não grava nada:
+ * o formulário usa para mostrar o resultado quando todas as respostas estão
+ * preenchidas.
+ */
+export async function previewScore(clientId: number, refDate: string, data: Record<string, unknown>, at = today()): Promise<ScoreResult | null> {
+  const [client, perf, chk, weights, config, overlay] = await Promise.all([
+    getClient(clientId),
+    perfSnapshots(clientId, SCORE_WINDOW),
+    checkinSnapshots(clientId, SCORE_WINDOW),
+    getWeights(),
+    getConfig(),
+    autoOverlay(clientId),
+  ]);
+  if (!client) return null;
+  const draft: Snap = { id: -1, client_id: clientId, ref_date: refDate, filled_by: null, filled_at: at, filler: null, data };
+  const all = [draft, ...chk].sort((a, b) => (a.ref_date < b.ref_date ? 1 : a.ref_date > b.ref_date ? -1 : 0));
+  return scoreFrom(client, perf, all, at, weights, config, overlay);
+}
+
 export type ScoreSnapRow = {
   id: number;
   client_id: number;

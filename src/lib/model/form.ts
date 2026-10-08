@@ -43,11 +43,13 @@ export function parseCheckinForm(get: Getter): Record<string, unknown> {
   for (const f of fieldsFor("lead_gen", "account")) {
     const i = f.input;
     if (i.kind === "scale5") data[i.key] = toNumber(get(i.key));
-    else if (i.kind === "bool") data[i.key] = get(i.key) === "sim";
+    // "nv" = não verificado: fica em branco (sem nota), não vira "não".
+    else if (i.kind === "bool") data[i.key] = get(i.key) === "nv" ? null : get(i.key) === "sim";
     else if (i.kind === "tri") data[i.key] = get(i.key);
     else if (i.kind === "date") data[i.key] = get(i.key) || null;
   }
-  data.risk_flag = get("risk_flag") === "sim";
+  // "nao_sei": o Account não sabe dizer — não força banda nem descarta o risco.
+  data.risk_flag = get("risk_flag") === "nao_sei" ? null : get("risk_flag") === "sim";
   data.risk_note = get("risk_note");
   data.summary = get("summary");
   return data;

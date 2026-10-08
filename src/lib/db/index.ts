@@ -601,7 +601,7 @@ ALTER TABLE billing_charges ADD CONSTRAINT billing_charges_recurrence_check
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-10-02.redesign";
+export const SCHEMA_VERSION = "2026-10-08.google-ads";
 
 let migrated = false;
 
