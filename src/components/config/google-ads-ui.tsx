@@ -35,10 +35,13 @@ export type GoogleLinkView = { customerId: string; label: string; client: string
 /** Vincular e gerenciar as contas do Google Ads de cada cliente. */
 export function GoogleAccountsButton({
   configured,
+  missing = [],
   clients,
   links,
 }: {
   configured: boolean;
+  /** Variáveis de ambiente que faltam (só os nomes). */
+  missing?: string[];
   clients: { id: number; label: string }[];
   links: GoogleLinkView[];
 }) {
@@ -104,9 +107,17 @@ export function GoogleAccountsButton({
       >
         <div className="space-y-4">
           {!configured && (
-            <p className="rounded-lg bg-vermelho-dim px-3 py-2 text-[13px] font-semibold text-vermelho-fg">
-              Credencial não configurada. Defina GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_SA_EMAIL e GOOGLE_SA_PRIVATE_KEY na Vercel.
-            </p>
+            <div className="space-y-1.5 rounded-lg bg-vermelho-dim px-3 py-2 text-[13px] text-vermelho-fg">
+              <p className="font-semibold">Credencial não configurada neste deploy.</p>
+              {missing.length > 0 && (
+                <p>
+                  Faltando: <code className="font-mono text-[12px]">{missing.join(", ")}</code>
+                </p>
+              )}
+              <p className="text-[12px] opacity-90">
+                Cadastre na Vercel (Settings › Environment Variables, no ambiente Production) e faça um novo deploy — variável nova só vale a partir do próximo deploy.
+              </p>
+            </div>
           )}
 
           {links.length > 0 && (

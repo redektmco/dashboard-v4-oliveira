@@ -42,6 +42,23 @@ function serviceAccount(): ServiceAccount | null {
 
 export const googleAdsConfigured = () => Boolean(process.env.GOOGLE_ADS_DEVELOPER_TOKEN && serviceAccount());
 
+/**
+ * Nomes das variáveis que ainda faltam (só os nomes, nunca os valores) — o
+ * painel mostra isso em vez de um "não configurado" genérico.
+ */
+export function googleAdsMissing(): string[] {
+  const missing: string[] = [];
+  if (!process.env.GOOGLE_ADS_DEVELOPER_TOKEN) missing.push("GOOGLE_ADS_DEVELOPER_TOKEN");
+  if (!serviceAccount()) {
+    if (process.env.GOOGLE_SA_JSON) missing.push("GOOGLE_SA_JSON (JSON inválido ou sem client_email/private_key)");
+    else {
+      if (!process.env.GOOGLE_SA_EMAIL) missing.push("GOOGLE_SA_EMAIL");
+      if (!process.env.GOOGLE_SA_PRIVATE_KEY) missing.push("GOOGLE_SA_PRIVATE_KEY");
+    }
+  }
+  return missing;
+}
+
 let cached: { token: string; exp: number } | null = null;
 
 async function accessToken(): Promise<string> {

@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { googleWeeks, metaWeeks } from "@/lib/repo";
 import { configSnapshot, daysSince, whenBR } from "@/lib/config-status";
 import { metaConfigured } from "@/lib/meta/graph";
-import { googleAdsConfigured } from "@/lib/google/ads";
+import { googleAdsConfigured, googleAdsMissing } from "@/lib/google/ads";
 import { formatCustomerId } from "@/lib/google/metrics";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
 import { currentRitualDate } from "@/lib/week";
@@ -172,6 +172,7 @@ export default async function IntegracoesPage() {
               <SyncGoogleButton disabled={!googleOn} />
               <GoogleAccountsButton
                 configured={googleOn}
+                missing={googleAdsMissing()}
                 clients={clientOptions}
                 links={snap.googleLinks.map((l) => ({
                   customerId: l.customer_id,
