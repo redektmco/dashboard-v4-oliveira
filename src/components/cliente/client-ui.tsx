@@ -413,7 +413,7 @@ function IndicatorsDrawer({
           </div>
 
           <footer className="flex justify-end gap-2 border-t border-[var(--border-hair)] px-6 py-4">
-            <Link href={`/config/clientes?c=${data.clientId}`} className="btn">
+            <Link href={`/clientes?c=${data.clientId}`} className="btn">
               <Icon name="target" size={16} />
               Alterar metas
             </Link>

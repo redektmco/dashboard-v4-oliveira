@@ -139,7 +139,7 @@ export default async function IntegracoesPage() {
 
   return (
     <ConfigPage>
-      <PageTitle title="Integrações" description="De onde vem o número da semana de cada conta — não há preenchimento manual. Vincular cada cliente acontece no painel do cliente, em Configurações › Clientes." />
+      <PageTitle title="Integrações" description="De onde vem o número da semana de cada conta — não há preenchimento manual. Vincular cada cliente acontece no painel do cliente, em Clientes." />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Connection
@@ -236,7 +236,7 @@ export default async function IntegracoesPage() {
               <div key={`${r.clientId}-${r.source}`} className="flex flex-col gap-3 border-b border-[var(--border-hair)] px-5 py-4">
                 <div className="flex items-center gap-2.5">
                   <Letter name={r.name} />
-                  <Link href={`/config/clientes?c=${r.clientId}`} className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <Link href={`/clientes?c=${r.clientId}`} className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="truncate text-[13px] font-semibold text-ink-100 hover:underline">{r.name}</span>
                     <span className="truncate text-[11px] text-ink-400">{r.source}</span>
                   </Link>
@@ -264,7 +264,7 @@ export default async function IntegracoesPage() {
                   : "Todos os clientes têm fonte de leads"}
               </span>
               {snap.semFonte.length > 0 && (
-                <Link href="/config/clientes?filtro=sem_fonte&seq=1" className="flex items-center gap-1 text-[13px] font-semibold text-ink-100 hover:underline">
+                <Link href="/clientes?filtro=sem_fonte&seq=1" className="flex items-center gap-1 text-[13px] font-semibold text-ink-100 hover:underline">
                   Conectar em Clientes
                   <Icon name="arrowRight" size={14} />
                 </Link>

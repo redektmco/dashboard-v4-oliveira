@@ -18,7 +18,7 @@ import {
 } from "@/lib/churn/types";
 import { Icon } from "../icon";
 import { FilterSelect, Switch, downloadCsv } from "./controls";
-import { ChurnHeader, TonePill } from "./ui";
+import { CHURN_TABS, ChurnHeader, TonePill } from "./ui";
 
 type Period = "ytd" | "12m" | "6m" | "prev";
 type Attempt = { requestId: number; strategy: string; result: AttemptResult; at: string };
@@ -209,8 +209,9 @@ export function ChurnAnalysis({
   return (
     <>
       <ChurnHeader
-        crumbs={[{ href: "/churn", label: "Churn" }, { label: "Histórico e análise" }]}
-        title="Histórico e análise de churn"
+        crumbs={[{ href: "/churn", label: "Churn" }]}
+        title="Histórico e análise"
+        tabs={CHURN_TABS}
         description="Entenda por que os clientes saem e quanto as tentativas de retenção estão funcionando."
         actions={
           <button type="button" className="btn" onClick={exportCsv}>

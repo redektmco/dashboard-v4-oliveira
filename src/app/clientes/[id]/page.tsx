@@ -15,6 +15,8 @@ import {
   today,
 } from "@/lib/repo";
 import { listClientChanges } from "@/lib/audit";
+import { requestsForClient } from "@/lib/churn/db";
+import { isOpen } from "@/lib/churn/types";
 import { ACCOUNT_TYPE_LABEL, type Band, type DimensionKey } from "@/lib/model/types";
 import { fieldByKey, targetKeysFor } from "@/lib/model/catalog";
 import { bandOf } from "@/lib/model/scoring";
@@ -34,6 +36,7 @@ import {
 } from "@/lib/client-view";
 import { CheckinHeatmap } from "@/components/charts";
 import { ClientActions } from "@/components/client-actions";
+import { PageHead } from "@/components/page-head";
 import { Icon, type IconName } from "@/components/icon";
 import { BAND_TEXT, Bar, BandPill, Card, ColLabel, DotLabel, Initials, KV, Pill, SectionHead, TONE, type Tone } from "@/components/kit";
 import {
@@ -81,7 +84,7 @@ export default async function ClientePage({
   if (!Number.isInteger(clientId)) notFound();
 
   const at = today();
-  const [client, s, series, perf, checkins, plans, targets, users, targetHist, audit, config] = await Promise.all([
+  const [client, s, series, perf, checkins, plans, targets, users, targetHist, audit, config, churns] = await Promise.all([
     getClient(clientId),
     scoreFor(clientId, at),
     scoreSeries(clientId, 365, at),
@@ -93,8 +96,10 @@ export default async function ClientePage({
     targetHistory(clientId, 300),
     listClientChanges(clientId, 40),
     getConfig(),
+    requestsForClient(clientId),
   ]);
   if (!client || !s) notFound();
+  const openChurn = churns.find((r) => isOpen(r.status)) ?? null;
 
   const drops = perfDropDays(series);
   const dropFields = await dimensionFieldsOn(clientId, "performance", drops.slice(-40));
@@ -197,30 +202,38 @@ export default async function ClientePage({
 
   return (
     <ClientUI data={uiData} history={history} startWithNewPlan={plano === "novo"}>
+      {/* Cabeçalho único (desktop e celular). O Churn abre a solicitação já
+          com a conta — ou a que está em andamento, para não duplicar. */}
+      <div className="mb-6 lg:mb-8">
+        <PageHead
+          crumbs={[{ href: "/clientes", label: "Clientes" }]}
+          title={client.name}
+          adornment={<BandPill band={s.band} />}
+          description={<MetaLine parts={metaParts} />}
+          actions={
+            <>
+              <Link href={`/account/${clientId}`} className="btn btn-light">
+                <Icon name="plus" size={16} />
+                Registrar check-in
+              </Link>
+              <Link href={`/gt?c=${clientId}`} className="btn">
+                <Icon name="target" size={16} stroke={1.75} />
+                Metas
+              </Link>
+              {(client.active || openChurn) && (
+                <Link href={openChurn ? `/churn/${openChurn.id}` : `/churn/nova?cliente=${clientId}`} className="btn btn-danger">
+                  <Icon name="userMinus" size={16} stroke={1.75} />
+                  Churn
+                </Link>
+              )}
+              <ClientActions client={client} users={users} targets={targets} size="md" />
+            </>
+          }
+        />
+      </div>
+
       {/* ============================ DESKTOP ============================ */}
       <div className="hidden flex-col gap-8 pb-6 lg:flex">
-        {/* Cabeçalho */}
-        <header className="flex flex-wrap items-end justify-between gap-4">
-          <div className="flex min-w-0 flex-col gap-2.5">
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="font-display text-[28px] font-semibold leading-tight tracking-[-0.6px] text-ink-100">{client.name}</h1>
-              <BandPill band={s.band} />
-            </div>
-            <MetaLine parts={metaParts} />
-          </div>
-          <div className="flex items-center gap-2">
-            <Link href={`/gt?c=${clientId}`} className="btn">
-              <Icon name="target" size={16} stroke={1.75} />
-              Metas
-            </Link>
-            <Link href={`/account/${clientId}`} className="btn btn-light">
-              <Icon name="plus" size={16} />
-              Registrar check-in
-            </Link>
-            <ClientActions client={client} users={users} targets={targets} size="md" />
-          </div>
-        </header>
-
         {/* Resumo da conta */}
         <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_404px]">
           <HealthCard
@@ -352,30 +365,6 @@ export default async function ClientePage({
 
       {/* ============================ CELULAR ============================ */}
       <div className="flex flex-col gap-4 pb-8 lg:hidden">
-        <header className="flex flex-col gap-2.5">
-          <Link href="/" className="flex w-fit items-center gap-1.5 text-[13px] text-ink-300">
-            <Icon name="arrowLeft" size={15} />
-            Carteira
-          </Link>
-          <h1 className="font-display text-[22px] font-semibold leading-tight tracking-[-0.4px] text-ink-100">{client.name}</h1>
-          <p className="text-[13px] leading-5 text-ink-300">
-            {metaParts.map((p) => (p.k ? `${p.k} ${p.v}` : p.v)).join(" · ")}
-          </p>
-          <div className="flex flex-col gap-2 pt-1.5">
-            <Link href={`/account/${clientId}`} className="btn btn-light h-[42px] w-full">
-              <Icon name="plus" size={16} />
-              Registrar check-in
-            </Link>
-            <div className="flex gap-2">
-              <Link href={`/gt?c=${clientId}`} className="btn h-[42px] flex-1">
-                <Icon name="target" size={16} stroke={1.75} />
-                Metas
-              </Link>
-              <ClientActions client={client} users={users} targets={targets} size="lg" />
-            </div>
-          </div>
-        </header>
-
         <Card className="flex flex-col gap-3.5 p-4">
           <div className="flex items-center justify-between">
             <span className="text-[13px] font-medium text-ink-300">Health Score</span>
@@ -524,12 +513,13 @@ function MetaLine({ parts }: { parts: { k?: string; v: string }[] }) {
   return (
     <div className="flex flex-wrap items-center gap-2 text-[13px]">
       {parts.map((p, i) => (
+        // O ponto fica no fim do item: quando a linha quebra, a seguinte não começa com "·".
         <span key={i} className="flex items-center gap-2">
-          {i > 0 && <span className="text-ink-500">·</span>}
           <span className="flex gap-[5px]">
             {p.k && <span className="text-ink-400">{p.k}</span>}
             <span className="text-ink-300">{p.v}</span>
           </span>
+          {i < parts.length - 1 && <span className="text-ink-500">·</span>}
         </span>
       ))}
     </div>

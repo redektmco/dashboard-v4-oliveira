@@ -28,8 +28,9 @@ export function AppFrame({
 }) {
   const path = usePathname();
   if (path.startsWith("/a/")) return <>{children}</>;
-  // Configurações e Performance desenham a própria faixa de abas de ponta a ponta.
-  const config = path.startsWith("/config") || path.startsWith("/gt");
+  // Configurações, Performance e a lista de Clientes têm moldura própria
+  // (respiro da página e, em Clientes, o painel lateral de ponta a ponta).
+  const config = path.startsWith("/config") || path.startsWith("/gt") || path === "/clientes";
   return (
     <>
       <Sidebar user={user} avisos={avisos} />

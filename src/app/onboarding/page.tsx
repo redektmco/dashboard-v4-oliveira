@@ -34,8 +34,7 @@ export default async function OnboardingHome() {
   return (
     <div className="space-y-6">
       <PageHeader
-        icon="book"
-        eyebrow="V4 Oliveira & Co"
+        eyebrow="Onboarding"
         title="Portal de Onboarding"
         description="Tudo o que você precisa para começar bem — cultura, sua função, processos e acessos."
         actions={

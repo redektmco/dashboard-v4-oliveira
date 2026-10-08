@@ -14,8 +14,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className="space-y-5">
       <PageHeader
-        icon="wrench"
-        eyebrow="Onboarding · CMS"
+        back={{ href: "/onboarding", label: "Onboarding" }}
         title="Administração do onboarding"
         description="Gerencie categorias, módulos e aulas. Rascunhos não aparecem para o time."
         actions={

@@ -200,7 +200,7 @@ function Inner({
                   <Icon name="database" size={14} className="text-ink-400" />
                   <span className="text-[12px] text-ink-300">Resumo do contrato</span>
                   <span className="flex-1" />
-                  <Link href="/config/clientes" className="text-[11px] text-ink-500 hover:text-ink-100">
+                  <Link href="/clientes" className="text-[11px] text-ink-500 hover:text-ink-100">
                     Puxado do cadastro do cliente · editar
                   </Link>
                 </div>

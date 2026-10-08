@@ -53,22 +53,16 @@ export default async function PendenciasPage() {
 
   return (
     <ConfigPage wide>
-      {/* ------------------------------ desktop ------------------------------ */}
-      <div className="hidden lg:block">
-        <PageTitle
-          title="Pendências"
-          description="O que falta para o score refletir a carteira inteira — em ordem de impacto."
-          aside={
-            <span className="flex items-center gap-1.5 text-[12px] text-ink-400">
-              <Icon name="refresh" size={13} />
-              {verified}
-            </span>
-          }
-        />
-      </div>
-      <div className="lg:hidden">
-        <PageTitle title="Pendências" description="O que falta para o score refletir a carteira inteira." />
-      </div>
+      <PageTitle
+        title="Pendências"
+        description="O que falta para o score refletir a carteira inteira — em ordem de impacto."
+        aside={
+          <span className="hidden items-center gap-1.5 text-[12px] text-ink-400 lg:flex">
+            <Icon name="refresh" size={13} />
+            {verified}
+          </span>
+        }
+      />
 
       {/* Prontidão da carteira */}
       <Card className="hidden overflow-hidden lg:flex">

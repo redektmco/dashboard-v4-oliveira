@@ -7,6 +7,7 @@ import { Icon, type IconName } from "../icon";
 import { Modal } from "../modal";
 import { ScriptPanel, type Scale } from "../checkin-script";
 import { BAND_TEXT, Initials, Pill } from "../kit";
+import { PageHead } from "../page-head";
 
 export type QueueRow = {
   id: number;
@@ -105,29 +106,28 @@ export function CheckinQueue({ rows, limit, scales }: { rows: QueueRow[]; limit:
   return (
     <div className="flex flex-col gap-6 pb-12 lg:px-3 lg:pt-4">
       {/* ------------------------------ cabeçalho ------------------------------ */}
-      <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div className="min-w-0 space-y-1.5">
-          <h1 className="font-display text-[22px] font-semibold tracking-[-0.6px] text-ink-100 lg:text-[26px]">Check-ins</h1>
-          <p className="text-[13px] text-ink-300 lg:text-[14px]">
-            Registre sua leitura do relacionamento logo após a call — cerca de 3 minutos por conta.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 xl:shrink-0 xl:flex-nowrap">
-          <label className="relative w-full sm:w-[240px]">
-            <span className="sr-only">Buscar cliente</span>
-            <Icon name="search" size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-500" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar cliente…" className="field pl-9" />
-          </label>
-          <button type="button" className="btn btn-ghost" onClick={() => setScript(true)}>
-            <Icon name="scrollText" size={15} />
-            Roteiro da ligação
-          </button>
-          <button type="button" className="btn btn-light" onClick={() => setPicker(true)}>
-            <Icon name="plus" size={15} />
-            Registrar check-in
-          </button>
-        </div>
-      </header>
+      <PageHead
+        crumbs={[{ label: "Account" }]}
+        title="Check-ins"
+        description="Registre sua leitura do relacionamento logo após a call — cerca de 3 minutos por conta."
+        actions={
+          <>
+            <label className="relative w-full sm:w-[240px]">
+              <span className="sr-only">Buscar cliente</span>
+              <Icon name="search" size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-500" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar cliente…" className="field pl-9" />
+            </label>
+            <button type="button" className="btn btn-ghost" onClick={() => setScript(true)}>
+              <Icon name="scrollText" size={15} />
+              Roteiro da ligação
+            </button>
+            <button type="button" className="btn btn-light" onClick={() => setPicker(true)}>
+              <Icon name="plus" size={15} />
+              Registrar check-in
+            </button>
+          </>
+        }
+      />
 
       {/* ------------------------------ cobertura ------------------------------ */}
       <section className="flex flex-col gap-5 rounded-xl border border-[var(--border-hair)] bg-ink-900 px-5 py-5 lg:flex-row lg:items-center lg:gap-8 lg:px-6" aria-label="Cobertura de leitura">
@@ -224,7 +224,7 @@ export function CheckinQueue({ rows, limit, scales }: { rows: QueueRow[]; limit:
                     {orphan ? (
                       <>
                         <span className="hidden text-[12px] text-amarelo-fg sm:inline">Sem responsável, ninguém faz a leitura</span>
-                        <Link href="/config/clientes" className="btn btn-ghost btn-sm text-ink-100">
+                        <Link href="/clientes" className="btn btn-ghost btn-sm text-ink-100">
                           <Icon name="userPlus" size={14} />
                           Atribuir {GROUP_LABEL[groupBy]}
                         </Link>

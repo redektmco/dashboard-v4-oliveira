@@ -10,7 +10,15 @@ import { ActionMenu } from "./action-menu";
 import { Icon, type IconName } from "./icon";
 
 type SubLink = { href: string; label: string; admin?: boolean };
-type NavLink = { href: string; label: string; hint: string; icon: IconName; children?: SubLink[] };
+type NavLink = {
+  href: string;
+  label: string;
+  hint: string;
+  icon: IconName;
+  children?: SubLink[];
+  /** No celular fica na gaveta da conta, não na barra de abas (cabem cinco). */
+  drawer?: boolean;
+};
 
 /**
  * Navegação principal = o que o time faz toda semana. Cadastro, calibração e
@@ -34,6 +42,7 @@ const MAIN: NavLink[] = [
       { href: "/gt/canais", label: "Canais de envio", admin: true },
     ],
   },
+  { href: "/clientes", label: "Clientes", hint: "Cadastro, metas e fontes de dados", icon: "briefcase" },
   { href: "/account", label: "Check-in", hint: "Account · depois da call", icon: "users" },
   {
     href: "/churn",
@@ -50,6 +59,7 @@ const MAIN: NavLink[] = [
     label: "Social media",
     hint: "Aprovação e calendário",
     icon: "image",
+    drawer: true,
     children: [
       { href: "/social", label: "Projetos" },
       { href: "/social/planejamento", label: "Planejamento" },
@@ -60,6 +70,7 @@ const MAIN: NavLink[] = [
     label: "Onboarding",
     hint: "Portal de aprendizagem do time",
     icon: "book",
+    drawer: true,
     children: [
       { href: "/onboarding", label: "Trilhas" },
       { href: "/onboarding/admin", label: "Conteúdo", admin: true },
@@ -69,11 +80,10 @@ const MAIN: NavLink[] = [
 const SETTINGS: NavLink = {
   href: "/config",
   label: "Configurações",
-  hint: "Clientes, cobrança, calibração e usuários",
+  hint: "Cobrança, calibração e usuários",
   icon: "settings",
   children: [
     { href: "/config", label: "Pendências" },
-    { href: "/config/clientes", label: "Clientes" },
     { href: "/config/cobranca", label: "Cobrança", admin: true },
     { href: "/config/modelo", label: "Modelo e calibração" },
     { href: "/config/usuarios", label: "Usuários", admin: true },
@@ -81,14 +91,6 @@ const SETTINGS: NavLink = {
 };
 
 const isActive = (href: string, path: string) => (href === "/" ? path === "/" : path.startsWith(href));
-
-/** Título da rota atual — usado no cabeçalho mobile e na topbar. */
-function currentLabel(path: string) {
-  return (
-    [...MAIN, SETTINGS].find((l) => isActive(l.href, path))?.label ??
-    (path.startsWith("/clientes") ? "Cliente" : "Health Score")
-  );
-}
 
 const ROLE_LABEL: Record<string, string> = {
   gt: "GT",
@@ -289,8 +291,9 @@ function useSignOut() {
 export function MobileNav({ user }: { user: Perfil }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
-  const here = currentLabel(path);
   const out = useSignOut();
+  const drawerLinks = [...MAIN.filter((l) => l.drawer), SETTINGS];
+  const inDrawer = drawerLinks.some((l) => isActive(l.href, path));
 
   // Enquanto aberta, o fundo não rola e Esc fecha.
   useEffect(() => {
@@ -312,18 +315,17 @@ export function MobileNav({ user }: { user: Perfil }) {
           <Link href="/" aria-label="Carteira" className="shrink-0">
             <Image src="/brand/v4-simbolo.webp" alt="V4 Company" width={24} height={24} priority />
           </Link>
-          <div className="min-w-0 flex-1">
-            <span className="eyebrow block">Oliveira &amp; Co</span>
-            <span className="block truncate font-display text-[15px] font-bold leading-tight tracking-tight text-ink-100">
-              {here}
-            </span>
+          {/* Só a marca: o nome da tela vem no cabeçalho da própria página. */}
+          <div className="min-w-0 flex-1 leading-tight">
+            <span className="block font-display text-[13px] font-bold tracking-tight text-ink-100">Oliveira &amp; Co</span>
+            <span className="eyebrow block">Health Score</span>
           </div>
           <button
             type="button"
             onClick={() => setOpen(true)}
             aria-label={`Conta de ${user.name}`}
             aria-haspopup="dialog"
-            className={`rounded-full ${isActive(SETTINGS.href, path) ? "ring-2 ring-v4-red" : ""}`}
+            className={`rounded-full ${inDrawer ? "ring-2 ring-v4-red" : ""}`}
           >
             <Avatar name={user.name} size={36} />
           </button>
@@ -331,7 +333,7 @@ export function MobileNav({ user }: { user: Perfil }) {
       </header>
 
       <nav className="tabbar" aria-label="Navegação principal">
-        {MAIN.map((l) => (
+        {MAIN.filter((l) => !l.drawer).map((l) => (
           <Link
             key={l.href}
             href={l.href}
@@ -371,23 +373,26 @@ export function MobileNav({ user }: { user: Perfil }) {
             </div>
 
             <nav className="border-t border-[var(--border-hair)] px-2.5 py-2">
-              <Link
-                href={SETTINGS.href}
-                /* A gaveta fecha aqui, na própria navegação: fechá-la num
-                   efeito que observa o pathname custaria um render em
-                   cascata a cada troca de rota. */
-                onClick={() => setOpen(false)}
-                className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-semibold ${
-                  isActive(SETTINGS.href, path) ? "bg-[rgba(229,9,20,0.10)] text-ink-100" : "text-ink-200"
-                }`}
-              >
-                <Icon name={SETTINGS.icon} size={19} stroke={1.75} />
-                <span className="min-w-0 flex-1">
-                  {SETTINGS.label}
-                  <span className="block text-[11px] font-normal text-ink-500">{SETTINGS.hint}</span>
-                </span>
-                <Icon name="chevronRight" size={15} className="text-ink-600" />
-              </Link>
+              {drawerLinks.map((l) => (
+                <Link
+                  key={l.href}
+                  href={l.href}
+                  /* A gaveta fecha aqui, na própria navegação: fechá-la num
+                     efeito que observa o pathname custaria um render em
+                     cascata a cada troca de rota. */
+                  onClick={() => setOpen(false)}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-semibold ${
+                    isActive(l.href, path) ? "bg-[rgba(229,9,20,0.10)] text-ink-100" : "text-ink-200"
+                  }`}
+                >
+                  <Icon name={l.icon} size={19} stroke={1.75} />
+                  <span className="min-w-0 flex-1">
+                    {l.label}
+                    <span className="block text-[11px] font-normal text-ink-500">{l.hint}</span>
+                  </span>
+                  <Icon name="chevronRight" size={15} className="text-ink-600" />
+                </Link>
+              ))}
             </nav>
 
             <div className="border-t border-[var(--border-hair)] px-5 py-3.5">

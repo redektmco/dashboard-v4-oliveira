@@ -27,6 +27,8 @@ const nextConfig: NextConfig = {
       // Performance, junto das metas — o preenchimento manual acabou.
       { source: "/config/integracoes", destination: "/gt/integracoes", permanent: true },
       { source: "/config/canais", destination: "/gt/canais", permanent: true },
+      // Clientes saiu de Configurações e virou item do menu lateral.
+      { source: "/config/clientes", destination: "/clientes", permanent: true },
     ];
   },
 };

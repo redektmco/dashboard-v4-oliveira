@@ -1,11 +1,10 @@
 import { DIMENSIONS, SCALE_ANCHORS, fieldsFor } from "@/lib/model/catalog";
 import { getConfig, getWeights } from "@/lib/repo";
 import { ACCOUNT_TYPE_LABEL, type AccountType } from "@/lib/model/types";
-import { Panel, SectionHeader, TableScroll } from "@/components/ui";
+import { Panel, TableScroll } from "@/components/ui";
+import { PageHead } from "@/components/page-head";
 import { requireUser } from "@/lib/auth";
-import Link from "next/link";
 import { ConfigPage } from "@/components/config-shell";
-import { Icon } from "@/components/icon";
 
 export const dynamic = "force-dynamic";
 
@@ -19,11 +18,8 @@ export default async function ModeloPage() {
   return (
     <ConfigPage>
     <div className="space-y-6">
-      <Link href="/config/modelo" className="flex w-fit items-center gap-1.5 text-[13px] text-ink-300 hover:text-ink-100">
-        <Icon name="arrowLeft" size={15} />
-        Modelo e calibração
-      </Link>
-      <SectionHeader
+      <PageHead
+        crumbs={[{ href: "/config/modelo", label: "Modelo e calibração" }]}
         title="O modelo, aberto"
         description="Nenhum peso é chute — cada um sai de duas perguntas objetivas: quão cedo a dimensão avisa o churn, e quão confiável é o dado. Dado duro e antecipatório pesa mais; nota subjetiva pesa menos porque tem ruído."
       />

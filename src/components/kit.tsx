@@ -1,5 +1,6 @@
 import type { Band } from "@/lib/model/types";
 import { Icon, type IconName } from "./icon";
+import { PageHead } from "./page-head";
 
 /**
  * Peças visuais do redesign (ficha do cliente e Configurações). Cores e
@@ -94,6 +95,7 @@ export function SectionHead({
 }
 
 /** Título de página de Configurações: 24px, descrição 14px. */
+/** Título de página — o cabeçalho único do app (ver `PageHead`). */
 export function PageTitle({
   title,
   description,
@@ -103,17 +105,7 @@ export function PageTitle({
   description?: React.ReactNode;
   aside?: React.ReactNode;
 }) {
-  return (
-    <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-      <div className="min-w-0">
-        <h1 className="font-display text-[22px] font-semibold tracking-[-0.4px] text-ink-100 lg:text-[24px] lg:tracking-[-0.5px]">
-          {title}
-        </h1>
-        {description && <p className="mt-1.5 text-[13px] text-ink-300 lg:text-[14px]">{description}</p>}
-      </div>
-      {aside}
-    </div>
-  );
+  return <PageHead title={title} description={description} actions={aside} />;
 }
 
 /** Trilho de progresso de 4px (ou 3px). `value` de 0 a 100. */

@@ -2,7 +2,7 @@ import { requireSocial } from "@/lib/auth";
 import { listPlanned } from "@/lib/social/db";
 import { Panel, PageHeader, Stat } from "@/components/ui";
 import PlanningCalendar, { type PlannedItem } from "@/components/social/planning-calendar";
-import { RouteTabs } from "@/components/tabs";
+import { SOCIAL_TABS } from "@/components/social/section";
 import { formatBadge } from "@/lib/social/media";
 
 export const dynamic = "force-dynamic";
@@ -33,18 +33,10 @@ export default async function PlanejamentoPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        icon="calendar"
         back={{ href: "/social", label: "Social media" }}
         title="Planejamento"
+        tabs={SOCIAL_TABS}
         description="Calendário de conteúdo aprovado. Visualize as datas marcadas por mês e organize a esteira de publicação de cada cliente."
-      />
-
-      <RouteTabs
-        items={[
-          { href: "/social", label: "Projetos", icon: "image", exact: true },
-          { href: "/social/planejamento", label: "Planejamento", icon: "calendar" },
-        ]}
-        label="Seções de Social media"
       />
 
       {items.length === 0 ? (

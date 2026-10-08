@@ -141,7 +141,7 @@ async function loadConfigSnapshot() {
       consequence: `A dimensão Qualidade de lead / MQL (${leadWeight}% do score) fica sem dado e reduz a confiança.`,
       shortConsequence: "Lead / MQL fica sem dado.",
       clients: pick(semFonte),
-      action: { label: "Conectar CRM", href: "/config/clientes?filtro=sem_fonte&seq=1", hint: "Gera uma URL de webhook por cliente" },
+      action: { label: "Conectar CRM", href: "/clientes?filtro=sem_fonte&seq=1", hint: "Gera uma URL de webhook por cliente" },
     });
   if (naoEnviadas.length)
     pendencias.push({

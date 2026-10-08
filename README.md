@@ -94,24 +94,29 @@ um round-trip HTTP; com a função no padrão `iad1` (EUA), cada uma cruzava o c
 | `/` | **Coordenador** | diária + semanal | "Quem eu ataco primeiro?" |
 | `/gt` | **GT** | quando a meta muda | Metas de cada conta. O número da semana vem só das integrações — não há preenchimento manual |
 | `/account` → `/account/[id]` | **Account** | a cada check-in | "O cliente está satisfeito e engajado?" |
-| `/clientes/[id]` | todos | — | decomposição, histórico, planos |
+| `/clientes` | coordenação | — | cadastro, metas (com sugestão pela média de 90 dias) e fonte de leads, cliente a cliente ou em sequência |
+| `/clientes/[id]` | todos | — | decomposição, histórico, planos; botão **Churn** abre a solicitação de cancelamento da conta |
 | `/gt/integracoes` | admin | — | Meta Ads, Google Ads, webhooks de CRM e saúde de cada integração |
 | `/gt/canais` | admin | — | e-mail e WhatsApp das cobranças (credenciais nas variáveis de ambiente) |
 | `/churn` → `/churn/[id]` | todos | por pedido | solicitações de cancelamento já feitas pelo cliente: abertura, tentativas de retenção (`/retencao`), conclusão (`/concluir`) |
 | `/churn/analise` | coordenação | mensal | por que os clientes saem, receita perdida/preservada e sucesso da retenção por estratégia |
 | `/social` | social + admin | por entrega | aprovação de criativos e calendário |
 | `/config` | coordenação | — | Pendências: o que falta para o score refletir a carteira, o que está funcionando e as últimas alterações |
-| `/config/clientes` | coordenação | — | cadastro, metas (com sugestão pela média de 90 dias) e fonte de leads, cliente a cliente ou em sequência |
 | `/config/cobranca` | admin | mensal | cobranças por cliente (única, mensal, trimestral, anual) e histórico de disparos |
 | `/config/modelo` | coordenação | trimestral | pesos e regras com prévia do impacto; cada salvamento vira uma versão (dá para voltar) |
 | `/config/modelo/detalhes` | todos | — | pesos, réguas e justificativas, abertos |
 | `/config/usuarios` | admin | — | quem entra no painel, senha, permissão, exclusão |
 
-O menu principal tem só as jornadas (Carteira, Performance, Check-in, Churn, Social media, Onboarding);
-administração mora em Configurações, que tem moldura própria (menu de seções com contadores e
-"Voltar para a carteira"). Integrações e canais de envio moram em Performance, junto das metas.
+O menu principal tem as jornadas e o cadastro (Carteira, Performance, Clientes, Check-in, Churn,
+Social media, Onboarding — no celular, as duas últimas ficam na gaveta do avatar); administração
+mora em Configurações. Integrações e canais de envio moram em Performance, junto das metas.
 Os endereços antigos (`/usuarios`, `/integracoes`, `/modelo`, `/config/calibracao`,
-`/config/integracoes`, `/config/canais`, `/gt/[id]`) redirecionam.
+`/config/integracoes`, `/config/canais`, `/config/clientes`, `/gt/[id]`) redirecionam.
+
+Toda tela usa o mesmo cabeçalho (`PageHead`, em `src/components/page-head.tsx`): o caminho em caixa
+alta, o título, uma linha de contexto, as ações à direita e, quando a seção tem, as abas embaixo.
+Seções com abas (Configurações, Performance) declaram seção e abas no layout com `SectionProvider`;
+cada página só diz o próprio título.
 
 A ficha do cliente (`/clientes/[id]`) mostra o Health Score, o status da conta, as próximas
 ações (metas pendentes, check-in agendado, planos), o diagnóstico por dimensão com o

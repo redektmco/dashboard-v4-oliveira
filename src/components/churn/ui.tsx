@@ -1,6 +1,6 @@
-import Link from "next/link";
 import type { ChurnTone } from "@/lib/churn/types";
 import { Icon, type IconName } from "../icon";
+import { PageHead, type HeadTab } from "../page-head";
 
 /**
  * Peças visuais do módulo de Churn. Mesma linguagem do resto do redesign
@@ -71,49 +71,30 @@ export function BoxHead({
   );
 }
 
-/** Título de página: breadcrumb opcional, título 26px (+ pílula), descrição e ações. */
+/** Título de página do Churn — o cabeçalho único do app (ver `PageHead`). */
 export function ChurnHeader({
   crumbs,
   title,
   pill,
   description,
   actions,
+  tabs,
 }: {
   crumbs?: { href?: string; label: string }[];
   title: React.ReactNode;
   pill?: React.ReactNode;
   description?: React.ReactNode;
   actions?: React.ReactNode;
+  tabs?: HeadTab[];
 }) {
-  return (
-    <header className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-      <div className="min-w-0 space-y-2">
-        {crumbs && (
-          <nav className="flex flex-wrap items-center gap-1.5 text-[12px]" aria-label="Caminho">
-            {crumbs.map((c, i) => (
-              <span key={i} className="flex items-center gap-1.5">
-                {i > 0 && <Icon name="chevronRight" size={12} className="text-ink-600" />}
-                {c.href ? (
-                  <Link href={c.href} className="text-ink-500 hover:text-ink-100">
-                    {c.label}
-                  </Link>
-                ) : (
-                  <span className="text-ink-300">{c.label}</span>
-                )}
-              </span>
-            ))}
-          </nav>
-        )}
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="font-display text-[22px] font-semibold tracking-[-0.6px] text-ink-100 lg:text-[26px]">{title}</h1>
-          {pill}
-        </div>
-        {description && <p className="text-[13px] text-ink-300 lg:text-[14px]">{description}</p>}
-      </div>
-      {actions && <div className="flex flex-wrap items-center gap-2 xl:shrink-0 xl:flex-nowrap">{actions}</div>}
-    </header>
-  );
+  return <PageHead crumbs={crumbs} title={title} adornment={pill} description={description} actions={actions} tabs={tabs} />;
 }
+
+/** Abas do Churn, no cabeçalho das duas telas de lista. */
+export const CHURN_TABS: HeadTab[] = [
+  { href: "/churn", label: "Solicitações", icon: "listTodo", exact: true },
+  { href: "/churn/analise", label: "Histórico e análise", icon: "chart" },
+];
 
 /** Rótulo de seção em caixa alta (10px). */
 export function Caps({ children, className = "" }: { children: React.ReactNode; className?: string }) {

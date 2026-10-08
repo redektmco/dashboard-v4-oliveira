@@ -10,7 +10,7 @@ import { ClientLink, PageHeader, Stat, TableScroll } from "@/components/ui";
 import { Icon } from "@/components/icon";
 import { NewProjectButton } from "@/components/social/new-project-form";
 import { ClientBoard } from "@/components/social/client-board";
-import { RouteTabs } from "@/components/tabs";
+import { SOCIAL_TABS } from "@/components/social/section";
 
 export const dynamic = "force-dynamic";
 
@@ -39,20 +39,13 @@ export default async function SocialPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        icon="image"
-        title="Social media"
+        eyebrow="Social media"
+        title="Projetos"
         description="Aprovação de posts, carrosséis, Reels e Stories pelo link do cliente, e o calendário do que foi aprovado."
+        tabs={SOCIAL_TABS}
         actions={
           canManage ? <NewProjectButton clients={clients.map((c) => ({ id: c.id, name: c.name }))} /> : null
         }
-      />
-
-      <RouteTabs
-        items={[
-          { href: "/social", label: "Projetos", icon: "image", exact: true },
-          { href: "/social/planejamento", label: "Planejamento", icon: "calendar" },
-        ]}
-        label="Seções de Social media"
       />
 
       {/* Os quatro números que pedem ação, não inventário. */}

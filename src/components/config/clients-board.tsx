@@ -13,7 +13,8 @@ import { ConfirmDialog, ImpactList, Modal } from "../modal";
 import { SidePanel } from "../side-panel";
 import { toast } from "../toast";
 import { Icon, type IconName } from "../icon";
-import { ColLabel, Letter, PageTitle } from "../kit";
+import { ColLabel, Letter } from "../kit";
+import { PageHead } from "../page-head";
 import { MetaConnectDialog, MetaLinkRow, WebhookBox, type MetaLinkView, type WebhookView } from "./connections";
 
 export type BoardClient = ClientFormClient & {
@@ -45,7 +46,7 @@ const hasSource = (r: BoardClient) => Boolean(r.hook?.active) || r.meta.some((m)
 
 
 /**
- * Configurações › Clientes. A lista mostra o que falta (meta, fonte de
+ * Clientes (menu lateral). A lista mostra o que falta (meta, fonte de
  * leads, cobrança) e o painel ao lado resolve um cliente de cada vez —
  * com "Salvar e ir para o próximo" para atravessar a fila dos pendentes.
  */
@@ -148,10 +149,11 @@ export function ClientsBoard({
   return (
     <div className="flex min-h-full">
       <div className="mx-auto flex w-full min-w-0 max-w-[1100px] flex-1 flex-col gap-5 px-4 pb-10 pt-5 lg:px-10 lg:pb-8 lg:pl-10 lg:pr-8 lg:pt-9">
-        <PageTitle
+        <PageHead
+          crumbs={[{ label: "Cadastro" }]}
           title="Clientes"
-          description="Metas e fontes de dados por cliente."
-          aside={
+          description="Cadastro, metas e fontes de dados de cada cliente da carteira."
+          actions={
             <div className="flex gap-2">
               {isAdmin && (
                 <button className="btn" onClick={() => setImporting(true)}>

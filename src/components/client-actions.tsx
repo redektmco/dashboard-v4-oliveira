@@ -71,7 +71,7 @@ export function ClientActions({
       >
         <p>
           O cliente sai da carteira, da triagem e dos formulários de GT e Account. O histórico fica guardado e dá para
-          restaurar em Configurações › Clientes › Arquivados.
+          restaurar em Clientes › Arquivados.
         </p>
       </ConfirmDialog>
     </>

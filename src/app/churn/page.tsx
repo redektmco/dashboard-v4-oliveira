@@ -3,7 +3,7 @@ import { listRequests } from "@/lib/churn/db";
 import { addDays, isOpen, money } from "@/lib/churn/types";
 import { listUsers, today } from "@/lib/repo";
 import { Icon } from "@/components/icon";
-import { ChurnHeader } from "@/components/churn/ui";
+import { CHURN_TABS, ChurnHeader } from "@/components/churn/ui";
 import { RequestsBoard } from "@/components/churn/requests-board";
 import { Box, Dot } from "@/components/churn/ui";
 import type { ChurnTone } from "@/lib/churn/types";
@@ -25,19 +25,15 @@ export default async function ChurnPage() {
   return (
     <>
       <ChurnHeader
-        title="Churn"
+        crumbs={[{ href: "/churn", label: "Churn" }]}
+        title="Solicitações"
         description="Solicitações de cancelamento já formalizadas pelos clientes — da análise ao encerramento ou retenção."
+        tabs={CHURN_TABS}
         actions={
-          <>
-            <Link href="/churn/analise" className="btn btn-ghost">
-              <Icon name="chart" size={15} />
-              Histórico e análise
-            </Link>
-            <Link href="/churn/nova" className="btn btn-light">
-              <Icon name="plus" size={15} />
-              Nova solicitação
-            </Link>
-          </>
+          <Link href="/churn/nova" className="btn btn-light">
+            <Icon name="plus" size={15} />
+            Nova solicitação
+          </Link>
         }
       />
 

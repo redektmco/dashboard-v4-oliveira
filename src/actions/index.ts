@@ -78,12 +78,13 @@ const numOrNull = (f: FormData, k: string) => {
 };
 
 /**
- * Metas, integrações e canais aparecem em Configurações e em Performance:
- * o que muda um muda o outro.
+ * Metas, integrações e canais aparecem em Configurações, em Performance e
+ * em Clientes: o que muda um muda os outros.
  */
 function revalidateSettings() {
   revalidatePath("/config", "layout");
   revalidatePath("/gt", "layout");
+  revalidatePath("/clientes");
 }
 
 /** Recalcula e grava o snapshot do dia para um cliente — chamado após cada input. */
@@ -622,7 +623,7 @@ export async function loadTargetSuggestions(clientId: number) {
   return suggestTargets(clientId);
 }
 
-/** Metas do mês salvas pelo painel "Configurar cliente" em Configurações › Clientes. */
+/** Metas do mês salvas pelo painel "Configurar cliente" em Clientes. */
 export async function saveClientTargets(clientId: number, values: Record<string, number | null>): Promise<ActionResult> {
   const me = await requireUser();
   const client = await getClient(clientId);

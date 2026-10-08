@@ -10,6 +10,7 @@ import { Icon, type IconName } from "@/components/icon";
 import { GlobalSearch } from "@/components/home/global-search";
 import { Portfolio, type Row } from "@/components/home/portfolio";
 import { requireUser } from "@/lib/auth";
+import { PageHead } from "@/components/page-head";
 
 export const dynamic = "force-dynamic";
 
@@ -95,19 +96,20 @@ export default async function CarteiraPage() {
 
   return (
     <div className="space-y-6 pb-10">
-      <header className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
-          <h1 className="font-display text-[22px] font-semibold leading-tight text-ink-100 sm:text-[24px]">Saúde da carteira</h1>
-          <p className="mt-1 text-[14px] text-ink-400">{total} contas ativas · Unidade Oliveira &amp; Co</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <GlobalSearch />
-          <Link href="/config/modelo" className="btn btn-ghost">
-            <Icon name="alertCircle" size={15} />
-            Como o score é calculado
-          </Link>
-        </div>
-      </header>
+      <PageHead
+        crumbs={[{ label: "Carteira" }]}
+        title="Saúde da carteira"
+        description={<>{total} contas ativas · Unidade Oliveira &amp; Co</>}
+        actions={
+          <>
+            <GlobalSearch />
+            <Link href="/config/modelo" className="btn btn-ghost">
+              <Icon name="alertCircle" size={15} />
+              Como o score é calculado
+            </Link>
+          </>
+        }
+      />
 
       {/* ---------------------------- Saúde ---------------------------- */}
       <section className="panel space-y-7 p-5 sm:p-7" aria-label="Saúde da carteira">

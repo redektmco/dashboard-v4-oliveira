@@ -303,7 +303,7 @@ function TargetsPanel({
             <span className="text-[12px] text-ink-400">
               {row.sources.length
                 ? "O número da semana chega sozinho e é medido contra as metas abaixo."
-                : "Sem integração o score fica sem o número da semana. Vincule Meta Ads, Google Ads ou CRM na ficha em Configurações › Clientes."}
+                : "Sem integração o score fica sem o número da semana. Vincule Meta Ads, Google Ads ou CRM no painel do cliente, em Clientes."}
             </span>
           </div>
         </section>
