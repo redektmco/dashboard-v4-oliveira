@@ -772,7 +772,7 @@ async function autoOverlays(): Promise<Map<number, AutoOverlay>> {
        GROUP BY l.client_id, l.ref_date`,
     ),
     getAllTargets(),
-    metaWeeks(),
+    mediaWeeks(),
   ]);
   const map = new Map<number, AutoOverlay>();
   const of = (clientId: number) => {
@@ -792,7 +792,7 @@ async function autoOverlays(): Promise<Map<number, AutoOverlay>> {
 async function autoOverlay(clientId: number): Promise<AutoOverlay | null> {
   const [active, meta] = await Promise.all([
     one<{ id: number }>(`SELECT id FROM crm_integrations WHERE client_id = ? AND active = 1`, [clientId]),
-    metaWeeks(clientId),
+    mediaWeeks(clientId),
   ]);
   const metaByWeek = meta.get(clientId) ?? new Map<string, MetaAgg>();
   if (!active && !metaByWeek.size) return null;
@@ -989,6 +989,120 @@ export async function metaWeeksByAccount(refs: string[]): Promise<Map<string, Ma
     out.set(r.ad_account_id, m);
   }
   return out;
+}
+
+/* --------------------------- Google Ads ---------------------------- */
+
+export type GoogleLink = {
+  id: number;
+  client_id: number;
+  client_name: string;
+  customer_id: string;
+  name: string;
+  currency: string | null;
+  active: number;
+  last_sync_at: string | null;
+  last_error: string | null;
+};
+
+export const listGoogleLinks = () =>
+  all<GoogleLink>(
+    `SELECT a.id, a.client_id, c.name AS client_name, a.customer_id, a.name, a.currency, a.active,
+            a.last_sync_at::text AS last_sync_at, a.last_error
+     FROM google_ad_accounts a JOIN clients c ON c.id = a.client_id
+     ORDER BY c.name, a.name`,
+  );
+
+export const getGoogleLink = (customerId: string) =>
+  one<{ client_id: number; name: string }>(`SELECT client_id, name FROM google_ad_accounts WHERE customer_id = ?`, [customerId]);
+
+/** Vincula a conta ao cliente. Reapontar uma conta já vinculada troca o dono. */
+export async function linkGoogleAccount(
+  clientId: number,
+  acc: { id: string; name: string; currency: string | null },
+  createdBy: number | null,
+) {
+  await run(
+    `INSERT INTO google_ad_accounts (client_id, customer_id, name, currency, created_by)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (customer_id) DO UPDATE SET
+       client_id = excluded.client_id, name = excluded.name, currency = excluded.currency, active = 1`,
+    [clientId, acc.id, acc.name, acc.currency, createdBy],
+  );
+}
+
+export const unlinkGoogleAccount = (customerId: string) => run(`DELETE FROM google_ad_accounts WHERE customer_id = ?`, [customerId]);
+
+export const setGoogleAccountActive = (customerId: string, active: boolean) =>
+  run(`UPDATE google_ad_accounts SET active = ? WHERE customer_id = ?`, [active ? 1 : 0, customerId]);
+
+/** Grava as semanas puxadas da API (regrava: o Google ajusta conversão por dias). */
+export async function saveGoogleWeeks(customerId: string, weeks: Map<string, MetaWeek>) {
+  const entries = [...weeks];
+  if (entries.length) {
+    const values = entries.map(() => `(?, ?::date, ?, ?, ?, ?, ?, now())`).join(", ");
+    await run(
+      `INSERT INTO google_insights (customer_id, ref_date, spend, conversions, revenue, impressions, clicks, synced_at)
+       VALUES ${values}
+       ON CONFLICT (customer_id, ref_date) DO UPDATE SET
+         spend = excluded.spend, conversions = excluded.conversions, revenue = excluded.revenue,
+         impressions = excluded.impressions, clicks = excluded.clicks, synced_at = excluded.synced_at`,
+      entries.flatMap(([ref, w]) => [customerId, ref, w.spend, w.leads, w.revenue, w.impressions, w.clicks]),
+    );
+  }
+  await run(`UPDATE google_ad_accounts SET last_sync_at = now(), last_error = NULL WHERE customer_id = ?`, [customerId]);
+}
+
+export const saveGoogleError = (customerId: string, error: string) =>
+  run(`UPDATE google_ad_accounts SET last_sync_at = now(), last_error = ? WHERE customer_id = ?`, [error.slice(0, 500), customerId]);
+
+/** Semanas do Google Ads por cliente, somando as contas ativas de cada um. */
+export async function googleWeeks(clientId?: number): Promise<Map<number, Map<string, MetaAgg>>> {
+  const rows = await all<{ client_id: number; ref_date: string; spend: number; conversions: number; revenue: number; impressions: number; clicks: number }>(
+    `SELECT a.client_id, i.ref_date::text AS ref_date, i.spend, i.conversions, i.revenue, i.impressions, i.clicks
+     FROM google_insights i
+     JOIN google_ad_accounts a ON a.customer_id = i.customer_id AND a.active = 1
+     ${clientId ? "WHERE a.client_id = ?" : ""}`,
+    clientId ? [clientId] : [],
+  );
+  const out = new Map<number, Map<string, MetaAgg>>();
+  for (const r of rows) {
+    const byWeek = out.get(r.client_id) ?? new Map<string, MetaAgg>();
+    out.set(r.client_id, byWeek);
+    const cur = byWeek.get(r.ref_date) ?? { week: { ...EMPTY_WEEK }, leads: 0 };
+    const conv = Number(r.conversions);
+    cur.week.spend += Number(r.spend);
+    cur.week.leads += conv;
+    cur.week.purchases += conv;
+    cur.week.revenue += Number(r.revenue);
+    cur.week.impressions += Number(r.impressions);
+    cur.week.clicks += Number(r.clicks);
+    cur.leads += conv;
+    byWeek.set(r.ref_date, cur);
+  }
+  return out;
+}
+
+/**
+ * Mídia paga do cliente por semana: Meta + Google somados. É o que o score,
+ * a carteira e as pendências leem — quem só quer o Meta usa `metaWeeks`.
+ */
+export async function mediaWeeks(clientId?: number): Promise<Map<number, Map<string, MetaAgg>>> {
+  const [meta, google] = await Promise.all([metaWeeks(clientId), googleWeeks(clientId)]);
+  for (const [client, weeks] of google) {
+    const into = meta.get(client) ?? new Map<string, MetaAgg>();
+    meta.set(client, into);
+    for (const [ref, g] of weeks) {
+      const cur = into.get(ref);
+      if (!cur) {
+        into.set(ref, g);
+        continue;
+      }
+      for (const k of Object.keys(g.week) as (keyof MetaWeek)[]) cur.week[k] += g.week[k];
+      cur.leads += g.leads;
+    }
+  }
+  return meta;
 }
 
 /* ------------------------ importação de planilha -------------------- */

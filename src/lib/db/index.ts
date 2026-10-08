@@ -515,6 +515,39 @@ CREATE TABLE IF NOT EXISTS meta_insights (
 );
 
 -- =====================================================================
+-- Google Ads — mesma ideia do Meta: verba, conversoes e receita por semana-
+-- ritual, puxadas da Google Ads API com um service account (envs
+-- GOOGLE_SA_* e GOOGLE_ADS_DEVELOPER_TOKEN, nunca no banco). Um cliente pode
+-- ter varias contas; cada conta pertence a um cliente so. As semanas entram
+-- na mesma leitura de midia do Meta e somam com ele.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS google_ad_accounts (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  customer_id TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL DEFAULT '',
+  currency TEXT,
+  active SMALLINT NOT NULL DEFAULT 1,
+  created_by INTEGER REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_sync_at TIMESTAMPTZ,
+  last_error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_google_ad_accounts_client ON google_ad_accounts (client_id);
+
+CREATE TABLE IF NOT EXISTS google_insights (
+  customer_id TEXT NOT NULL REFERENCES google_ad_accounts(customer_id) ON DELETE CASCADE,
+  ref_date DATE NOT NULL,
+  spend DOUBLE PRECISION NOT NULL DEFAULT 0,
+  conversions INTEGER NOT NULL DEFAULT 0,
+  revenue DOUBLE PRECISION NOT NULL DEFAULT 0,
+  impressions INTEGER NOT NULL DEFAULT 0,
+  clicks INTEGER NOT NULL DEFAULT 0,
+  synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (customer_id, ref_date)
+);
+
+-- =====================================================================
 -- Redesign (ficha do cliente + Configurações).
 -- audit_log: "Últimas alterações" de Configurações e o histórico da conta.
 -- calibration_versions: cada "Salvar e recalcular" vira uma versão (v1,

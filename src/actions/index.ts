@@ -11,9 +11,11 @@ import {
   deleteIntegration,
   deletePlan,
   getClient,
+  getGoogleLink,
   getMetaLink,
   getPlan,
   importClients,
+  linkGoogleAccount,
   linkMetaAccount,
   persistScore,
   recomputeAll,
@@ -22,10 +24,12 @@ import {
   saveSnapshot,
   scoreFor,
   setIntegrationActive,
+  setGoogleAccountActive,
   setMetaAccountActive,
   setMetaLeadMetric,
   setTargets,
   today,
+  unlinkGoogleAccount,
   unlinkMetaAccount,
   updateClient,
   updatePlan,
@@ -58,6 +62,9 @@ import type { ActionResult } from "@/lib/action";
 import { listAdAccounts, metaConfigured, type AdAccount } from "@/lib/meta/graph";
 import { LEAD_METRIC_LABEL, type LeadMetric } from "@/lib/meta/metrics";
 import { syncMeta } from "@/lib/meta/sync";
+import { getCustomer, googleAdsConfigured } from "@/lib/google/ads";
+import { formatCustomerId, normalizeCustomerId } from "@/lib/google/metrics";
+import { syncGoogle } from "@/lib/google/sync";
 import { parseClientsSheet } from "@/lib/import/clients-sheet";
 
 const str = (f: FormData, k: string) => (f.get(k) as string | null)?.trim() ?? "";
@@ -419,6 +426,69 @@ export async function removeMetaAccount(adAccountId: string): Promise<ActionResu
   await requireAdmin();
   const link = await getMetaLink(adAccountId);
   await unlinkMetaAccount(adAccountId);
+  after(() => recomputeRange(90));
+  revalidatePath("/config", "layout");
+  revalidatePath("/");
+  return { ok: `${link?.name ?? "Conta"} desvinculada.` };
+}
+
+/* --------------------------- Google Ads ---------------------------- */
+
+export async function connectGoogleAccount(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const me = await requireAdmin();
+  if (!googleAdsConfigured()) return { error: "Configure GOOGLE_ADS_DEVELOPER_TOKEN e a credencial do Google (GOOGLE_SA_*) no ambiente." };
+  const clientId = Number(str(formData, "client_id"));
+  const customerId = normalizeCustomerId(str(formData, "customer_id"));
+  if (!clientId) return { error: "Escolha o cliente." };
+  if (!customerId) return { error: "Informe o ID da conta do Google Ads (10 dígitos, ex.: 124-444-3600)." };
+
+  // Só vincula conta que a credencial realmente enxerga — e que tenha métricas.
+  let acc;
+  try {
+    acc = await getCustomer(customerId);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Falha ao falar com o Google Ads." };
+  }
+  if (acc.manager) return { error: "Esse ID é de uma MCC (conta gerente). Informe o ID da conta de anúncio do cliente." };
+
+  await linkGoogleAccount(clientId, { id: customerId, name: acc.name, currency: acc.currency }, me.id ?? null);
+  const linked = await getClient(clientId);
+  await logChange(me, "integracao", `Google Ads vinculado: ${linked?.name ?? acc.name}`, { clientId });
+  // Histórico de 12 semanas já no vínculo, para o score não esperar o cron.
+  const r = await syncGoogle({ weeks: 12, customerId });
+  after(() => recomputeRange(90));
+  revalidatePath("/config", "layout");
+  revalidatePath("/");
+  if (r.failed.length) return { error: `Conta vinculada, mas a sincronização falhou: ${r.failed[0].error}` };
+  return { ok: `${acc.name} (${formatCustomerId(customerId)}) vinculada — 12 semanas importadas.` };
+}
+
+export async function syncGoogleNow(): Promise<ActionResult> {
+  await requireAdmin();
+  if (!googleAdsConfigured()) return { error: "Configure GOOGLE_ADS_DEVELOPER_TOKEN e a credencial do Google (GOOGLE_SA_*) no ambiente." };
+  const r = await syncGoogle({ weeks: 3 });
+  await recomputeRange(28);
+  revalidatePath("/config", "layout");
+  revalidatePath("/");
+  if (r.failed.length) {
+    return { error: `${r.ok} de ${r.accounts} conta(s) sincronizadas. ${r.failed[0].account}: ${r.failed[0].error}` };
+  }
+  return { ok: `${r.ok} conta(s) do Google Ads sincronizadas e score recalculado.` };
+}
+
+export async function setGoogleAccountPaused(customerId: string, paused: boolean): Promise<ActionResult> {
+  await requireAdmin();
+  await setGoogleAccountActive(customerId, !paused);
+  after(() => recomputeRange(45));
+  revalidatePath("/config", "layout");
+  revalidatePath("/");
+  return { ok: paused ? "Conta pausada — os números voltam para o input manual." : "Conta reativada." };
+}
+
+export async function removeGoogleAccount(customerId: string): Promise<ActionResult> {
+  await requireAdmin();
+  const link = await getGoogleLink(customerId);
+  await unlinkGoogleAccount(customerId);
   after(() => recomputeRange(90));
   revalidatePath("/config", "layout");
   revalidatePath("/");

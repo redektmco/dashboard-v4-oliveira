@@ -19,6 +19,8 @@ import { aspectWarning, formatBadge, rejectReason } from "../src/lib/social/medi
 import { matchCaptionsToFiles, parseBatchCaptions } from "../src/lib/social/batch";
 import { isOwnBlobUrl } from "../src/lib/social/storage";
 import { navReducer, type Nav } from "../src/components/social/story-nav";
+import { bucketDaily, formatCustomerId, normalizeCustomerId } from "../src/lib/google/metrics";
+import { explainError } from "../src/lib/google/ads";
 import { topPriorities, type PriorityInput } from "../src/lib/priorities";
 import { EMPTY_WEEK, leadsOf, metaFields, parseInsight, weekRange } from "../src/lib/meta/metrics";
 import { clientKey, firstPhone, parseBRL, parseClientsSheet, parseCsv } from "../src/lib/import/clients-sheet";
@@ -688,4 +690,40 @@ test("prioridades: override pede revisão; saudável estável fica fora; saudáv
 test("prioridades: limita a lista", () => {
   const many = Array.from({ length: 9 }, (_, i) => acct({ id: i + 1, band: "vermelho", score: 10 }));
   assert.equal(topPriorities(many).length, 5);
+});
+
+/* ---------------------------- Google Ads --------------------------- */
+
+test("google: normaliza e formata o ID da conta", () => {
+  assert.equal(normalizeCustomerId("124-444-3600"), "1244443600");
+  assert.equal(normalizeCustomerId(" 1244443600 "), "1244443600");
+  assert.equal(normalizeCustomerId("124-444-360"), null);
+  assert.equal(formatCustomerId("1244443600"), "124-444-3600");
+});
+
+test("google: agrupa os dias nas semanas-ritual e zera a semana sem entrega", () => {
+  // Sextas 2026-06-12 (semana 06-06..06-12) e 2026-06-19 (06-13..06-19).
+  const weeks = bucketDaily(
+    [
+      { segments: { date: "2026-06-06" }, metrics: { costMicros: "10500000", conversions: 1.4, conversionsValue: 100, clicks: "10", impressions: "1000" } },
+      { segments: { date: "2026-06-12" }, metrics: { costMicros: "4500000", conversions: 1.4, conversionsValue: 50.5, clicks: "5", impressions: "500" } },
+      { segments: { date: "2026-05-30" }, metrics: { costMicros: "99000000", conversions: 9 } }, // fora das semanas pedidas
+    ],
+    ["2026-06-12", "2026-06-19"],
+  );
+  const w = weeks.get("2026-06-12")!;
+  assert.equal(w.spend, 15);
+  assert.equal(w.leads, 3); // 2,8 arredondado só no fim da semana
+  assert.equal(w.purchases, 3);
+  assert.equal(w.revenue, 150.5);
+  assert.equal(w.clicks, 15);
+  assert.equal(w.impressions, 1500);
+  assert.deepEqual({ spend: weeks.get("2026-06-19")!.spend, leads: weeks.get("2026-06-19")!.leads }, { spend: 0, leads: 0 });
+});
+
+test("google: traduz os erros do Google Ads que a equipe precisa entender", () => {
+  const body = { error: { message: "x", details: [{ errors: [{ errorCode: { authorizationError: "USER_PERMISSION_DENIED" }, message: "bruto" }] }] } };
+  assert.match(explainError(403, body), /não tem acesso a essa conta/);
+  assert.equal(explainError(500, { error: { message: "falha" } }), "falha");
+  assert.equal(explainError(502, {}), "Google Ads respondeu 502");
 });

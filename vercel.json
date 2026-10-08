@@ -9,6 +9,10 @@
       "schedule": "30 8 * * *"
     },
     {
+      "path": "/api/google/sync",
+      "schedule": "40 8 * * *"
+    },
+    {
       "path": "/api/recompute",
       "schedule": "0 9 * * *"
     },

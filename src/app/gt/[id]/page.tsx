@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getClient, getTargets, listFillers, metaWeeks, perfSnapshots } from "@/lib/repo";
+import { getClient, getTargets, listFillers, mediaWeeks, perfSnapshots } from "@/lib/repo";
 import { metaFields } from "@/lib/meta/metrics";
 import { fieldsFor } from "@/lib/model/catalog";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
@@ -26,7 +26,7 @@ export default async function GtFormPage({ params }: { params: Promise<{ id: str
     perfSnapshots(clientId, 6),
     getTargets(clientId),
     listFillers("gt"),
-    metaWeeks(clientId),
+    mediaWeeks(clientId),
   ]);
   if (!client) notFound();
   const last = history[0] ?? null;

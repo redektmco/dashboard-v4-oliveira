@@ -7,8 +7,9 @@ import {
   lastRecompute,
   listClients,
   listIntegrations,
+  listGoogleLinks,
   listMetaLinks,
-  metaWeeks,
+  mediaWeeks,
   today,
   type ClientRow,
 } from "./repo";
@@ -16,6 +17,7 @@ import { listCharges } from "./billing/db";
 import { isEmailConfigured } from "./billing/email";
 import { isWhatsappConfigured } from "./billing/whatsapp";
 import { metaConfigured } from "./meta/graph";
+import { googleAdsConfigured } from "./google/ads";
 import { currentRitualDate } from "./week";
 import type { BillingChargeRow } from "./billing/types";
 
@@ -57,18 +59,19 @@ const hasTargets = (c: ClientRow, targets: Record<string, number> | undefined) =
 export const configSnapshot = cache(loadConfigSnapshot);
 
 async function loadConfigSnapshot() {
-  const [clients, targets, integrations, metaLinks, charges, metaByClient, weights] = await Promise.all([
+  const [clients, targets, integrations, metaLinks, googleLinks, charges, metaByClient, weights] = await Promise.all([
     listClients(),
     getAllTargets(),
     listIntegrations(),
     listMetaLinks(),
+    listGoogleLinks(),
     listCharges(),
-    metaWeeks(),
+    mediaWeeks(),
     getWeights(),
   ]);
 
   const crmOn = new Set(integrations.filter((i) => i.active).map((i) => i.client_id));
-  const metaOn = new Set(metaLinks.filter((l) => l.active).map((l) => l.client_id));
+  const metaOn = new Set([...metaLinks, ...googleLinks].filter((l) => l.active).map((l) => l.client_id));
   const semMeta = clients.filter((c) => !hasTargets(c, targets.get(c.id)));
   const semFonte = clients.filter((c) => !crmOn.has(c.id) && !metaOn.has(c.id));
 
@@ -106,7 +109,7 @@ async function loadConfigSnapshot() {
     })
     .filter((x): x is { client: ClientRow; spend: number } => x !== null);
 
-  const metaErros = metaLinks.filter((l) => l.active && l.last_error);
+  const metaErros = [...metaLinks, ...googleLinks].filter((l) => l.active && l.last_error);
 
   const leadWeight = weights.lead_quality ?? DIMENSIONS.find((x) => x.key === "lead_quality")!.defaultWeight;
   const nextDue = naoEnviadas.map((c) => c.dueDate).sort()[0];
@@ -172,8 +175,8 @@ async function loadConfigSnapshot() {
     pendencias.push({
       id: "meta_erro",
       severity: "atencao",
-      title: `${metaErros.length} ${plural(metaErros.length, "conta do Meta Ads com erro", "contas do Meta Ads com erro")}`,
-      shortTitle: "Meta Ads com erro de sincronização",
+      title: `${metaErros.length} ${plural(metaErros.length, "conta de mídia com erro", "contas de mídia com erro")}`,
+      shortTitle: "Mídia com erro de sincronização",
       consequence: `A última sincronização falhou: ${metaErros[0].last_error}`,
       shortConsequence: "A última sincronização falhou.",
       clients: metaErros.map((l) => ({ id: l.client_id, name: l.client_name })),
@@ -185,6 +188,7 @@ async function loadConfigSnapshot() {
     targets,
     integrations,
     metaLinks,
+    googleLinks,
     charges: activeCharges,
     semMeta,
     semFonte,
@@ -270,6 +274,22 @@ export async function healthItems(s: ConfigSnapshot, calibratedAt: string | null
           label: "Meta Ads",
           detail: lastSync ? `Sincronizado ${whenBR(lastSync).replace(/^Hoje/, "hoje").replace(/^Ontem/, "ontem")}` : "Nenhuma conta vinculada",
           ok: Boolean(lastSync) && !s.metaLinks.some((l) => l.active && l.last_error),
+          href: "/config/integracoes",
+        },
+  );
+
+  const googleSync = s.googleLinks
+    .map((l) => l.last_sync_at)
+    .filter((x): x is string => Boolean(x))
+    .sort()
+    .pop();
+  items.push(
+    !googleAdsConfigured()
+      ? { label: "Google Ads", detail: "Credencial não configurada", ok: false, href: "/config/integracoes" }
+      : {
+          label: "Google Ads",
+          detail: googleSync ? `Sincronizado ${whenBR(googleSync).replace(/^Hoje/, "hoje").replace(/^Ontem/, "ontem")}` : "Nenhuma conta vinculada",
+          ok: Boolean(googleSync) && !s.googleLinks.some((l) => l.active && l.last_error),
           href: "/config/integracoes",
         },
   );

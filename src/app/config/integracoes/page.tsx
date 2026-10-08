@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { headers } from "next/headers";
-import { metaWeeks } from "@/lib/repo";
+import { googleWeeks, metaWeeks } from "@/lib/repo";
 import { configSnapshot, daysSince, whenBR } from "@/lib/config-status";
 import { metaConfigured } from "@/lib/meta/graph";
+import { googleAdsConfigured } from "@/lib/google/ads";
+import { formatCustomerId } from "@/lib/google/metrics";
 import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
 import { currentRitualDate } from "@/lib/week";
 import { requireAdmin } from "@/lib/auth";
@@ -10,6 +12,7 @@ import { ConfigPage } from "@/components/config-shell";
 import { Icon, type IconName } from "@/components/icon";
 import { Letter, PageTitle, Pill, type Tone } from "@/components/kit";
 import { CrmGuide, SyncMetaButton, SystemUserButton, TestWebhookButton } from "@/components/config/integrations-ui";
+import { GoogleAccountsButton, SyncGoogleButton } from "@/components/config/google-ads-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -26,17 +29,21 @@ type HealthRow = {
 
 export default async function IntegracoesPage() {
   await requireAdmin();
-  const [snap, metaBy] = await Promise.all([configSnapshot(), metaWeeks()]);
+  const [snap, metaBy, googleBy] = await Promise.all([configSnapshot(), metaWeeks(), googleWeeks()]);
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "app.v4oliveira.com.br";
   const base = `${h.get("x-forwarded-proto") ?? "https"}://${host}`;
   const total = snap.clients.length;
   const metaOn = metaConfigured();
+  const googleOn = googleAdsConfigured();
   const week = currentRitualDate();
 
   const activeLinks = snap.metaLinks.filter((l) => l.active);
   const lastSync = activeLinks.map((l) => l.last_sync_at).filter((x): x is string => Boolean(x)).sort().pop() ?? null;
   const metaErrors = activeLinks.filter((l) => l.last_error).length;
+  const googleLinks = snap.googleLinks.filter((l) => l.active);
+  const googleLastSync = googleLinks.map((l) => l.last_sync_at).filter((x): x is string => Boolean(x)).sort().pop() ?? null;
+  const googleErrors = googleLinks.filter((l) => l.last_error).length;
   const hooks = snap.integrations.filter((i) => i.active);
   const staleHooks = hooks.filter((i) => {
     const d = daysSince(i.last_event_at ?? i.last_lead_at);
@@ -79,6 +86,28 @@ export default async function IntegracoesPage() {
       ),
     });
   }
+  for (const l of googleLinks) {
+    const m = googleBy.get(l.client_id)?.get(week);
+    const spend = m?.week.spend ?? 0;
+    const leads = m?.leads ?? 0;
+    rows.push({
+      clientId: l.client_id,
+      name: l.client_name,
+      source: `Google Ads · ${formatCustomerId(l.customer_id)}`,
+      problem: l.last_error ? { label: "Erro na sincronização", tone: "vermelho" as Tone } : null,
+      metrics: [
+        { k: "Verba sem.", v: brl0(spend) },
+        { k: "Conversões", v: String(leads), tone: spend > 0 && leads === 0 ? "amarelo" : undefined },
+        { k: "CPL", v: leads ? brl0(spend / leads) : "—" },
+        { k: "Último dado", v: whenBR(l.last_sync_at), muted: true },
+      ],
+      action: (
+        <a href="https://ads.google.com/aw/campaigns" target="_blank" rel="noreferrer" className="btn h-[30px] shrink-0">
+          Ver campanha
+        </a>
+      ),
+    });
+  }
   for (const i of snap.integrations) {
     const last = i.last_event_at ?? i.last_lead_at;
     const d = daysSince(last);
@@ -112,7 +141,7 @@ export default async function IntegracoesPage() {
     <ConfigPage>
       <PageTitle title="Integrações" description="Conexões da unidade. Vincular cada cliente acontece no painel do cliente, em Clientes." />
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Connection
           icon="megaphone"
           title="Meta Ads"
@@ -126,6 +155,32 @@ export default async function IntegracoesPage() {
             <>
               <SyncMetaButton disabled={!metaOn} />
               <SystemUserButton configured={metaOn} clients={clientOptions} linked={snap.metaLinks.map((l) => l.ad_account_id)} />
+            </>
+          }
+        />
+        <Connection
+          icon="megaphone"
+          title="Google Ads"
+          pill={!googleOn ? { tone: "vermelho", label: "Sem credencial" } : googleErrors ? { tone: "amarelo", label: `${googleErrors} com erro` } : googleLinks.length ? { tone: "verde", label: "Conectado" } : { tone: "neutro", label: "Nenhuma conta" }}
+          desc="Verba, conversões e receita das campanhas do Google, puxadas todo dia com o service account da unidade."
+          metrics={[
+            { k: "Clientes", v: `${new Set(googleLinks.map((l) => l.client_id)).size} de ${total}` },
+            { k: "Última sync", v: whenBR(googleLastSync) },
+          ]}
+          actions={
+            <>
+              <SyncGoogleButton disabled={!googleOn} />
+              <GoogleAccountsButton
+                configured={googleOn}
+                clients={clientOptions}
+                links={snap.googleLinks.map((l) => ({
+                  customerId: l.customer_id,
+                  label: `${l.name} · ${formatCustomerId(l.customer_id)}`,
+                  client: l.client_name,
+                  active: Boolean(l.active),
+                  error: l.last_error,
+                }))}
+              />
             </>
           }
         />

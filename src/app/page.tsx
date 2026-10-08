@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { lastRecompute, listOpenPlans, metaWeeks, portfolio, portfolioSummary, today } from "@/lib/repo";
+import { lastRecompute, listOpenPlans, mediaWeeks, portfolio, portfolioSummary, today } from "@/lib/repo";
 import { configSnapshot } from "@/lib/config-status";
 import { recentWeeks } from "@/lib/meta/sync";
 import { topPriorities, type PriorityAction } from "@/lib/priorities";
@@ -29,7 +29,7 @@ export default async function CarteiraPage() {
   const [rows, plans, meta, config, stamp] = await Promise.all([
     portfolio(at),
     listOpenPlans(),
-    metaWeeks(),
+    mediaWeeks(),
     configSnapshot(),
     lastRecompute(),
   ]);
