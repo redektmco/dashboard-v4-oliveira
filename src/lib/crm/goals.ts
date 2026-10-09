@@ -269,5 +269,33 @@ export const archiveLeadSource = (id: number) =>
 export const restoreLeadSource = (id: number) =>
   run(`UPDATE crm_lead_sources SET active = 1 WHERE id = ?`, [id]);
 
+/**
+ * Leads do período agrupados por origem.
+ *
+ * O payload do webhook é livre — cada CRM manda o que quer — então a origem
+ * é procurada nas chaves que de fato aparecem, em ordem: `origem`, `source`,
+ * `utm_source`. O que não tem nenhuma delas cai em `(sem origem)`, e é essa
+ * fatia que a ficha mostra como "leads sem origem": não é erro do cliente, é
+ * campo não mapeado na integração, e tem conserto.
+ */
+export const leadsByOrigin = (clientId: number, from: string, to: string) =>
+  all<{ origem: string; n: number }>(
+    `SELECT COALESCE(
+              NULLIF(TRIM(payload->>'origem'), ''),
+              NULLIF(TRIM(payload->>'source'), ''),
+              NULLIF(TRIM(payload->>'utm_source'), ''),
+              '(sem origem)'
+            ) AS origem,
+            COUNT(*)::int AS n
+     FROM crm_leads
+     WHERE client_id = ? AND ref_date BETWEEN ?::date AND ?::date
+     GROUP BY 1
+     ORDER BY n DESC, 1`,
+    [clientId, from, to],
+  );
+
+/** Rótulo da fatia sem origem — usado na tela e nos testes. */
+export const SEM_ORIGEM = "(sem origem)";
+
 export const getLeadSource = async (id: number) =>
   (await all<LeadSource>(`${SOURCE_SELECT} WHERE id = ?`, [id]))[0] ?? null;

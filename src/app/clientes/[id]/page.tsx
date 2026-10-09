@@ -17,11 +17,16 @@ import {
   googleWeeks,
   listMetaLinks,
   listGoogleLinks,
+  getIntegration,
 } from "@/lib/repo";
 import { listClientChanges } from "@/lib/audit";
 import { currentRitualDate } from "@/lib/week";
 import { mediaSplit } from "@/lib/crm/media-split";
+import { goalViews, leadsByOrigin, listGoals, listLeadSources, periodOf } from "@/lib/crm/goals";
+import { configSnapshot, whenBR } from "@/lib/config-status";
 import { MediaChannels } from "@/components/cliente/media-channels";
+import { FichaPane, FichaTabs, type FichaTab } from "@/components/cliente/ficha-tabs";
+import { MetasIntegracoes, type IntegrationRow, type MetasData } from "@/components/cliente/metas-integracoes";
 import { requestsForClient } from "@/lib/churn/db";
 import { isOpen } from "@/lib/churn/types";
 import { ACCOUNT_TYPE_LABEL, type Band, type DimensionKey } from "@/lib/model/types";
@@ -159,6 +164,82 @@ export default async function ClientePage({
     metaLinked: metaLinks.some((l) => l.client_id === clientId),
     googleLinked: googleLinks.some((l) => l.client_id === clientId),
   });
+  // ---------------------------- Metas e integrações ----------------------
+  // A meta do período, de onde vêm os leads e o que está quebrado na
+  // configuração desta conta. `configSnapshot` é a mesma fonte que
+  // Configurações usa — aqui só filtramos as pendências deste cliente, para
+  // a ficha não inventar uma régua paralela.
+  const periodoMes = periodOf("mensal", at);
+  const [metasDoCliente, fontes, origens, webhook, cfg] = await Promise.all([
+    listGoals(clientId),
+    listLeadSources(clientId),
+    leadsByOrigin(clientId, periodoMes.from, periodoMes.to),
+    getIntegration(clientId),
+    configSnapshot(),
+  ]);
+  const metasView = goalViews(metasDoCliente, perf, at, client.account_type);
+  const leadsNoPeriodo = origens.reduce((acc, o) => acc + o.n, 0);
+
+  const metaDoCliente = metaLinks.filter((l) => l.client_id === clientId);
+  const googleDoCliente = googleLinks.filter((l) => l.client_id === clientId);
+  const integracoes: IntegrationRow[] = [
+    ...metaDoCliente.map((l) => ({
+      id: `meta-${l.id}`,
+      name: "Meta Ads",
+      icon: "megaphone" as const,
+      detail: l.last_error
+        ? l.last_error
+        : `${l.ad_account_id} · sincronizado ${whenBR(l.last_sync_at).toLowerCase()}`,
+      state: (l.last_error ? "erro" : l.active ? "conectada" : "pendente") as IntegrationRow["state"],
+      action: l.last_error ? { label: "Reconectar", href: "/gt/integracoes" } : undefined,
+    })),
+    ...googleDoCliente.map((l) => ({
+      id: `google-${l.id}`,
+      name: "Google Ads",
+      icon: "chart" as const,
+      detail: l.last_error
+        ? l.last_error
+        : `${l.customer_id} · sincronizado ${whenBR(l.last_sync_at).toLowerCase()}`,
+      state: (l.last_error ? "erro" : l.active ? "conectada" : "pendente") as IntegrationRow["state"],
+      action: l.last_error ? { label: "Reconectar", href: "/gt/integracoes" } : undefined,
+    })),
+    {
+      id: "crm",
+      name: webhook?.crm_name ? `CRM · ${webhook.crm_name}` : "CRM do cliente",
+      icon: "webhook" as const,
+      detail: !webhook
+        ? "webhook não gerado — os leads do CRM não entram no score"
+        : !webhook.active
+          ? "webhook pausado"
+          : webhook.last_event_at
+            ? `último lead ${whenBR(webhook.last_event_at).toLowerCase()}`
+            : "webhook gerado, nenhum lead recebido ainda",
+      state: (!webhook || !webhook.active
+        ? "pendente"
+        : webhook.last_event_at
+          ? "conectada"
+          : "pendente") as IntegrationRow["state"],
+      action: { label: webhook ? "Gerenciar" : "Gerar webhook", href: "/gt/integracoes" },
+    },
+  ];
+
+  const pendenciasDoCliente = cfg.pendencias.filter((pd) => pd.clients.some((c) => c.id === clientId));
+  const metasFora = metasView.filter((g) => g.status === "critico" || g.status === "atencao").length;
+
+  const metas: MetasData = {
+    clientId,
+    clientName: client.name,
+    goals: metasView,
+    sources: fontes,
+    split,
+    origins: origens,
+    integrations: integracoes,
+    pendencias: pendenciasDoCliente,
+    leadsNoPeriodo,
+    periodoLabel: periodoMes.label,
+    lastSync: webhook?.last_event_at ? whenBR(webhook.last_event_at) : null,
+  };
+
   const nowIso = new Date().toISOString();
   const playbook: PlaybookData = {
     clientId,
@@ -290,6 +371,22 @@ export default async function ClientePage({
     />
   );
 
+  // Contador na aba: o que cobra ação. Pendência de configuração e meta fora
+  // do ritmo contam juntas — é a mesma pergunta ("preciso abrir isto hoje?").
+  const alertasMetas = pendenciasDoCliente.length + metasFora;
+  const fichaTabs: FichaTab[] = [
+    { id: "visao", label: "Visão geral" },
+    { id: "saude", label: "Saúde" },
+    {
+      id: "metas",
+      label: "Metas e integrações",
+      count: alertasMetas,
+      alert: pendenciasDoCliente.some((pd) => pd.severity === "bloqueia") || metasView.some((g) => g.status === "critico"),
+    },
+    { id: "atividades", label: "Atividades", count: actions.length },
+    { id: "historico", label: "Histórico" },
+  ];
+
   return (
     <ClientUI data={uiData} history={history} startWithNewPlan={plano === "novo"}>
       {/* Cabeçalho único (desktop e celular). O Churn abre a solicitação já
@@ -323,7 +420,11 @@ export default async function ClientePage({
       </div>
 
       {/* ============================ DESKTOP ============================ */}
-      <div className="hidden flex-col gap-8 pb-6 lg:flex">
+      {/* As abas são client-side: a ficha é um ClientUI só, com uma rodada
+          de leitura. Ver components/cliente/ficha-tabs.tsx. */}
+      <div className="hidden flex-col pb-6 lg:flex">
+        <FichaTabs tabs={fichaTabs}>
+        <FichaPane id="visao">
         {/* Resumo da conta */}
         <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_404px]">
           <HealthCard
@@ -356,6 +457,12 @@ export default async function ClientePage({
           </Card>
         </div>
 
+        {risk && <RiskBanner risk={risk} />}
+
+        <PlaybookSection data={playbook} variant="desktop" />
+        </FichaPane>
+
+        <FichaPane id="saude">
         {/* Diagnóstico */}
         <section className="flex flex-col gap-4">
           <SectionHead
@@ -375,12 +482,6 @@ export default async function ClientePage({
           </div>
         </section>
 
-        {risk && <RiskBanner risk={risk} />}
-
-        <PlaybookSection data={playbook} variant="desktop" />
-
-        <MediaChannels split={split} clientId={clientId} />
-
         <EvolutionSection
           points={series.map((p) => ({ day: p.day, score: p.score }))}
           events={chartEvents}
@@ -389,7 +490,15 @@ export default async function ClientePage({
           band={s.band}
           at={at}
         />
+        </FichaPane>
 
+        <FichaPane id="metas">
+          <MetasIntegracoes data={metas} />
+
+        <MediaChannels split={split} clientId={clientId} />
+        </FichaPane>
+
+        <FichaPane id="atividades">
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
           <section className="flex min-w-0 flex-col gap-4">
             <SectionHead
@@ -420,7 +529,9 @@ export default async function ClientePage({
             </Card>
           </section>
         </div>
+        </FichaPane>
 
+        <FichaPane id="historico">
         <section className="flex flex-col gap-4">
           <SectionHead
             title="Histórico da conta"
@@ -455,6 +566,9 @@ export default async function ClientePage({
             )}
           </Card>
         </section>
+        </FichaPane>
+
+        </FichaTabs>
       </div>
 
       {/* ============================ CELULAR ============================ */}
