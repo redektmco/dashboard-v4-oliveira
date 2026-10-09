@@ -23,6 +23,7 @@ import { createSign, generateKeyPairSync } from "node:crypto";
 import { bucketDaily, dailySpend, formatCustomerId, normalizeCustomerId, normalizePrivateKey, parseClientAccounts } from "../src/lib/google/metrics";
 import { explainError } from "../src/lib/google/ads";
 import { dailySyncRange, last7, last7Label, rollingSpend } from "../src/lib/media-daily";
+import { goalStatus, periodOf, realizedIn, type Goal } from "../src/lib/crm/goals";
 import { topPriorities, type PriorityInput } from "../src/lib/priorities";
 import { STEPS, dueOf, ekyteText, howOf, stepTemplate } from "../src/lib/playbook/templates";
 import { creativeAttention, crmAttention } from "../src/lib/playbook/attention";
@@ -1099,4 +1100,99 @@ test("mídia: variação semana a semana ignora base zero", () => {
   assert.equal(w.spend, 50);
   assert.equal(w.results, -50);
   assert.deepEqual(weekOverWeek([]), { spend: null, results: null });
+});
+
+/* ===================== metas por período (CRM) ===================== */
+
+const goal = (over: Partial<Goal> = {}): Goal => ({
+  id: 1,
+  client_id: 1,
+  metric: "leads",
+  label: "Leads qualificados",
+  direction: "piso",
+  target: 200,
+  period: "mensal",
+  scope: "todas",
+  active: 1,
+  ...over,
+});
+
+const snap = (ref: string, data: Record<string, unknown>) => ({
+  id: 1,
+  client_id: 1,
+  ref_date: ref,
+  filled_by: null,
+  filled_at: `${ref}T12:00:00Z`,
+  filler: null,
+  data,
+});
+
+test("meta: período mensal fecha no último dia do mês e mede o decorrido", () => {
+  const p = periodOf("mensal", "2026-10-09");
+  assert.equal(p.from, "2026-10-01");
+  assert.equal(p.to, "2026-10-31");
+  assert.equal(p.label, "outubro");
+  assert.equal(Math.round(p.elapsed * 100), 29);
+  // Fevereiro bissexto: 2028 tem 29 dias.
+  assert.equal(periodOf("mensal", "2028-02-10").to, "2028-02-29");
+});
+
+test("meta: período trimestral vai de Q1 a Q4 com o rótulo do trimestre", () => {
+  const q4 = periodOf("trimestral", "2026-10-09");
+  assert.equal(q4.from, "2026-10-01");
+  assert.equal(q4.to, "2026-12-31");
+  assert.equal(q4.label, "Q4 2026");
+  assert.equal(periodOf("trimestral", "2026-01-01").label, "Q1 2026");
+  assert.equal(periodOf("trimestral", "2026-06-30").to, "2026-06-30");
+});
+
+test("meta de piso: 31% no dia 9 de outubro está no ritmo, não atrasada", () => {
+  // O caso que o design mostra: 61 de 200 leads. 31% de meta, 29% de mês.
+  const p = periodOf("mensal", "2026-10-09");
+  const r = goalStatus(goal(), 61, p);
+  assert.equal(r.status, "saudavel");
+  // O mesmo número no fim do mês é crítico — o ritmo é que muda.
+  assert.equal(goalStatus(goal(), 61, periodOf("mensal", "2026-10-31")).status, "critico");
+});
+
+test("meta de teto: estourar o limite é crítico, 10% acima é atenção", () => {
+  const p = periodOf("mensal", "2026-10-09");
+  const cpl = goal({ metric: "cpl", direction: "teto", target: 35 });
+  assert.equal(goalStatus(cpl, 30, p).status, "saudavel");
+  assert.equal(goalStatus(cpl, 35, p).status, "saudavel");
+  assert.equal(goalStatus(cpl, 38, p).status, "atencao");
+  // O caso do design: R$ 41,20 sobre teto de R$ 35 = 18% acima.
+  assert.equal(goalStatus(cpl, 41.2, p).status, "critico");
+});
+
+test("meta sem leitura não vira zero", () => {
+  const p = periodOf("mensal", "2026-10-09");
+  assert.equal(goalStatus(goal(), null, p).status, "sem_leitura");
+  assert.equal(goalStatus(goal(), null, p).ratio, null);
+  // Meta zerada não divide por zero.
+  assert.equal(goalStatus(goal({ target: 0 }), 10, p).status, "sem_leitura");
+});
+
+test("realizado: piso soma as semanas do período, teto faz média", () => {
+  const p = periodOf("mensal", "2026-10-09");
+  const snaps = [
+    snap("2026-10-02", { leads: 30, cpl: 40 }),
+    snap("2026-10-09", { leads: 31, cpl: 42 }),
+    // Fora do período: não entra em nenhuma das duas contas.
+    snap("2026-09-25", { leads: 99, cpl: 99 }),
+  ];
+  assert.equal(realizedIn(snaps, "leads", p, "piso"), 61);
+  assert.equal(realizedIn(snaps, "cpl", p, "teto"), 41);
+  assert.equal(realizedIn(snaps, "visitas", p, "piso"), null);
+  assert.equal(realizedIn([], "leads", p, "piso"), null);
+});
+
+test("realizado: campo vazio ou não numérico é ignorado, zero é lido", () => {
+  const p = periodOf("mensal", "2026-10-09");
+  assert.equal(realizedIn([snap("2026-10-02", { leads: "" })], "leads", p, "piso"), null);
+  assert.equal(realizedIn([snap("2026-10-02", { leads: null })], "leads", p, "piso"), null);
+  assert.equal(realizedIn([snap("2026-10-02", { leads: "x" })], "leads", p, "piso"), null);
+  assert.equal(realizedIn([snap("2026-10-02", { leads: 0 })], "leads", p, "piso"), 0);
+  // Número em texto (o formulário grava string) conta.
+  assert.equal(realizedIn([snap("2026-10-02", { leads: "12" })], "leads", p, "piso"), 12);
 });

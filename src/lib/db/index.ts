@@ -844,13 +844,53 @@ CREATE TABLE IF NOT EXISTS client_interactions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_interactions_client ON client_interactions (client_id, at DESC);
+
+-- =====================================================================
+-- Metas do CRM -- a meta por periodo, que client_targets nao cobre.
+-- client_targets e a regua do score: uma chave, um valor, valendo a partir
+-- de uma data. A ficha precisa de outra coisa -- "leads qualificados,
+-- mensal, 200" e "CPL, mensal, teto de 35" -- com periodo fechado e
+-- direcao. Sao conceitos diferentes e convivem: o score segue lendo
+-- client_targets, intocado.
+-- direction: 'piso' = quanto mais, melhor (leads). 'teto' = quanto menos,
+-- melhor (CPL); o status da meta inverte junto.
+-- scope: de onde contam os resultados -- 'todas' ou um canal so.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS crm_goals (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  metric TEXT NOT NULL,
+  label TEXT NOT NULL,
+  direction TEXT NOT NULL DEFAULT 'piso' CHECK (direction IN ('piso','teto')),
+  target DOUBLE PRECISION NOT NULL,
+  period TEXT NOT NULL DEFAULT 'mensal' CHECK (period IN ('mensal','trimestral')),
+  scope TEXT NOT NULL DEFAULT 'todas',
+  active SMALLINT NOT NULL DEFAULT 1,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_crm_goals_client ON crm_goals (client_id, active, id);
+
+-- Fontes de leads que nao vem de anuncio -- portais, indicacao, organico.
+-- Meta e Google ja saem de mediaSplit, com verba e CPL reais; estas aqui o
+-- time informa na mao. Sao elas que explicam os leads que entram pelo
+-- webhook sem campo de origem.
+CREATE TABLE IF NOT EXISTS crm_lead_sources (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  active SMALLINT NOT NULL DEFAULT 1,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_crm_lead_sources_client ON crm_lead_sources (client_id, active);
 `;
 
 /**
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-10-09.crm-clientes";
+export const SCHEMA_VERSION = "2026-10-09.crm-metas-integracoes";
 
 let migrated = false;
 
