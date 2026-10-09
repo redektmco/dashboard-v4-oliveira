@@ -26,7 +26,7 @@ export type MetaRow = {
 
 type Filter = "todos" | "sem_meta" | "sem_fonte";
 
-const FILTER_LABEL: Record<Filter, string> = { todos: "clientes", sem_meta: "sem meta", sem_fonte: "sem fonte de dados" };
+const FILTER_LABEL: Record<Filter, string> = { todos: "clientes", sem_meta: "sem forecast", sem_fonte: "sem fonte de dados" };
 
 const brl0 = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 const first = (n: string | null) => (n ? n.trim().split(/\s+/)[0] : "—");
@@ -41,7 +41,7 @@ const valueOf = (f: TargetField, v: number) => `${f.prefix ? `${f.prefix} ` : ""
 /**
  * Performance › Metas: uma linha por conta com a régua vigente e de onde vem
  * o número da semana. O painel ao lado ajusta as metas de uma conta — no
- * filtro "Sem meta", com "Salvar e ir para a próxima" para zerar a fila.
+ * filtro "Sem forecast", com "Salvar e ir para a próxima" para zerar a fila.
  */
 export function MetasBoard({ rows, weekLabel }: { rows: MetaRow[]; weekLabel: string }) {
   const params = useSearchParams();
@@ -78,7 +78,7 @@ export function MetasBoard({ rows, weekLabel }: { rows: MetaRow[]; weekLabel: st
 
   const chips: { f: Filter; label: string; tone: "vermelho" | "neutro" }[] = [
     { f: "todos", label: "Todos", tone: "neutro" },
-    { f: "sem_meta", label: "Sem meta", tone: "vermelho" },
+    { f: "sem_meta", label: "Sem forecast", tone: "vermelho" },
     { f: "sem_fonte", label: "Sem fonte de dados", tone: "vermelho" },
   ];
 
@@ -118,7 +118,7 @@ export function MetasBoard({ rows, weekLabel }: { rows: MetaRow[]; weekLabel: st
       <div className="overflow-hidden rounded-xl border border-[var(--border-hair)] bg-ink-900">
         <div className="hidden h-[37.5px] items-center gap-4 border-b border-[var(--border-hair)] px-4 md:flex">
           <ColLabel className="w-[220px] shrink-0">Cliente</ColLabel>
-          <ColLabel className="flex-1">Metas vigentes</ColLabel>
+          <ColLabel className="flex-1">Forecast vigente</ColLabel>
           <ColLabel className="w-[170px] shrink-0">Fonte de dados</ColLabel>
           <ColLabel className="w-[120px] shrink-0 text-right">Semana em curso</ColLabel>
           <span className="w-3.5" />
@@ -196,7 +196,7 @@ export function MetasBoard({ rows, weekLabel }: { rows: MetaRow[]; weekLabel: st
         )}
       </div>
 
-      <SidePanel open={Boolean(row) && mounted} onClose={close} label="Metas da conta" width={460}>
+      <SidePanel open={Boolean(row) && mounted} onClose={close} label="Forecast da conta" width={460}>
         {row && (
           <TargetsPanel
             key={row.id}
@@ -302,7 +302,7 @@ function TargetsPanel({
             </span>
             <span className="text-[12px] text-ink-400">
               {row.sources.length
-                ? "O número da semana chega sozinho e é medido contra as metas abaixo."
+                ? "O número da semana chega sozinho e é medido contra o forecast abaixo."
                 : "Sem integração o score fica sem o número da semana. Vincule Meta Ads, Google Ads ou CRM no painel do cliente, em Clientes."}
             </span>
           </div>
@@ -310,7 +310,7 @@ function TargetsPanel({
 
         <section className="flex flex-col gap-3.5">
           <div className="flex flex-col gap-0.5">
-            <span className="text-[13px] font-semibold text-ink-100">Metas semanais</span>
+            <span className="text-[13px] font-semibold text-ink-100">Forecast semanal</span>
             <span className="text-[12px] text-ink-400">Valem a partir de hoje e são a base das réguas do score.</span>
           </div>
           {anySuggestion && (

@@ -17,7 +17,7 @@ const PERIODS: { value: Period; label: string }[] = [
 
 const EVENT: Record<ChartEvent["kind"], { icon: IconName; cls: string; legend: string; short: string }> = {
   checkin: { icon: "message", cls: "text-ink-300", legend: "Check-in", short: "Check-in" },
-  meta: { icon: "target", cls: "text-amarelo-fg", legend: "Alteração de meta", short: "Meta alterada" },
+  meta: { icon: "target", cls: "text-amarelo-fg", legend: "Alteração de forecast", short: "Forecast alterado" },
   queda: { icon: "trendingDown", cls: "text-vermelho-fg", legend: "Queda de performance", short: "Queda de performance" },
   plano: { icon: "listTodo", cls: "text-verde-fg", legend: "Plano de ação criado", short: "Plano criado" },
 };

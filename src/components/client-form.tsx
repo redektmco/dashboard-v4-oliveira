@@ -7,6 +7,7 @@ import { saveClient } from "@/actions";
 import { ActionForm, SubmitButton } from "./form-controls";
 import { Modal } from "./modal";
 import { NumberField } from "./number-field";
+import { ServicePicker } from "./service-picker";
 
 export type ClientFormClient = Client & { gt_name: string | null; account_name: string | null };
 
@@ -33,7 +34,7 @@ export function ClientDialog({
       open={open}
       onClose={onClose}
       title={client ? `Editar ${client.name}` : "Novo cliente"}
-      description="As metas são a base das réguas do score: o número que chega das integrações é medido contra elas."
+      description="O forecast é a base das réguas do score: o número que chega das integrações é medido contra ele."
       size="md"
     >
       <ClientFields key={client?.id ?? "novo"} users={users} client={client} targets={targets} onDone={onClose} />
@@ -149,15 +150,12 @@ function ClientFields({
             <input type="date" name="contract_start" defaultValue={client?.contract_start ?? ""} className="field mt-1" />
           </label>
         </div>
-        <label className="mt-3 block">
-          <span className="label">Serviços (separados por vírgula)</span>
-          <input
-            name="services"
-            defaultValue={(client?.services ?? []).join(", ")}
-            placeholder="Tráfego pago, Social media"
-            className="field mt-1"
-          />
-        </label>
+        <div className="mt-3">
+          <span className="label">Serviços contratados</span>
+          <span className="mt-1.5 block">
+            <ServicePicker defaultValue={client?.services ?? []} />
+          </span>
+        </div>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="block">
             <span className="label">Fidelidade (meses)</span>
@@ -177,7 +175,7 @@ function ClientFields({
       <details className="rounded-lg border border-[var(--border-hair)] px-3 py-2.5" open={semMeta}>
         <summary className="cursor-pointer text-[13px] font-semibold text-ink-200">
           Metas de {ACCOUNT_TYPE_LABEL[type]}
-          {semMeta && <span className="ml-2 text-[11px] font-semibold text-vermelho-fg">sem meta, não há régua</span>}
+          {semMeta && <span className="ml-2 text-[11px] font-semibold text-vermelho-fg">sem forecast, não há régua</span>}
         </summary>
         <p className="mt-2 text-[11.5px] text-ink-500">
           O GT pode ajustar na semana; o valor informado passa a ser a meta vigente.
@@ -197,7 +195,7 @@ function ClientFields({
           ))}
         </div>
         <label className="mt-3 block">
-          <span className="label">Metas valem a partir de</span>
+          <span className="label">Forecast vale a partir de</span>
           <input type="date" name="effective_from" defaultValue={new Date().toISOString().slice(0, 10)} className="field mt-1" />
         </label>
       </details>

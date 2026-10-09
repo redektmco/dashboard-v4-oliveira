@@ -259,7 +259,7 @@ export default async function CarteiraPage() {
           </div>
           <dl className="space-y-3 text-[13px]">
             {[
-              ["Sem meta cadastrada", config.semMeta.length],
+              ["Sem forecast cadastrado", config.semMeta.length],
               ["Sem fonte de leads", config.semFonte.length],
               ["Sem dado de performance", neverFilled],
             ].map(([label, n]) => (

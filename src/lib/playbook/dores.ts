@@ -54,10 +54,10 @@ export const DORES: Dor[] = [
       "Reestruturar campanhas e concentrar verba no que performa",
       "Testar landing page e oferta",
       "Comparar com o benchmark de unidades que atendem o mesmo nicho",
-      "Apresentar diagnóstico e plano com metas revisadas",
+      "Apresentar diagnóstico e plano com o forecast revisado",
     ],
     owner: "Gestor de Tráfego",
-    objetivo: "Recolocar os KPIs na meta.",
+    objetivo: "Recolocar os KPIs no forecast.",
   },
   {
     key: "custo_alto",
@@ -84,7 +84,7 @@ export const DORES: Dor[] = [
     group: "Geração e qualidade de leads",
     dor: "Falta de leads",
     motivos: [
-      "Verba baixa ou limitada para a meta",
+      "Verba baixa ou limitada para o forecast",
       "Anúncios reprovados ou campanha pausada",
       "Formulário ou landing page com problema (fora do ar, lenta, campos demais)",
       "Público muito restrito",
@@ -92,7 +92,7 @@ export const DORES: Dor[] = [
     ],
     acoes: [
       "Checar a parte técnica: pixel, formulário, integração com o CRM, página no ar",
-      "Revisar volume esperado x verba x meta",
+      "Revisar volume esperado x verba x forecast",
       "Ampliar públicos e testar novos canais",
       "Subir novos criativos com chamada clara",
     ],
@@ -264,7 +264,7 @@ export const DORES: Dor[] = [
       "Falta de explicação nos check-ins",
     ],
     acoes: [
-      "Simplificar o relatório para os KPIs ligados às metas do cliente",
+      "Simplificar o relatório para os KPIs ligados ao forecast do cliente",
       "Explicar os números no ROPRE, com semáforo",
       "Conectar as métricas de mídia às vendas",
     ],
@@ -306,19 +306,19 @@ export const DORES: Dor[] = [
   {
     key: "expectativa",
     group: "Relacionamento e operação",
-    dor: "Expectativa desalinhada (metas irreais ou pressa por resultado)",
+    dor: "Expectativa desalinhada (forecast irreal ou pressa por resultado)",
     motivos: [
       "Promessa feita na venda",
-      "Meta nunca acordada formalmente",
+      "Forecast nunca acordado formalmente",
       "Desconhecimento do tempo de aprendizado das campanhas",
     ],
     acoes: [
-      "Revisar as metas com base no histórico e no benchmark de unidades do mesmo nicho",
-      "Documentar o plano de sucesso com metas e marcos intermediários",
+      "Revisar o forecast com base no histórico e no benchmark de unidades do mesmo nicho",
+      "Documentar o plano de sucesso com forecast e marcos intermediários",
       "Explicar a curva de maturação das campanhas",
     ],
     owner: "Account + Gestor de Tráfego",
-    objetivo: "Metas realistas e acordadas com o cliente.",
+    objetivo: "Forecast realista e acordado com o cliente.",
   },
   {
     key: "paga_caro",

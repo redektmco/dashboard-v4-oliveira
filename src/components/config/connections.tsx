@@ -12,8 +12,11 @@ import {
   setIntegrationCrmName,
   setIntegrationPaused,
   setMetaAccountPaused,
+  removeGoogleAccount,
+  setGoogleAccountPaused,
 } from "@/actions";
 import type { AdAccount } from "@/lib/meta/graph";
+import { formatCustomerId } from "@/lib/google/metrics";
 import { LEAD_METRIC_LABEL, type LeadMetric } from "@/lib/meta/metrics";
 import type { ActionResult } from "@/lib/action";
 import { ActionMenu, type MenuItem } from "../action-menu";
@@ -221,6 +224,61 @@ export function MetaLinkRow({ link }: { link: MetaLinkView }) {
         confirmLabel="Desvincular"
         pendingLabel="Desvinculando…"
         onConfirm={() => removeMetaAccount(link.adAccountId)}
+      >
+        <p>Os números importados são apagados e essas semanas ficam sem dado de performance. O score dos últimos 90 dias é recalculado.</p>
+      </ConfirmDialog>
+    </div>
+  );
+}
+
+/* ----------------------------- Google Ads ----------------------------- */
+
+export type GoogleLinkRowView = {
+  customerId: string;
+  name: string;
+  active: boolean;
+  lastSync: string;
+  error: string | null;
+};
+
+/**
+ * Uma conta do Google vinculada ao cliente, com pausar e desvincular — o
+ * par da `MetaLinkRow`. O Google não tem escolha de métrica de lead: a API
+ * devolve conversões já consolidadas.
+ */
+export function GoogleLinkRow({ link }: { link: GoogleLinkRowView }) {
+  const [removing, setRemoving] = useState(false);
+  const menu: MenuItem[] = [
+    link.active
+      ? {
+          label: "Pausar",
+          icon: "lock",
+          hint: "Números voltam para o input manual",
+          onSelect: async () => notify(await setGoogleAccountPaused(link.customerId, true)),
+        }
+      : { label: "Reativar", icon: "refresh", onSelect: async () => notify(await setGoogleAccountPaused(link.customerId, false)) },
+    "separator",
+    { label: "Desvincular", icon: "x", danger: true, onSelect: () => setRemoving(true) },
+  ];
+  return (
+    <div className="flex items-center gap-2.5 rounded-lg bg-ink-850 px-3 py-2">
+      <Icon name="search" size={15} className="shrink-0 text-ink-300" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13px] text-ink-100">{link.name}</div>
+        <div className="truncate text-[11px] text-ink-400">
+          {formatCustomerId(link.customerId)} · sync {link.lastSync}
+        </div>
+        {link.error && <div className="truncate text-[11px] text-vermelho-fg">{link.error}</div>}
+      </div>
+      {!link.active && <Pill tone="neutro">Pausada</Pill>}
+      <ActionMenu items={menu} label={`Ações de ${link.name}`} size="sm" />
+      <ConfirmDialog
+        open={removing}
+        onClose={() => setRemoving(false)}
+        title={`Desvincular ${link.name}?`}
+        confirmLabel="Desvincular"
+        pendingLabel="Desvinculando…"
+        onConfirm={() => removeGoogleAccount(link.customerId)}
       >
         <p>Os números importados são apagados e essas semanas ficam sem dado de performance. O score dos últimos 90 dias é recalculado.</p>
       </ConfirmDialog>

@@ -179,14 +179,14 @@ function evalField(
       const meta = num(bag[i.metaKey]);
       const d = i.decimals ?? 0;
       if (real === null || meta === null)
-        return { score: null, raw: "—", note: "real ou meta em branco" };
+        return { score: null, raw: "—", note: "real ou forecast em branco" };
       const score = f.rule === "A" ? ruleA(real, meta) : ruleB(real, meta);
       return {
         score,
         raw: `${fmt(real, d)} / ${fmt(meta, d)}`,
         actual: display(real, i.realLabel, d),
         target: display(meta, i.realLabel, d),
-        note: score === null ? "meta inválida (zero ou vazia)" : undefined,
+        note: score === null ? "forecast inválido (zero ou vazio)" : undefined,
       };
     }
     case "RATE": {
@@ -202,7 +202,7 @@ function evalField(
           score: null,
           raw: `${fmt(rate, 1)}%`,
           actual: `${fmt(rate, 1)}%`,
-          note: "meta de taxa de MQL não cadastrada",
+          note: "forecast de taxa de MQL não cadastrado",
         };
       return {
         score: ruleA(rate, metaRate),

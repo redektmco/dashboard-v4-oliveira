@@ -120,13 +120,13 @@ async function loadConfigSnapshot() {
     pendencias.push({
       id: "sem_meta",
       severity: "bloqueia",
-      title: `${semMeta.length} ${plural(semMeta.length, "cliente sem meta", "clientes sem meta")}`,
-      shortTitle: `${semMeta.length} ${plural(semMeta.length, "cliente sem meta", "clientes sem meta")}`,
-      consequence: "Sem meta não há régua: o score dessas contas não é calculado e elas somem dos alertas.",
+      title: `${semMeta.length} ${plural(semMeta.length, "cliente sem forecast", "clientes sem forecast")}`,
+      shortTitle: `${semMeta.length} ${plural(semMeta.length, "cliente sem forecast", "clientes sem forecast")}`,
+      consequence: "Sem forecast não há régua: o score dessas contas não é calculado e elas somem dos alertas.",
       shortConsequence: "O score dessas contas não é calculado.",
       clients: pick(semMeta),
       action: {
-        label: "Definir metas",
+        label: "Definir forecasts",
         href: "/gt?filtro=sem_meta",
         hint: "Em Performance, cliente a cliente",
         primary: true,

@@ -49,7 +49,7 @@ export const FLAG: Record<Band, FlagMeta> = {
     focus: "Monetização",
     goal: "Aumentar o LTV com upsell e cross-sell ancorados nos resultados gerados.",
     situation:
-      "O cliente bate meta, o relacionamento é fluido e os pagamentos estão em dia. Risco: esquecer o cliente porque ele não reclama.",
+      "O cliente bate o forecast, o relacionamento é fluido e os pagamentos estão em dia. Risco: esquecer o cliente porque ele não reclama.",
     rules: [
       "Cliente Green também precisa de atenção: o risco do cliente satisfeito é ser esquecido por não reclamar.",
       "Leve a oportunidade de monetização ao comercial e acompanhe o upsell até o fechamento.",

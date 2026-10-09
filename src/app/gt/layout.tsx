@@ -11,7 +11,7 @@ export default async function PerformanceLayout({ children }: { children: React.
   const me = await requireUser();
   const b = badgesOf(await configSnapshot());
   const tabs: HeadTab[] = [
-    { href: "/gt", label: "Metas", icon: "target", exact: true, badge: b.clientes ? { tone: "vermelho", text: String(b.clientes) } : null },
+    { href: "/gt", label: "Forecast", icon: "target", exact: true, badge: b.clientes ? { tone: "vermelho", text: String(b.clientes) } : null },
   ];
   if (me.is_admin)
     tabs.push(

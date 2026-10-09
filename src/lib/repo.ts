@@ -144,6 +144,8 @@ const CLIENT_SELECT = `
          c.next_checkin_at::text AS next_checkin_at,
          c.contract_code, c.services, c.contract_start::text AS contract_start,
          c.fidelity_months, c.notice_days, c.niche, c.proximity,
+         c.main_contact, c.contact_email, c.contact_phone,
+         c.checkin_every_days, c.stage_override,
          g.name AS gt_name, a.name AS account_name
   FROM clients c
   LEFT JOIN users g ON g.id = c.gt_user_id
@@ -154,6 +156,23 @@ export const listClients = (onlyActive = true) =>
 
 export const getClient = (id: number) => one<ClientRow>(`${CLIENT_SELECT} WHERE c.id = ?`, [id]);
 
+/** Campos do cliente que não entram no INSERT mínimo — ver `updateClient`. */
+type ClientExtras = Pick<
+  Client,
+  | "contract_code"
+  | "services"
+  | "contract_start"
+  | "fidelity_months"
+  | "notice_days"
+  | "niche"
+  | "proximity"
+  | "main_contact"
+  | "contact_email"
+  | "contact_phone"
+  | "checkin_every_days"
+  | "stage_override"
+>;
+
 export async function createClient(
   c: {
     name: string;
@@ -162,18 +181,18 @@ export async function createClient(
     gt_user_id: number | null;
     account_user_id: number | null;
     renewal_date: string | null;
-  } & Partial<Pick<Client, "contract_code" | "services" | "contract_start" | "fidelity_months" | "notice_days" | "niche" | "proximity">>,
+  } & Partial<ClientExtras>,
 ) {
+  const { name, account_type, mrr, gt_user_id, account_user_id, renewal_date, ...extras } = c;
   const id = await insert(
     `INSERT INTO clients (name, account_type, mrr, gt_user_id, account_user_id, renewal_date)
      VALUES (?, ?, ?, ?, ?, ?::date) RETURNING id`,
-    [c.name, c.account_type, c.mrr, c.gt_user_id, c.account_user_id, c.renewal_date],
+    [name, account_type, mrr, gt_user_id, account_user_id, renewal_date],
   );
-  const { contract_code, services, contract_start, fidelity_months, notice_days, niche, proximity } = c;
-  const contract = Object.fromEntries(
-    Object.entries({ contract_code, services, contract_start, fidelity_months, notice_days, niche, proximity }).filter(([, v]) => v !== undefined),
-  ) as Partial<Client>;
-  if (Object.keys(contract).length) await updateClient(id, contract);
+  // O resto (contrato, contato, segmento) passa pelo `updateClient`, que já
+  // conhece os casts de cada coluna — um lugar só para manter quando cresce.
+  const rest = Object.fromEntries(Object.entries(extras).filter(([, v]) => v !== undefined)) as Partial<Client>;
+  if (Object.keys(rest).length) await updateClient(id, rest);
   return id;
 }
 
@@ -194,6 +213,11 @@ export async function updateClient(id: number, c: Partial<Client>) {
       "notice_days",
       "niche",
       "proximity",
+      "main_contact",
+      "contact_email",
+      "contact_phone",
+      "checkin_every_days",
+      "stage_override",
     ] as const
   ).filter((k) => k in c);
   if (!keys.length) return;
@@ -1554,7 +1578,7 @@ export async function avisos(): Promise<Aviso[]> {
     },
     {
       id: "metas",
-      label: "contas sem meta",
+      label: "contas sem forecast",
       count: semMeta?.n ?? 0,
       href: "/gt?filtro=sem_meta",
     },

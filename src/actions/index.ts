@@ -158,6 +158,17 @@ export async function previewCheckin(
  * lugar. O recálculo do score do dia sai depois da resposta — a carteira
  * calcula o score ao vivo, então ninguém espera por ele.
  */
+/**
+ * Serviços do formulário. O seletor em pílulas manda um campo `services` por
+ * serviço; cadastros antigos (e a importação de planilha) ainda mandam uma
+ * string separada por vírgula — as duas formas são aceitas.
+ */
+function parseServices(formData: FormData): string[] {
+  const raw = formData.getAll("services").map(String);
+  const list = raw.length > 1 ? raw : (raw[0] ?? "").split(",");
+  return [...new Set(list.map((x) => x.trim()).filter(Boolean))];
+}
+
 export async function saveClient(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
   const me = await requireUser();
   const id = Number(str(formData, "id")) || 0;
@@ -174,10 +185,7 @@ export async function saveClient(_prev: ActionResult, formData: FormData): Promi
     account_user_id: Number(str(formData, "account_user_id")) || null,
     renewal_date: str(formData, "renewal_date") || null,
     contract_code: str(formData, "contract_code") || null,
-    services: str(formData, "services")
-      .split(",")
-      .map((x) => x.trim())
-      .filter(Boolean),
+    services: parseServices(formData),
     contract_start: str(formData, "contract_start") || null,
     fidelity_months: numOrNull(formData, "fidelity_months"),
     notice_days: numOrNull(formData, "notice_days"),
@@ -644,7 +652,7 @@ export async function saveClientTargets(clientId: number, values: Record<string,
   const allowed = new Set(targetKeysFor(client.account_type).map((t) => t.key));
   const targets: Record<string, number> = {};
   for (const [k, v] of Object.entries(values)) if (allowed.has(k) && v !== null && Number.isFinite(v) && v > 0) targets[k] = v;
-  if (!Object.keys(targets).length) return { error: "Preencha ao menos uma meta." };
+  if (!Object.keys(targets).length) return { error: "Preencha ao menos um valor do forecast." };
   await setTargets(clientId, targets, today(), me.id);
   await logChange(me, "meta", `Metas definidas: ${client.name}`, { clientId });
   after(() => refresh(clientId));

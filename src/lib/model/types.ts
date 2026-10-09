@@ -114,6 +114,28 @@ export type Client = {
   niche: string | null;
   /** Perto = visita; longe = vídeo com câmera aberta + gift card da Maxx. */
   proximity: "perto" | "longe" | null;
+  /** Contato do lado do cliente no dia a dia (não é o contato de cobrança). */
+  main_contact: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  /** Ritmo combinado de check-in, em dias. Sem isto vale o limite global. */
+  checkin_every_days: number | null;
+  /** Correção manual da etapa derivada. null = vale a regra de `lib/crm/stage`. */
+  stage_override: Stage | null;
+};
+
+/**
+ * Etapa do relacionamento. Derivada do que já existe (contrato, renovação,
+ * churn, upsell) e corrigível à mão em `clients.stage_override`.
+ */
+export type Stage = "onboarding" | "estavel" | "expansao" | "renovacao" | "retencao";
+
+export const STAGE_LABEL: Record<Stage, string> = {
+  onboarding: "Onboarding",
+  estavel: "Estável",
+  expansao: "Expansão",
+  renovacao: "Renovação",
+  retencao: "Retenção",
 };
 
 export type User = { id: number; name: string; role: "gt" | "account" | "coord" | "social" };

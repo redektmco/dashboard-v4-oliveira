@@ -37,6 +37,11 @@ import {
   matchesClientQuery,
   type ProjectCard,
 } from "../src/lib/social/clients";
+import { stageOf } from "../src/lib/crm/stage";
+import { mediaSplit, weekOverWeek } from "../src/lib/crm/media-split";
+import { hasMediaService, splitServices } from "../src/lib/model/services";
+import { agoLabel, type CrmRow } from "../src/lib/crm/board";
+import { EMPTY_FILTERS, countViews, fromLegacyFilter, matchesFilters, sortRows } from "../src/lib/crm/views";
 
 const TODAY = "2026-06-15";
 
@@ -878,4 +883,220 @@ test("prioridades: passo do playbook atrasado entra na lista com a ação certa"
   const [p] = topPriorities([acct({ band: "verde", playbookLate: 2 })]);
   assert.equal(p.action, "cobrar_playbook");
   assert.match(p.why, /2 passos do playbook estão atrasados/);
+});
+
+/* ------------------------------ CRM ------------------------------ */
+
+const stageBase = {
+  override: null,
+  churnOpen: false,
+  upsellOpen: false,
+  since: "2024-01-10",
+  renewalDate: null,
+  at: "2026-10-09",
+};
+
+test("CRM: etapa derivada respeita a precedência churn > renovação > expansão > onboarding", () => {
+  assert.equal(stageOf(stageBase), "estavel");
+  assert.equal(stageOf({ ...stageBase, since: "2026-09-20" }), "onboarding");
+  assert.equal(stageOf({ ...stageBase, upsellOpen: true }), "expansao");
+  // Renovação vence expansão: a conversa pendente da conta é o contrato.
+  assert.equal(stageOf({ ...stageBase, upsellOpen: true, renewalDate: "2026-11-01" }), "renovacao");
+  // Churn vence tudo.
+  assert.equal(stageOf({ ...stageBase, churnOpen: true, upsellOpen: true, renewalDate: "2026-11-01" }), "retencao");
+  // Override vence até o churn — é a correção manual.
+  assert.equal(stageOf({ ...stageBase, override: "estavel", churnOpen: true }), "estavel");
+});
+
+test("CRM: renovação vencida continua sendo etapa de renovação", () => {
+  assert.equal(stageOf({ ...stageBase, renewalDate: "2026-09-01" }), "renovacao");
+  assert.equal(stageOf({ ...stageBase, renewalDate: "2027-06-01" }), "estavel");
+});
+
+const crmRow = (over: Partial<CrmRow> = {}): CrmRow => ({
+  id: 1,
+  name: "Imobiliária Horizonte",
+  active: true,
+  accountType: "lead_gen",
+  typeLabel: "Geração de Lead",
+  segment: "Imóveis",
+  accountName: "Rafael Moreira",
+  gtName: "Lucas Andrade",
+  score: 72,
+  band: "amarelo",
+  delta7: -4,
+  history: [],
+  stage: "retencao",
+  stageManual: false,
+  mrr: 13600,
+  since: "2025-03-01",
+  renewalDate: null,
+  renewalIn: null,
+  services: [],
+  lastInteraction: null,
+  nextAction: null,
+  pendencias: [],
+  openTasks: 0,
+  targets: { set: 2, total: 3 },
+  leadSources: ["Meta Ads"],
+  charge: null,
+  churn: null,
+  hook: null,
+  meta: [],
+  google: [],
+  ...over,
+});
+
+test("CRM: busca ignora acento e caixa, e varre responsáveis e segmento", () => {
+  const r = crmRow();
+  const f = (q: string) => matchesFilters(r, { ...EMPTY_FILTERS, q });
+  assert.ok(f("imobiliaria"));
+  assert.ok(f("HORIZONTE"));
+  assert.ok(f("rafael"));
+  assert.ok(f("Imóveis"));
+  assert.ok(!f("construtora"));
+});
+
+test("CRM: filtros combinam — todos precisam passar", () => {
+  const r = crmRow({ accountName: "Rafael Moreira", stage: "retencao", leadSources: [] });
+  const base = { ...EMPTY_FILTERS, account: "Rafael Moreira", stage: "retencao" as const };
+  assert.ok(matchesFilters(r, base));
+  assert.ok(matchesFilters(r, { ...base, source: "sem" }));
+  assert.ok(!matchesFilters(r, { ...base, source: "com" }));
+  assert.ok(!matchesFilters(r, { ...base, account: "Juliana" }));
+});
+
+test("CRM: filtro de metas separa definidas de pendentes", () => {
+  const com = crmRow({ targets: { set: 2, total: 3 } });
+  const sem = crmRow({ targets: { set: 0, total: 3 } });
+  assert.ok(matchesFilters(com, { ...EMPTY_FILTERS, targets: "definidas" }));
+  assert.ok(!matchesFilters(com, { ...EMPTY_FILTERS, targets: "pendentes" }));
+  assert.ok(matchesFilters(sem, { ...EMPTY_FILTERS, targets: "pendentes" }));
+});
+
+test("CRM: filtro de última interação trata 'nunca' e a janela de dias", () => {
+  const nunca = crmRow({ lastInteraction: null });
+  const recente = crmRow({ lastInteraction: { at: "2026-10-07", kind: "reuniao", title: "Call", days: 2 } });
+  assert.ok(matchesFilters(nunca, { ...EMPTY_FILTERS, interaction: "nunca" }));
+  assert.ok(!matchesFilters(recente, { ...EMPTY_FILTERS, interaction: "nunca" }));
+  assert.ok(matchesFilters(recente, { ...EMPTY_FILTERS, interaction: "7" }));
+  assert.ok(!matchesFilters(nunca, { ...EMPTY_FILTERS, interaction: "7" }));
+});
+
+test("CRM: abas separam a carteira sem sobreposição indevida", () => {
+  const rows = [
+    crmRow({ id: 1, band: "verde" }),
+    crmRow({ id: 2, band: "amarelo" }),
+    crmRow({ id: 3, band: "vermelho", pendencias: [{ id: "sem_meta", label: "sem meta", severity: "bloqueia" }] }),
+    crmRow({ id: 4, band: "verde", churn: { id: 9, status: "em_negociacao" } }),
+    crmRow({ id: 5, active: false, band: null }),
+  ];
+  const c = countViews(rows);
+  assert.equal(c.todos, 4);
+  assert.equal(c.saudaveis, 2);
+  assert.equal(c.atencao, 1);
+  assert.equal(c.risco, 1);
+  assert.equal(c.churn, 1);
+  assert.equal(c.pendencias, 1);
+  assert.equal(c.arquivados, 1);
+});
+
+test("CRM: ordenação joga quem não tem o dado para o fim nas duas direções", () => {
+  const rows = [crmRow({ id: 1, score: null }), crmRow({ id: 2, score: 80 }), crmRow({ id: 3, score: 40 })];
+  assert.deepEqual(sortRows(rows, "score", "desc").map((r) => r.id), [2, 3, 1]);
+  assert.deepEqual(sortRows(rows, "score", "asc").map((r) => r.id), [3, 2, 1]);
+});
+
+test("CRM: os links antigos de ?filtro= continuam apontando para a mesma fila", () => {
+  assert.deepEqual(fromLegacyFilter("sem_meta"), { view: "todos", filters: { ...EMPTY_FILTERS, targets: "pendentes" } });
+  assert.deepEqual(fromLegacyFilter("sem_fonte"), { view: "todos", filters: { ...EMPTY_FILTERS, source: "sem" } });
+  assert.equal(fromLegacyFilter("arquivados").view, "arquivados");
+  assert.equal(fromLegacyFilter(null).view, "todos");
+  assert.equal(fromLegacyFilter("lixo").view, "todos");
+});
+
+test("CRM: rótulo de tempo da última interação", () => {
+  assert.equal(agoLabel(0), "hoje");
+  assert.equal(agoLabel(1), "ontem");
+  assert.equal(agoLabel(4), "há 4 dias");
+  assert.equal(agoLabel(35), "há 1 mês");
+  assert.equal(agoLabel(70), "há 2 meses");
+});
+
+test("serviços: separa catálogo de texto livre e aceita acento/caixa", () => {
+  const r = splitServices(["meta ads", "Social Media", "Tráfego pago", "META ADS", "  "]);
+  assert.deepEqual(r.known, ["Meta Ads", "Social Media"]);
+  assert.deepEqual(r.custom, ["Tráfego pago"]);
+});
+
+test("serviços: canal contratado só é negado quando há serviço cadastrado", () => {
+  assert.equal(hasMediaService([], "meta"), null);
+  assert.equal(hasMediaService(["Social Media"], "meta"), false);
+  assert.equal(hasMediaService(["Meta Ads", "SEO"], "meta"), true);
+  assert.equal(hasMediaService(["Meta Ads"], "google"), false);
+  assert.equal(hasMediaService(["Google Ads"], "google"), true);
+});
+
+/* ------------------------ mídia por canal ------------------------ */
+
+const agg = (spend: number, leads: number, revenue = 0) => ({
+  week: { ...EMPTY_WEEK, spend, leads, revenue, impressions: spend * 10, clicks: spend },
+  leads,
+});
+
+test("mídia: separa Meta de Google e calcula fatia, custo por resultado e ROAS", () => {
+  const r = mediaSplit({
+    weeks: ["2026-10-02", "2026-10-09"],
+    meta: new Map([["2026-10-02", agg(600, 30)], ["2026-10-09", agg(400, 10, 2000)]]),
+    google: new Map([["2026-10-09", agg(1000, 20, 5000)]]),
+    metaLinked: true,
+    googleLinked: true,
+  });
+  assert.equal(r.total.spend, 2000);
+  assert.equal(r.byChannel.meta.totals.spend, 1000);
+  assert.equal(r.byChannel.meta.totals.results, 40);
+  assert.equal(r.byChannel.meta.totals.cpr, 25);
+  assert.equal(r.byChannel.google.totals.share, 0.5);
+  assert.equal(r.byChannel.google.totals.roas, 5);
+  assert.ok(r.hasData);
+});
+
+test("mídia: sem resultado não inventa custo por resultado, sem verba não inventa ROAS", () => {
+  const r = mediaSplit({
+    weeks: ["2026-10-09"],
+    meta: new Map([["2026-10-09", agg(500, 0)]]),
+    google: undefined,
+    metaLinked: true,
+    googleLinked: false,
+  });
+  assert.equal(r.byChannel.meta.totals.cpr, null);
+  assert.equal(r.byChannel.google.totals.roas, null);
+  // Conta não vinculada é diferente de conta sem verba.
+  assert.equal(r.byChannel.google.totals.linked, false);
+  assert.equal(r.byChannel.meta.totals.linked, true);
+});
+
+test("mídia: semana sem dado entra como zero, mantendo a série alinhada", () => {
+  const r = mediaSplit({
+    weeks: ["2026-09-25", "2026-10-02", "2026-10-09"],
+    meta: new Map([["2026-10-09", agg(300, 5)]]),
+    google: undefined,
+    metaLinked: true,
+    googleLinked: false,
+  });
+  assert.deepEqual(r.byChannel.meta.weeks.map((w) => w.spend), [0, 0, 300]);
+});
+
+test("mídia: variação semana a semana ignora base zero", () => {
+  const weeks = mediaSplit({
+    weeks: ["2026-10-02", "2026-10-09"],
+    meta: new Map([["2026-10-02", agg(100, 10)], ["2026-10-09", agg(150, 5)]]),
+    google: undefined,
+    metaLinked: true,
+    googleLinked: false,
+  }).byChannel.meta.weeks;
+  const w = weekOverWeek(weeks);
+  assert.equal(w.spend, 50);
+  assert.equal(w.results, -50);
+  assert.deepEqual(weekOverWeek([]), { spend: null, results: null });
 });

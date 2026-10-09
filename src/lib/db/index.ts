@@ -808,13 +808,49 @@ CREATE TABLE IF NOT EXISTS crm_diagnostics (
   data JSONB NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_crm_diag_client ON crm_diagnostics (client_id, filled_at DESC);
+
+-- =====================================================================
+-- CRM da carteira — a tela de Clientes deixou de ser cadastro e virou o
+-- ponto de gestao da conta. As colunas abaixo sao o que a listagem mostra
+-- e filtra; nenhuma substitui as que ja existem (billing_email/_phone
+-- seguem sendo o contato de cobranca, contact_* e o contato do dia a dia;
+-- o segmento do cliente continua sendo clients.niche).
+-- stage_override: a etapa do relacionamento e derivada (ver lib/crm/stage.ts);
+-- preencher aqui e dizer "a regra errou neste cliente". NULL = automatico.
+-- =====================================================================
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS main_contact TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS contact_email TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS contact_phone TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS checkin_every_days INTEGER;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS stage_override TEXT;
+ALTER TABLE clients DROP CONSTRAINT IF EXISTS clients_stage_override_check;
+ALTER TABLE clients ADD CONSTRAINT clients_stage_override_check
+  CHECK (stage_override IN ('onboarding','estavel','expansao','renovacao','retencao'));
+
+-- Relacionamento: cada contato com o cliente, datado e com tipo. E a fonte
+-- da coluna "Ultima interacao" e da aba Relacionamento da ficha. Nunca
+-- sobrescreve -- mesmo principio dos snapshots.
+CREATE TABLE IF NOT EXISTS client_interactions (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  kind TEXT NOT NULL
+    CHECK (kind IN ('reuniao','ligacao','mensagem','feedback','reclamacao','acordo','observacao')),
+  channel TEXT,
+  title TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  user_name TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_interactions_client ON client_interactions (client_id, at DESC);
 `;
 
 /**
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-10-09.verba-7d";
+export const SCHEMA_VERSION = "2026-10-09.crm-clientes";
 
 let migrated = false;
 

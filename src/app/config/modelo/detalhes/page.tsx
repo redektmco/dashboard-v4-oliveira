@@ -65,12 +65,12 @@ export default async function ModeloPage() {
           <div className="space-y-4 px-4 py-4 text-sm">
             <Rule
               title="Régua A — quanto maior melhor"
-              code="score = min(100, (real / meta) × 100)"
+              code="score = min(100, (real / forecast) × 100)"
               note="Leads, faturamento, ROAS, alcance. Teto em 100: bater 150% da meta não vale mais que bater 100% para fins de saúde — evita um super-mês mascarar um problema."
             />
             <Rule
               title="Régua B — quanto menor melhor"
-              code="score = min(100, (meta / real) × 100)"
+              code="score = min(100, (forecast / real) × 100)"
               note="CPL, CAC. Mesma lógica invertida."
             />
             <Rule

@@ -41,7 +41,7 @@ export function ClientActions({
           ) : undefined
         }
         items={[
-          { label: "Editar cadastro e metas", icon: "settings", onSelect: () => setEditing(true) },
+          { label: "Editar cadastro e forecast", icon: "settings", onSelect: () => setEditing(true) },
           ...(client.active
             ? [{ label: "Registrar pedido de cancelamento", icon: "userMinus" as const, href: `/churn/nova?cliente=${client.id}` }]
             : []),

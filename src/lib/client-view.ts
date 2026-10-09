@@ -163,10 +163,10 @@ export function nextActions(input: {
   if (!input.hasTargets)
     out.push({
       id: "metas",
-      title: "Definir metas da conta",
+      title: "Definir o forecast da conta",
       status: "Pendente",
       owner: firstName(client.gt_name),
-      due: "Sem meta, sem score",
+      due: "Sem forecast, sem score",
       kind: "metas",
       href: `/gt?c=${client.id}`,
       quick: "Definir",
@@ -357,7 +357,7 @@ export function accountEvents(input: {
     events.push({
       day: t.day,
       kind: "meta",
-      title: "Meta alterada",
+      title: "Forecast alterado",
       detail: `Meta de ${TARGET_LABEL(t.key)} revisada de ${fmtTarget(t.from!)} para ${fmtTarget(t.to)}`,
       by: t.by,
       at: t.at,

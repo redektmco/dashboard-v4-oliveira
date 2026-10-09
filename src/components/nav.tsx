@@ -34,15 +34,15 @@ const MAIN: NavLink[] = [
   {
     href: "/gt",
     label: "Performance",
-    hint: "Metas, integrações e canais de envio",
+    hint: "Forecast, integrações e canais de envio",
     icon: "chart",
     children: [
-      { href: "/gt", label: "Metas" },
+      { href: "/gt", label: "Forecast" },
       { href: "/gt/integracoes", label: "Integrações", admin: true },
       { href: "/gt/canais", label: "Canais de envio", admin: true },
     ],
   },
-  { href: "/clientes", label: "Clientes", hint: "Cadastro, metas e fontes de dados", icon: "briefcase" },
+  { href: "/clientes", label: "Clientes", hint: "Saúde, relacionamento e contratos da carteira", icon: "briefcase" },
   { href: "/account", label: "Check-in", hint: "Account · depois da call", icon: "users" },
   {
     href: "/churn",

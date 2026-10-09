@@ -21,7 +21,7 @@ export const DIMENSIONS: DimensionDef[] = [
     source: "Account",
     defaultWeight: 25,
     rationale:
-      "Antecipa o churn antes do resultado cair; cliente insatisfeito sai mesmo entregando meta. Peso alto apesar de subjetivo.",
+      "Antecipa o churn antes do resultado cair; cliente insatisfeito sai mesmo entregando o forecast. Peso alto apesar de subjetivo.",
   },
   {
     key: "lead_quality",
@@ -62,7 +62,7 @@ const GT_LEAD_GEN: FieldDef[] = [
     key: "leads",
     label: "Leads gerados",
     definition:
-      "Total de leads da semana no gerenciador/CRM, mesma fonte toda semana. Meta é a contratada para a semana.",
+      "Total de leads da semana no gerenciador/CRM, mesma fonte toda semana. O forecast é o contratado para a semana.",
     dimension: "performance",
     source: "gt",
     weight: 40,
@@ -75,14 +75,14 @@ const GT_LEAD_GEN: FieldDef[] = [
       realKey: "leads_real",
       metaKey: "leads_meta",
       realLabel: "Leads gerados na semana",
-      metaLabel: "Meta de leads (semana)",
+      metaLabel: "Forecast de leads (semana)",
     },
   },
   {
     key: "cpl",
     label: "CPL",
     definition:
-      "Custo por lead da semana = verba investida / leads gerados. Meta é o CPL contratado.",
+      "Custo por lead da semana = verba investida / leads gerados. O forecast é o CPL contratado.",
     dimension: "performance",
     source: "gt",
     weight: 30,
@@ -96,7 +96,7 @@ const GT_LEAD_GEN: FieldDef[] = [
       realKey: "cpl_real",
       metaKey: "cpl_meta",
       realLabel: "CPL real (R$)",
-      metaLabel: "CPL meta (R$)",
+      metaLabel: "CPL do forecast (R$)",
       decimals: 2,
     },
   },
@@ -141,7 +141,7 @@ const GT_LEAD_GEN: FieldDef[] = [
       realKey: "mql_real",
       metaKey: "mql_rate_meta",
       realLabel: "MQL na semana (qtd)",
-      metaLabel: "Meta de taxa de MQL (%)",
+      metaLabel: "Forecast de taxa de MQL (%)",
     },
   },
 ];
@@ -151,7 +151,7 @@ const GT_ECOMMERCE: FieldDef[] = [
     key: "revenue",
     label: "Faturamento atribuído",
     definition:
-      "Receita atribuída à mídia na semana (mesmo modelo de atribuição sempre) vs meta da semana.",
+      "Receita atribuída à mídia na semana (mesmo modelo de atribuição sempre) vs forecast da semana.",
     dimension: "performance",
     source: "gt",
     weight: 40,
@@ -164,19 +164,19 @@ const GT_ECOMMERCE: FieldDef[] = [
       realKey: "revenue_real",
       metaKey: "revenue_meta",
       realLabel: "Faturamento atribuído (R$)",
-      metaLabel: "Meta de faturamento (R$)",
+      metaLabel: "Forecast de faturamento (R$)",
       decimals: 2,
     },
   },
   {
     key: "roas",
     label: "ROAS",
-    definition: "Faturamento atribuído / verba investida na semana, vs ROAS meta contratado.",
+    definition: "Faturamento atribuído / verba investida na semana, vs ROAS do forecast contratado.",
     dimension: "performance",
     source: "gt",
     weight: 35,
     weightRationale:
-      "Eficiência da operação. Faturar batendo meta com ROAS abaixo do contratado é insustentável — quase pareia com faturamento.",
+      "Eficiência da operação. Faturar batendo o forecast com ROAS abaixo do contratado é insustentável — quase pareia com faturamento.",
     rule: "A",
     accountTypes: ["ecommerce"],
     targetKey: "roas_meta",
@@ -185,7 +185,7 @@ const GT_ECOMMERCE: FieldDef[] = [
       realKey: "roas_real",
       metaKey: "roas_meta",
       realLabel: "ROAS real",
-      metaLabel: "ROAS meta",
+      metaLabel: "ROAS do forecast",
       decimals: 2,
     },
   },
@@ -215,7 +215,7 @@ const GT_ECOMMERCE: FieldDef[] = [
     key: "ticket",
     label: "Ticket médio",
     definition:
-      "Ticket médio da semana. Não tem meta: é comparado à média das 4 semanas anteriores (tendência).",
+      "Ticket médio da semana. Não tem forecast: é comparado à média das 4 semanas anteriores (tendência).",
     dimension: "performance",
     source: "gt",
     weight: 10,
@@ -236,7 +236,7 @@ const GT_BRANDING: FieldDef[] = [
   {
     key: "reach",
     label: "Alcance / impressões",
-    definition: "Alcance ou impressões da semana vs meta contratada.",
+    definition: "Alcance ou impressões da semana vs forecast contratado.",
     dimension: "performance",
     source: "gt",
     weight: 30,
@@ -249,13 +249,13 @@ const GT_BRANDING: FieldDef[] = [
       realKey: "reach_real",
       metaKey: "reach_meta",
       realLabel: "Alcance/impressões na semana",
-      metaLabel: "Meta de alcance/impressões",
+      metaLabel: "Forecast de alcance/impressões",
     },
   },
   {
     key: "base_growth",
     label: "Crescimento de base",
-    definition: "Novos seguidores/inscritos líquidos na semana vs meta.",
+    definition: "Novos seguidores/inscritos líquidos na semana vs forecast.",
     dimension: "performance",
     source: "gt",
     weight: 25,
@@ -269,7 +269,7 @@ const GT_BRANDING: FieldDef[] = [
       realKey: "base_growth_real",
       metaKey: "base_growth_meta",
       realLabel: "Crescimento de base na semana",
-      metaLabel: "Meta de crescimento",
+      metaLabel: "Forecast de crescimento",
     },
   },
   {
@@ -464,7 +464,7 @@ const ACCOUNT_FIELDS: FieldDef[] = [
     question:
       "De 1 a 5, como você avalia o nosso relacionamento e a comunicação do time no dia a dia?",
     definition:
-      "Separa resultado de relação: dá para entregar meta e ter a relação corroendo — e o cliente sai assim mesmo.",
+      "Separa resultado de relação: dá para entregar o forecast e ter a relação corroendo — e o cliente sai assim mesmo.",
     dimension: "relationship",
     source: "account",
     weight: 18,
@@ -647,7 +647,7 @@ export function fieldByKey(key: string): FieldDef | undefined {
   return ALL_FIELDS.find((f) => f.key === key);
 }
 
-/** Metas que o cadastro do cliente guarda para pré-preencher o formulário do GT. */
+/** Forecasts que o cadastro do cliente guarda para pré-preencher o formulário do GT. */
 export function targetKeysFor(
   accountType: AccountType,
 ): { key: string; label: string; decimals?: number }[] {

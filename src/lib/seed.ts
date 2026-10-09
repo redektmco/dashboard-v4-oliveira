@@ -236,7 +236,7 @@ export async function insertDemoData() {
         [
           clientId,
           "Queda de volume por 4 semanas seguidas com CPL subindo",
-          "Reestruturar campanha de captação, trocar 3 criativos e reunião de realinhamento de meta com o cliente.",
+          "Reestruturar campanha de captação, trocar 3 criativos e reunião de realinhamento de forecast com o cliente.",
           gtId,
           iso(addDays(TODAY, 5)),
         ],

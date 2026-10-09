@@ -394,7 +394,7 @@ function IndicatorsDrawer({
             <div className="flex gap-3 py-2.5">
               <ColLabel className="flex-1">Indicador</ColLabel>
               <ColLabel className="w-[76px] text-right">Atual</ColLabel>
-              <ColLabel className="w-[76px] text-right">Meta</ColLabel>
+              <ColLabel className="w-[76px] text-right">Forecast</ColLabel>
               <ColLabel className="w-[84px]">Status</ColLabel>
             </div>
             {d.fields.map((f) => {

@@ -44,7 +44,7 @@ export default async function PendenciasPage() {
   const fontes = total - snap.semFonte.length;
   const canais = Number(snap.emailOn) + Number(snap.waOn);
   const reqs: { label: string; num: number; of: number; tone: Tone }[] = [
-    { label: "Metas cadastradas", num: metas, of: total, tone: "vermelho" },
+    { label: "Forecast cadastrado", num: metas, of: total, tone: "vermelho" },
     { label: "Fonte de leads (CRM ou Meta)", num: fontes, of: total, tone: "vermelho" },
     { label: "Contato de cobrança", num: snap.comContato.length, of: snap.charges.length, tone: "amarelo" },
     { label: "Canal de envio ativo", num: canais, of: 2, tone: "amarelo" },
@@ -72,7 +72,7 @@ export default async function PendenciasPage() {
             <span className="tnum font-display text-[34px] font-semibold leading-[34px] tracking-[-1px] text-ink-100">{confiaveis}</span>
             <span className="text-[14px] text-ink-400">de {total} clientes</span>
           </span>
-          <span className="text-[12px] leading-[17px] text-ink-400">Clientes com meta e ao menos uma fonte de dados atualizada.</span>
+          <span className="text-[12px] leading-[17px] text-ink-400">Clientes com forecast e ao menos uma fonte de dados atualizada.</span>
         </div>
         {reqs.map((r) => {
           const done = r.num >= r.of;
@@ -117,7 +117,7 @@ export default async function PendenciasPage() {
               <IconBox icon="checkCircle" tone="verde" />
               <div>
                 <div className="text-[15px] font-semibold text-ink-100">Nada pendente</div>
-                <p className="mt-1 text-[13px] text-ink-300">Todos os clientes têm meta e fonte de dados, e as cobranças vão sair pelo canal configurado.</p>
+                <p className="mt-1 text-[13px] text-ink-300">Todos os clientes têm forecast e fonte de dados, e as cobranças vão sair pelo canal configurado.</p>
               </div>
             </Card>
           )}

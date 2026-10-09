@@ -13,8 +13,15 @@ import {
   scoreSeries,
   targetHistory,
   today,
+  metaWeeks,
+  googleWeeks,
+  listMetaLinks,
+  listGoogleLinks,
 } from "@/lib/repo";
 import { listClientChanges } from "@/lib/audit";
+import { currentRitualDate } from "@/lib/week";
+import { mediaSplit } from "@/lib/crm/media-split";
+import { MediaChannels } from "@/components/cliente/media-channels";
 import { requestsForClient } from "@/lib/churn/db";
 import { isOpen } from "@/lib/churn/types";
 import { ACCOUNT_TYPE_LABEL, type Band, type DimensionKey } from "@/lib/model/types";
@@ -70,6 +77,11 @@ import { PlaybookSection, type PlaybookData } from "@/components/cliente/playboo
 export const dynamic = "force-dynamic";
 
 const fmt1 = (n: number) => n.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const shiftDays = (day: string, n: number) => {
+  const d = new Date(day + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
 const firstName = (n: string | null) => (n ? n.trim().split(/\s+/)[0] : "—");
 const tone = (b: Band | null): Tone => b ?? "neutro";
 
@@ -121,14 +133,32 @@ export default async function ClientePage({
     await syncFlag(clientId, s.band);
     episode = await openEpisode(clientId);
   }
-  const [steps, episodes, learning, opps, crmDiag, creatives] = await Promise.all([
+  const [steps, episodes, learning, opps, crmDiag, creatives, metaBy, googleBy, metaLinks, googleLinks] = await Promise.all([
     episode ? episodeSteps(episode.id) : Promise.resolve([]),
     episodeHistory(clientId, 4),
     learningRecords(clientId),
     upsells(clientId),
     latestCrmDiagnostic(clientId),
     creativeStats(clientId),
+    metaWeeks(clientId),
+    googleWeeks(clientId),
+    listMetaLinks(),
+    listGoogleLinks(),
   ]);
+
+  // Mídia separada por canal: o score lê Meta + Google somados, esta leitura
+  // desfaz a soma para dizer de onde veio o movimento. Últimas 8 semanas-ritual.
+  // `currentRitualDate` e a ultima sexta que JA passou: a semana fechada.
+  // `ritualWeekEnd` devolveria a sexta que ainda vai fechar, e a ultima barra
+  // seria sempre uma semana pela metade parecendo queda.
+  const lastWeek = currentRitualDate(new Date(at + "T12:00:00"));
+  const split = mediaSplit({
+    weeks: Array.from({ length: 8 }, (_, i) => shiftDays(lastWeek, -7 * (7 - i))),
+    meta: metaBy.get(clientId),
+    google: googleBy.get(clientId),
+    metaLinked: metaLinks.some((l) => l.client_id === clientId),
+    googleLinked: googleLinks.some((l) => l.client_id === clientId),
+  });
   const nowIso = new Date().toISOString();
   const playbook: PlaybookData = {
     clientId,
@@ -222,7 +252,7 @@ export default async function ClientePage({
         period: f.period,
       })),
       primary: fromGT
-        ? { label: "Ajustar metas", href: `/gt?c=${clientId}`, icon: "target" as IconName }
+        ? { label: "Ajustar forecast", href: `/gt?c=${clientId}`, icon: "target" as IconName }
         : { label: "Registrar check-in", href: `/account/${clientId}`, icon: "plus" as IconName },
     };
   });
@@ -348,6 +378,8 @@ export default async function ClientePage({
         {risk && <RiskBanner risk={risk} />}
 
         <PlaybookSection data={playbook} variant="desktop" />
+
+        <MediaChannels split={split} clientId={clientId} />
 
         <EvolutionSection
           points={series.map((p) => ({ day: p.day, score: p.score }))}
@@ -492,6 +524,8 @@ export default async function ClientePage({
         </Card>
 
         <PlaybookSection data={playbook} variant="mobile" />
+
+        <MediaChannels split={split} clientId={clientId} />
 
         <EvolutionSection
           points={series.map((p) => ({ day: p.day, score: p.score }))}
@@ -972,9 +1006,9 @@ function HistoryContent({
       </section>
 
       <section>
-        <h3 className="label mb-2">Metas vigentes · base das réguas</h3>
+        <h3 className="label mb-2">Forecast vigente · base das réguas</h3>
         <div className="grid gap-x-8 gap-y-2 sm:grid-cols-2">
-          {Object.entries(targets).length === 0 && <span className="text-sm text-ink-400">Nenhuma meta cadastrada — sem meta não há régua.</span>}
+          {Object.entries(targets).length === 0 && <span className="text-sm text-ink-400">Nenhum forecast cadastrado — sem forecast não há régua.</span>}
           {Object.entries(targets).map(([k, v]) => (
             <div key={k} className="flex items-baseline justify-between border-b border-[var(--border-hair)] pb-1">
               <span className="text-xs text-ink-400">{fieldByKey(k)?.label ?? k}</span>
@@ -990,7 +1024,7 @@ function HistoryContent({
 function summarizePerf(data: Record<string, unknown>, type: string) {
   const n = (k: string) =>
     data[k] === null || data[k] === undefined ? "—" : Number(data[k]).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
-  if (type === "lead_gen") return `${n("leads_real")}/${n("leads_meta")} leads · CPL ${n("cpl_real")} (meta ${n("cpl_meta")}) · MQL ${n("mql_real")}`;
-  if (type === "ecommerce") return `Fat. ${n("revenue_real")}/${n("revenue_meta")} · ROAS ${n("roas_real")} (meta ${n("roas_meta")})`;
+  if (type === "lead_gen") return `${n("leads_real")}/${n("leads_meta")} leads · CPL ${n("cpl_real")} (forecast ${n("cpl_meta")}) · MQL ${n("mql_real")}`;
+  if (type === "ecommerce") return `Fat. ${n("revenue_real")}/${n("revenue_meta")} · ROAS ${n("roas_real")} (forecast ${n("roas_meta")})`;
   return `Alcance ${n("reach_real")}/${n("reach_meta")} · Entregas ${n("deliveries_real")}/${n("deliveries_meta")}`;
 }
