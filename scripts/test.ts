@@ -20,8 +20,9 @@ import { matchCaptionsToFiles, parseBatchCaptions } from "../src/lib/social/batc
 import { isOwnBlobUrl } from "../src/lib/social/storage";
 import { navReducer, type Nav } from "../src/components/social/story-nav";
 import { createSign, generateKeyPairSync } from "node:crypto";
-import { bucketDaily, formatCustomerId, normalizeCustomerId, normalizePrivateKey, parseClientAccounts } from "../src/lib/google/metrics";
+import { bucketDaily, dailySpend, formatCustomerId, normalizeCustomerId, normalizePrivateKey, parseClientAccounts } from "../src/lib/google/metrics";
 import { explainError } from "../src/lib/google/ads";
+import { dailySyncRange, last7, last7Label, rollingSpend } from "../src/lib/media-daily";
 import { topPriorities, type PriorityInput } from "../src/lib/priorities";
 import { STEPS, dueOf, ekyteText, howOf, stepTemplate } from "../src/lib/playbook/templates";
 import { creativeAttention, crmAttention } from "../src/lib/playbook/attention";
@@ -733,6 +734,35 @@ test("google: agrupa os dias nas semanas-ritual e zera a semana sem entrega", ()
   assert.equal(w.clicks, 15);
   assert.equal(w.impressions, 1500);
   assert.deepEqual({ spend: weeks.get("2026-06-19")!.spend, leads: weeks.get("2026-06-19")!.leads }, { spend: 0, leads: 0 });
+});
+
+test("verba: últimos 7 dias = os 7 dias fechados até ontem, como no Google Ads", () => {
+  // Sexta 09/10: o "Últimos 7 dias" do Google vai de qui 02/10 a qua 08/10.
+  assert.deepEqual(last7("2026-10-09"), { since: "2026-10-02", until: "2026-10-08" });
+  assert.equal(last7Label("2026-10-09"), "Últimos 7 dias · 02/10 – 08/10");
+  assert.deepEqual(dailySyncRange("2026-10-09"), { since: "2026-09-25", until: "2026-10-08" });
+
+  const days = dailySpend(
+    [
+      { segments: { date: "2026-10-02" }, metrics: { costMicros: "50000000" } },
+      { segments: { date: "2026-10-02" }, metrics: { costMicros: "2500000" } },
+      { segments: { date: "2026-10-08" }, metrics: { costMicros: "60000000" } },
+      { segments: { date: "2026-10-09" }, metrics: { costMicros: "99000000" } }, // hoje, fora do recorte
+    ],
+    "2026-10-01",
+    "2026-10-08",
+  );
+  assert.equal(days.size, 8);
+  assert.equal(days.get("2026-10-02"), 52.5);
+  assert.equal(days.get("2026-10-05"), 0); // dia sem entrega vira zero
+  assert.equal(days.has("2026-10-09"), false);
+
+  const byDay = new Map([...days].map(([d, spend]) => [d, { spend, accounts: 1 }]));
+  assert.equal(rollingSpend({ accounts: 1, byDay }, "2026-10-09"), 112.5);
+  // Dia faltando (sync não rodou) ou conta sem o dia: volta para a semana do ritual.
+  assert.equal(rollingSpend({ accounts: 1, byDay }, "2026-10-10"), null);
+  assert.equal(rollingSpend({ accounts: 2, byDay }, "2026-10-09"), null);
+  assert.equal(rollingSpend(undefined, "2026-10-09"), null);
 });
 
 test("google: traduz os erros do Google Ads que a equipe precisa entender", () => {

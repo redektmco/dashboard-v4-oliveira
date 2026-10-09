@@ -4,6 +4,7 @@
  * O token nunca vai para o banco nem para o navegador.
  */
 import { EMPTY_WEEK, parseInsight, weekRange, type InsightRow, type MetaWeek } from "./metrics";
+import { fillDays } from "../media-daily";
 
 const VERSION = process.env.META_GRAPH_VERSION || "v23.0";
 const BASE = `https://graph.facebook.com/${VERSION}`;
@@ -129,4 +130,15 @@ export async function fetchWeeklyInsights(adAccountId: string, refs: string[]): 
     out.set(ref, row ? parseInsight(row) : { ...EMPTY_WEEK });
   }
   return out;
+}
+
+/** Verba por dia de `since` a `until` (`time_increment=1`; zero no dia sem entrega). */
+export async function fetchDailySpend(adAccountId: string, range: { since: string; until: string }): Promise<Map<string, number>> {
+  const rows = await allPages<{ spend?: string; date_start: string }>(`${adAccountId}/insights`, {
+    level: "account",
+    fields: "spend",
+    time_range: JSON.stringify(range),
+    time_increment: "1",
+  });
+  return fillDays(range.since, range.until, new Map(rows.map((r) => [r.date_start, Number(r.spend) || 0])));
 }

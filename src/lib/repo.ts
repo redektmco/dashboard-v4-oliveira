@@ -7,6 +7,7 @@ import { insertDemoData, wipe } from "./seed";
 import { syncFlags } from "./playbook/db";
 import { EMPTY_WEEK, leadsOf, metaFields, type LeadMetric, type MetaWeek } from "./meta/metrics";
 import { clientKey, type SheetClient } from "./import/clients-sheet";
+import { last7Label, rollingSpend, type DailySpend } from "./media-daily";
 import type {
   AccountType,
   Band,
@@ -404,6 +405,8 @@ export type AutoOverlay = {
   leadsByWeek: Map<string, number>;
   metaByWeek: Map<string, MetaAgg>;
   targets: Record<string, number>;
+  /** Verba diária de Meta + Google — a "Verba investida" usa os últimos 7 dias. */
+  daily?: DailySpend;
 };
 
 const blank = (v: unknown) => v === undefined || v === null || v === "";
@@ -476,9 +479,20 @@ function applyOverlay(client: ClientRow, perf: Snap[], at: string, ov: AutoOverl
       data: { leads_real: curCount, leads_meta: ov.targets.leads_meta ?? undefined },
     });
   }
-  return list.sort((a, b) =>
-    a.ref_date < b.ref_date ? 1 : a.ref_date > b.ref_date ? -1 : b.id - a.id,
-  );
+  list.sort((a, b) => (a.ref_date < b.ref_date ? 1 : a.ref_date > b.ref_date ? -1 : b.id - a.id));
+
+  // 4. A "Verba investida" do snapshot vigente vira a soma dos últimos 7
+  //    dias até ontem — o mesmo recorte do Google Ads e da Meta — quando a
+  //    verba veio da mídia (não digitada pelo GT) e todos os dias estão
+  //    sincronizados. Os demais números seguem a semana do ritual.
+  const i = list.findIndex((s) => s.ref_date <= at);
+  const spend7 = i >= 0 && firstSpend ? rollingSpend(ov.daily, at) : null;
+  if (spend7 !== null) {
+    const cur = list[i];
+    const typed = cur.id ? perf.find((s) => s.id === cur.id)?.data.budget_real : undefined;
+    if (blank(typed)) list[i] = { ...cur, data: { ...cur.data, budget_real: spend7, budget_period: last7Label(at) } };
+  }
+  return list;
 }
 
 /** Cálculo puro a partir de snapshots já carregados — não toca no banco. */
@@ -840,7 +854,7 @@ export async function recordLead(
 
 /** Overlay de todos os clientes com CRM ou Meta Ads ativos — uma passada só. */
 async function autoOverlays(): Promise<Map<number, AutoOverlay>> {
-  const [counts, targets, meta] = await Promise.all([
+  const [counts, targets, meta, daily] = await Promise.all([
     all<{ client_id: number; ref_date: string; n: number }>(
       `SELECT l.client_id, l.ref_date::text AS ref_date, COUNT(*)::int AS n
        FROM crm_leads l
@@ -849,6 +863,7 @@ async function autoOverlays(): Promise<Map<number, AutoOverlay>> {
     ),
     getAllTargets(),
     mediaWeeks(),
+    mediaDaily(),
   ]);
   const map = new Map<number, AutoOverlay>();
   const of = (clientId: number) => {
@@ -860,15 +875,20 @@ async function autoOverlays(): Promise<Map<number, AutoOverlay>> {
     return ov;
   };
   for (const r of counts) of(r.client_id).leadsByWeek.set(r.ref_date, Number(r.n));
-  for (const [clientId, weeks] of meta) of(clientId).metaByWeek = weeks;
+  for (const [clientId, weeks] of meta) {
+    const ov = of(clientId);
+    ov.metaByWeek = weeks;
+    ov.daily = daily.get(clientId);
+  }
   return map;
 }
 
 /** Overlay de um cliente só — usado no recompute pontual após cada webhook. */
 async function autoOverlay(clientId: number): Promise<AutoOverlay | null> {
-  const [active, meta] = await Promise.all([
+  const [active, meta, daily] = await Promise.all([
     one<{ id: number }>(`SELECT id FROM crm_integrations WHERE client_id = ? AND active = 1`, [clientId]),
     mediaWeeks(clientId),
+    mediaDaily(clientId),
   ]);
   const metaByWeek = meta.get(clientId) ?? new Map<string, MetaAgg>();
   if (!active && !metaByWeek.size) return null;
@@ -884,7 +904,7 @@ async function autoOverlay(clientId: number): Promise<AutoOverlay | null> {
   ]);
   const leadsByWeek = new Map<string, number>();
   for (const c of counts) leadsByWeek.set(c.ref_date, Number(c.n));
-  return { leadsByWeek, metaByWeek, targets };
+  return { leadsByWeek, metaByWeek, targets, daily: daily.get(clientId) };
 }
 
 export type IntegrationRow = Integration & {
@@ -975,6 +995,60 @@ export const setMetaAccountActive = (adAccountId: string, active: boolean) =>
 
 export const setMetaLeadMetric = (adAccountId: string, metric: LeadMetric) =>
   run(`UPDATE meta_ad_accounts SET lead_metric = ? WHERE ad_account_id = ?`, [metric, adAccountId]);
+
+/** Grava a verba diária de uma conta (regrava os dias: a plataforma ainda ajusta). */
+async function saveDaily(table: "meta_daily_spend" | "google_daily_spend", key: "ad_account_id" | "customer_id", id: string, days: Map<string, number>) {
+  const entries = [...days];
+  if (!entries.length) return;
+  await run(
+    `INSERT INTO ${table} (${key}, day, spend, synced_at)
+     VALUES ${entries.map(() => `(?, ?::date, ?, now())`).join(", ")}
+     ON CONFLICT (${key}, day) DO UPDATE SET spend = excluded.spend, synced_at = excluded.synced_at`,
+    entries.flatMap(([day, spend]) => [id, day, spend]),
+  );
+}
+
+export const saveMetaDaily = (adAccountId: string, days: Map<string, number>) =>
+  saveDaily("meta_daily_spend", "ad_account_id", adAccountId, days);
+
+export const saveGoogleDaily = (customerId: string, days: Map<string, number>) =>
+  saveDaily("google_daily_spend", "customer_id", customerId, days);
+
+/**
+ * Verba diária por cliente, somando as contas ativas de Meta e Google, com
+ * quantas contas cobrem cada dia — é o que dá a "Verba investida" dos
+ * últimos 7 dias (`rollingSpend`).
+ */
+export async function mediaDaily(clientId?: number): Promise<Map<number, DailySpend>> {
+  const where = clientId ? "AND a.client_id = ?" : "";
+  const params = clientId ? [clientId, clientId] : [];
+  const [days, accounts] = await Promise.all([
+    all<{ client_id: number; day: string; spend: number; n: number }>(
+      `SELECT client_id, day, SUM(spend) AS spend, COUNT(*)::int AS n FROM (
+         SELECT a.client_id, d.day::text AS day, d.spend
+         FROM meta_daily_spend d JOIN meta_ad_accounts a ON a.ad_account_id = d.ad_account_id AND a.active = 1 ${where}
+         WHERE d.day >= CURRENT_DATE - 400
+         UNION ALL
+         SELECT a.client_id, d.day::text AS day, d.spend
+         FROM google_daily_spend d JOIN google_ad_accounts a ON a.customer_id = d.customer_id AND a.active = 1 ${where}
+         WHERE d.day >= CURRENT_DATE - 400
+       ) x GROUP BY client_id, day`,
+      params,
+    ),
+    all<{ client_id: number; n: number }>(
+      `SELECT client_id, COUNT(*)::int AS n FROM (
+         SELECT a.client_id FROM meta_ad_accounts a WHERE a.active = 1 ${where}
+         UNION ALL
+         SELECT a.client_id FROM google_ad_accounts a WHERE a.active = 1 ${where}
+       ) x GROUP BY client_id`,
+      params,
+    ),
+  ]);
+  const out = new Map<number, DailySpend>();
+  for (const a of accounts) out.set(a.client_id, { accounts: Number(a.n), byDay: new Map() });
+  for (const d of days) out.get(d.client_id)?.byDay.set(d.day, { spend: Number(d.spend), accounts: Number(d.n) });
+  return out;
+}
 
 /** Grava as semanas puxadas da API (regrava: a Meta ajusta atribuição por dias). */
 export async function saveMetaWeeks(adAccountId: string, weeks: Map<string, MetaWeek>) {

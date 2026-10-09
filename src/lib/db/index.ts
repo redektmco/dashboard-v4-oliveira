@@ -547,6 +547,25 @@ CREATE TABLE IF NOT EXISTS google_insights (
   PRIMARY KEY (customer_id, ref_date)
 );
 
+-- Verba por dia de cada conta (Meta e Google), so dias ja fechados e com
+-- zero gravado no dia sem entrega. E o que da a "Verba investida" dos
+-- ultimos 7 dias (ate ontem), o mesmo recorte do "Ultimos 7 dias" do Google
+-- Ads e do Gerenciador da Meta.
+CREATE TABLE IF NOT EXISTS meta_daily_spend (
+  ad_account_id TEXT NOT NULL REFERENCES meta_ad_accounts(ad_account_id) ON DELETE CASCADE,
+  day DATE NOT NULL,
+  spend DOUBLE PRECISION NOT NULL DEFAULT 0,
+  synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (ad_account_id, day)
+);
+CREATE TABLE IF NOT EXISTS google_daily_spend (
+  customer_id TEXT NOT NULL REFERENCES google_ad_accounts(customer_id) ON DELETE CASCADE,
+  day DATE NOT NULL,
+  spend DOUBLE PRECISION NOT NULL DEFAULT 0,
+  synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (customer_id, day)
+);
+
 -- =====================================================================
 -- Redesign (ficha do cliente + Configurações).
 -- audit_log: "Últimas alterações" de Configurações e o histórico da conta.
@@ -795,7 +814,7 @@ CREATE INDEX IF NOT EXISTS idx_crm_diag_client ON crm_diagnostics (client_id, fi
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-10-08.playbook";
+export const SCHEMA_VERSION = "2026-10-09.verba-7d";
 
 let migrated = false;
 

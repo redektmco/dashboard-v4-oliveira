@@ -1,6 +1,7 @@
-import { listMetaLinks, saveMetaError, saveMetaWeeks, today } from "../repo";
+import { listMetaLinks, saveMetaDaily, saveMetaError, saveMetaWeeks, today } from "../repo";
+import { dailySyncRange } from "../media-daily";
 import { ritualWeekEnd } from "../week";
-import { fetchWeeklyInsights } from "./graph";
+import { fetchDailySpend, fetchWeeklyInsights } from "./graph";
 
 /** Semanas-ritual das últimas `n` semanas, da em curso para trás. */
 export function recentWeeks(n: number, from = today()): string[] {
@@ -22,6 +23,7 @@ export type SyncResult = { accounts: number; ok: number; failed: { account: stri
  */
 export async function syncMeta({ weeks = 3, adAccountId }: { weeks?: number; adAccountId?: string } = {}) {
   const refs = recentWeeks(Math.min(Math.max(weeks, 1), 26));
+  const days = dailySyncRange(today());
   const links = (await listMetaLinks()).filter((l) =>
     adAccountId ? l.ad_account_id === adAccountId : l.active === 1,
   );
@@ -31,7 +33,12 @@ export async function syncMeta({ weeks = 3, adAccountId }: { weeks?: number; adA
     await Promise.all(
       links.slice(i, i + 4).map(async (l) => {
         try {
-          await saveMetaWeeks(l.ad_account_id, await fetchWeeklyInsights(l.ad_account_id, refs));
+          const [weekly, daily] = await Promise.all([
+            fetchWeeklyInsights(l.ad_account_id, refs),
+            fetchDailySpend(l.ad_account_id, days),
+          ]);
+          await saveMetaDaily(l.ad_account_id, daily);
+          await saveMetaWeeks(l.ad_account_id, weekly);
           result.ok++;
         } catch (e) {
           const error = e instanceof Error ? e.message : String(e);

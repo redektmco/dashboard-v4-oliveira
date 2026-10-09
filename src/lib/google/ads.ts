@@ -13,7 +13,7 @@
  */
 import { createSign } from "node:crypto";
 import { weekRange } from "../meta/metrics";
-import { bucketDaily, normalizePrivateKey, parseClientAccounts, type DailyRow, type GoogleAccount } from "./metrics";
+import { bucketDaily, dailySpend, normalizePrivateKey, parseClientAccounts, type DailyRow, type GoogleAccount } from "./metrics";
 import type { MetaWeek } from "../meta/metrics";
 
 const VERSION = process.env.GOOGLE_ADS_API_VERSION || "v23";
@@ -163,12 +163,16 @@ export async function getCustomer(customerId: string): Promise<GoogleCustomer> {
 }
 
 /**
- * Semanas-ritual (chave = sexta que fecha a semana) de uma conta, numa
- * consulta diária só cobrindo o intervalo todo.
+ * Semanas-ritual (chave = sexta que fecha a semana) e verba por dia (os dias
+ * fechados de `days`) de uma conta, numa consulta diária só cobrindo tudo.
  */
-export async function fetchWeeklyInsights(customerId: string, refs: string[]): Promise<Map<string, MetaWeek>> {
-  const since = refs.map((r) => weekRange(r).since).sort()[0];
-  const until = [...refs].sort().pop()!;
+export async function fetchInsights(
+  customerId: string,
+  refs: string[],
+  days: { since: string; until: string },
+): Promise<{ weeks: Map<string, MetaWeek>; days: Map<string, number> }> {
+  const since = [days.since, ...refs.map((r) => weekRange(r).since)].sort()[0];
+  const until = [days.until, ...refs].sort().pop()!;
   const query =
     "SELECT segments.date, metrics.cost_micros, metrics.conversions, metrics.conversions_value, metrics.clicks, metrics.impressions " +
     `FROM customer WHERE segments.date BETWEEN '${since}' AND '${until}'`;
@@ -180,7 +184,7 @@ export async function fetchWeeklyInsights(customerId: string, refs: string[]): P
     pageToken = page.nextPageToken;
     if (!pageToken) break;
   }
-  return bucketDaily(rows, refs);
+  return { weeks: bucketDaily(rows, refs), days: dailySpend(rows, days.since, days.until) };
 }
 
 /**

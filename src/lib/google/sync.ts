@@ -1,6 +1,7 @@
-import { listGoogleLinks, saveGoogleError, saveGoogleWeeks } from "../repo";
+import { listGoogleLinks, saveGoogleDaily, saveGoogleError, saveGoogleWeeks, today } from "../repo";
+import { dailySyncRange } from "../media-daily";
 import { recentWeeks } from "../meta/sync";
-import { fetchWeeklyInsights } from "./ads";
+import { fetchInsights } from "./ads";
 
 export type GoogleSyncResult = { accounts: number; ok: number; failed: { account: string; error: string }[] };
 
@@ -11,6 +12,7 @@ export type GoogleSyncResult = { accounts: number; ok: number; failed: { account
  */
 export async function syncGoogle({ weeks = 3, customerId }: { weeks?: number; customerId?: string } = {}) {
   const refs = recentWeeks(Math.min(Math.max(weeks, 1), 26));
+  const days = dailySyncRange(today());
   const links = (await listGoogleLinks()).filter((l) => (customerId ? l.customer_id === customerId : l.active === 1));
   const result: GoogleSyncResult = { accounts: links.length, ok: 0, failed: [] };
   // Poucas por vez: o developer token tem cota diária.
@@ -18,7 +20,9 @@ export async function syncGoogle({ weeks = 3, customerId }: { weeks?: number; cu
     await Promise.all(
       links.slice(i, i + 3).map(async (l) => {
         try {
-          await saveGoogleWeeks(l.customer_id, await fetchWeeklyInsights(l.customer_id, refs));
+          const r = await fetchInsights(l.customer_id, refs, days);
+          await saveGoogleDaily(l.customer_id, r.days);
+          await saveGoogleWeeks(l.customer_id, r.weeks);
           result.ok++;
         } catch (e) {
           const error = e instanceof Error ? e.message : String(e);

@@ -308,6 +308,15 @@ function performanceScoreOf(
 /* Cálculo principal — briefing 5.3 a 5.6                              */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Recorte mostrado sob o indicador. A verba que veio da mídia diária traz o
+ * próprio ("Últimos 7 dias · 02/10 – 08/10"); o resto usa o do catálogo.
+ */
+function periodOf(f: FieldDef, input: ScoreInput): string | undefined {
+  const own = f.key === "budget" ? input.performance?.data.budget_period : undefined;
+  return typeof own === "string" ? own : f.period;
+}
+
 export function computeScore(input: ScoreInput): ScoreResult {
   const cfg = input.config ?? DEFAULT_CONFIG;
   const weights = input.weights ?? {};
@@ -329,7 +338,7 @@ export function computeScore(input: ScoreInput): ScoreResult {
       target: r.target,
       score: r.score,
       note: r.note,
-      period: f.period,
+      period: periodOf(f, input),
     };
   });
 

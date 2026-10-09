@@ -5,6 +5,7 @@
  * testes cobrem.
  */
 import { EMPTY_WEEK, weekRange, type MetaWeek } from "../meta/metrics";
+import { fillDays } from "../media-daily";
 
 /** "124-444-3600" → "1244443600". Devolve null se não tiver 10 dígitos. */
 export function normalizeCustomerId(raw: string): string | null {
@@ -64,6 +65,16 @@ export function bucketDaily(rows: DailyRow[], refs: string[]): Map<string, MetaW
     out.set(ref, { ...w, spend: Math.round(w.spend * 100) / 100, revenue: Math.round(w.revenue * 100) / 100, leads: n, purchases: n });
   }
   return out;
+}
+
+/** Verba por dia de `since` a `until` (zero no dia sem linha). */
+export function dailySpend(rows: DailyRow[], since: string, until: string): Map<string, number> {
+  const spend = new Map<string, number>();
+  for (const row of rows) {
+    const day = row.segments?.date;
+    if (day) spend.set(day, (spend.get(day) ?? 0) + num(row.metrics?.costMicros) / 1_000_000);
+  }
+  return fillDays(since, until, spend);
 }
 
 /** Conta de anúncio de cliente listada sob a MCC. */
