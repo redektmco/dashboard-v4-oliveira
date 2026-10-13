@@ -43,6 +43,7 @@ import { mediaSplit, weekOverWeek } from "../src/lib/crm/media-split";
 import { hasMediaService, splitServices } from "../src/lib/model/services";
 import { agoLabel, type CrmRow } from "../src/lib/crm/board";
 import { EMPTY_FILTERS, countViews, fromLegacyFilter, matchesFilters, sortRows } from "../src/lib/crm/views";
+import { NONE, laneOf, lanesFor } from "../src/lib/crm/kanban";
 
 const TODAY = "2026-06-15";
 
@@ -1196,4 +1197,23 @@ test("realizado: campo vazio ou não numérico é ignorado, zero é lido", () =>
   assert.equal(realizedIn([snap("2026-10-02", { leads: 0 })], "leads", p, "piso"), 0);
   // Número em texto (o formulário grava string) conta.
   assert.equal(realizedIn([snap("2026-10-02", { leads: "12" })], "leads", p, "piso"), 12);
+});
+
+/* ---------------------- kanban de clientes ---------------------- */
+
+test("kanban: renovação cai na faixa certa, sem data vai para Sem data", () => {
+  assert.equal(laneOf("renovacao", crmRow({ renewalIn: -3 })), "vencida");
+  assert.equal(laneOf("renovacao", crmRow({ renewalIn: 0 })), "30");
+  assert.equal(laneOf("renovacao", crmRow({ renewalIn: 30 })), "30");
+  assert.equal(laneOf("renovacao", crmRow({ renewalIn: 31 })), "90");
+  assert.equal(laneOf("renovacao", crmRow({ renewalIn: 91 })), "mais");
+  assert.equal(laneOf("renovacao", crmRow({ renewalIn: null })), NONE);
+  assert.equal(laneOf("saude", crmRow({ band: null })), NONE);
+});
+
+test("kanban: Account vira coluna mesmo sem cliente, e nome só do cliente também entra", () => {
+  const rows = [crmRow({ accountName: "Zé Antigo" }), crmRow({ accountName: null })];
+  const lanes = lanesFor("account", rows, ["Ana", "Bruno"]).map((l) => l.key);
+  assert.deepEqual(lanes, ["Ana", "Bruno", "Zé Antigo", NONE]);
+  assert.equal(laneOf("account", rows[1]), NONE);
 });

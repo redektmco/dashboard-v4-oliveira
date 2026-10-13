@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { importClientsSheet } from "@/actions";
 import type { CrmRow, CrmSummary } from "@/lib/crm/board";
 import { CORE_COLUMNS, visibleColumns, type ColumnId } from "@/lib/crm/columns";
+import { GROUP_BY, type GroupBy } from "@/lib/crm/kanban";
 import {
   applyAll,
   countViews,
@@ -55,7 +56,7 @@ const STORE = "crm-clientes";
 /** Lista (tabela) ou kanban por etapa — os dois desenham a mesma triagem. */
 type Layout = "lista" | "kanban";
 
-type Stored = { view: View; filters: Filters; columns: ColumnId[]; sort: SortKey; dir: SortDir; layout: Layout };
+type Stored = { view: View; filters: Filters; columns: ColumnId[]; sort: SortKey; dir: SortDir; layout: Layout; groupBy: GroupBy };
 
 export function ClientsCrm({
   rows,
@@ -94,8 +95,9 @@ export function ClientsCrm({
     sort: "risco",
     dir: "desc",
     layout: "lista",
+    groupBy: "etapa",
   }));
-  const { view, filters, columns, sort, dir, layout } = triage;
+  const { view, filters, columns, sort, dir, layout, groupBy } = triage;
   const patch = (p: Partial<Stored>) => setTriage((t) => ({ ...t, ...p }));
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -131,7 +133,12 @@ export function ClientsCrm({
       if (!raw) return;
       const s = JSON.parse(raw) as Stored;
       // eslint-disable-next-line react-hooks/set-state-in-effect -- restaurar do sessionStorage só pode acontecer depois da hidratação: ler no corpo do render quebraria o SSR.
-      setTriage((t) => ({ ...t, ...s, filters: { ...EMPTY_FILTERS, ...s.filters } }));
+      setTriage((t) => ({
+        ...t,
+        ...s,
+        filters: { ...EMPTY_FILTERS, ...s.filters },
+        groupBy: GROUP_BY.some((g) => g.id === s.groupBy) ? s.groupBy : t.groupBy,
+      }));
     } catch {
       // sessionStorage bloqueado (aba anônima, política do navegador):
       // a tela abre no padrão, que é um estado válido.
@@ -140,11 +147,11 @@ export function ClientsCrm({
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(STORE, JSON.stringify({ view, filters, columns, sort, dir, layout } satisfies Stored));
+      sessionStorage.setItem(STORE, JSON.stringify({ view, filters, columns, sort, dir, layout, groupBy } satisfies Stored));
     } catch {
       /* idem */
     }
-  }, [view, filters, columns, sort, dir, layout]);
+  }, [view, filters, columns, sort, dir, layout, groupBy]);
 
   /* ---------------- listas derivadas (tudo em memória) --------------- */
   const counts = useMemo(() => countViews(rows), [rows]);
@@ -308,7 +315,14 @@ export function ClientsCrm({
       )}
 
       {layout === "kanban" && list.length > 0 ? (
-        <CrmKanban rows={list} openId={openId} onOpen={(id) => setOpenId((v) => (v === id ? null : id))} />
+        <CrmKanban
+          rows={list}
+          users={users}
+          groupBy={groupBy}
+          onGroupBy={(g) => patch({ groupBy: g })}
+          openId={openId}
+          onOpen={(id) => setOpenId((v) => (v === id ? null : id))}
+        />
       ) : (
         <section className="panel">
           {shown.length === 0 ? (
