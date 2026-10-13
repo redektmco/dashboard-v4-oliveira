@@ -38,9 +38,12 @@ export type FichaTab = {
 export function FichaTabs({
   tabs,
   initial,
+  aside,
   children,
 }: {
   tabs: FichaTab[];
+  /** À direita da faixa de abas, fora da rolagem (ex.: o filtro de período). */
+  aside?: React.ReactNode;
   /** Aba inicial quando a URL não pede nenhuma. Sem isto, a primeira. */
   initial?: string;
   children: React.ReactNode;
@@ -88,13 +91,15 @@ export function FichaTabs({
 
   return (
     <TabsCtx.Provider value={{ active, panelId, tabId }}>
-      {/* Rola na horizontal no celular: são sete abas, não cabem em 390px. */}
+      {/* Rola na horizontal no celular: são sete abas, não cabem em 390px.
+          O `aside` fica fora da rolagem para o popover dele não ser cortado. */}
+      <div className="-mx-4 mb-5 flex items-center gap-3 border-b border-[var(--border-hair)] px-4 sm:mx-0 sm:px-0">
       <div
         ref={strip}
         role="tablist"
         aria-label="Seções da ficha"
         onKeyDown={onKeyDown}
-        className="-mx-4 mb-5 flex gap-1 overflow-x-auto border-b border-[var(--border-hair)] px-4 sm:mx-0 sm:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex min-w-0 flex-1 gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {tabs.map((t) => {
           const on = t.id === active;
@@ -108,7 +113,7 @@ export function FichaTabs({
               aria-controls={panelId(t.id)}
               tabIndex={on ? 0 : -1}
               onClick={() => go(t.id)}
-              className={`-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-[13px] transition-colors ${
+              className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-[13px] transition-colors ${
                 on
                   ? "border-[var(--color-accent)] font-medium text-ink-100"
                   : "border-transparent text-ink-400 hover:text-ink-200"
@@ -119,6 +124,8 @@ export function FichaTabs({
             </button>
           );
         })}
+      </div>
+      {aside && <div className="shrink-0 py-1.5">{aside}</div>}
       </div>
       {children}
     </TabsCtx.Provider>

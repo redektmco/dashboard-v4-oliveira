@@ -341,7 +341,6 @@ function IndicatorsDrawer({
   const idx = dims.findIndex((d) => d.key === current);
   const d = idx >= 0 ? dims[idx] : null;
   const go = (step: number) => onChange(dims[(idx + step + dims.length) % dims.length].key);
-  const { data } = useUI();
 
   return (
     <SidePanel open={Boolean(d)} onClose={onClose} label={d ? `Indicadores de ${d.label}` : "Indicadores"}>
@@ -424,10 +423,6 @@ function IndicatorsDrawer({
           </div>
 
           <footer className="flex justify-end gap-2 border-t border-[var(--border-hair)] px-6 py-4">
-            <Link href={`/clientes?c=${data.clientId}`} className="btn">
-              <Icon name="target" size={16} />
-              Alterar metas
-            </Link>
             <Link href={d.primary.href} className="btn btn-light">
               <Icon name={d.primary.icon} size={16} />
               {d.primary.label}

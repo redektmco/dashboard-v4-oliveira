@@ -26,6 +26,7 @@ const PRIORITY: ChartEvent["kind"][] = ["queda", "meta", "plano", "checkin"];
 const ddmm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 const MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const fmt1 = (n: number) => n.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const daysSpan = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000) + 1;
 const addDays = (iso: string, n: number) => {
   const d = new Date(iso + "T12:00:00Z");
   d.setUTCDate(d.getUTCDate() + n);
@@ -45,6 +46,7 @@ export function EvolutionSection({
   band,
   at,
   compact = false,
+  range,
 }: {
   points: { day: string; score: number | null }[];
   events: ChartEvent[];
@@ -53,14 +55,22 @@ export function EvolutionSection({
   band: Band | null;
   at: string;
   compact?: boolean;
+  /** Período da ficha: com ele, o gráfico segue o filtro do topo e some o seletor próprio. */
+  range?: { from: string; to: string; label: string };
 }) {
   const [period, setPeriod] = useState<Period>("30");
-  const from = addDays(at, -Number(period) + 1);
+  const from = range ? range.from : addDays(at, -Number(period) + 1);
+  const to = range ? range.to : at;
   const data = useMemo(
-    () => points.filter((p): p is { day: string; score: number } => p.score !== null && p.day >= from && p.day <= at),
-    [points, from, at],
+    () => points.filter((p): p is { day: string; score: number } => p.score !== null && p.day >= from && p.day <= to),
+    [points, from, to],
   );
-  const evs = useMemo(() => events.filter((e) => e.day >= from && e.day <= at), [events, from, at]);
+  const evs = useMemo(() => events.filter((e) => e.day >= from && e.day <= to), [events, from, to]);
+  const picker = range ? (
+    <span className="font-mono text-[12px] text-ink-400">{range.label}</span>
+  ) : (
+    <Segmented value={period} options={PERIODS} onChange={setPeriod} full={compact} />
+  );
 
   const legendKinds = Object.keys(EVENT) as ChartEvent["kind"][];
 
@@ -69,20 +79,20 @@ export function EvolutionSection({
       {compact ? (
         <>
           <h2 className="pt-2 font-display text-[16px] font-semibold tracking-[-0.2px] text-ink-100">Evolução da conta</h2>
-          <Segmented value={period} options={PERIODS} onChange={setPeriod} full />
+          {picker}
         </>
       ) : (
         <SectionHead
           title="Evolução da conta"
           subtitle="Health Score diário e eventos que impactaram a conta."
-          action={<Segmented value={period} options={PERIODS} onChange={setPeriod} />}
+          action={picker}
         />
       )}
       <div className={`rounded-xl border border-[var(--border-hair)] bg-ink-900 ${compact ? "p-4" : "p-5"}`}>
         {data.length < 2 ? (
           <p className="py-12 text-center text-[13px] text-ink-400">Série curta demais neste período — o recompute diário vai construir a curva.</p>
         ) : (
-          <Plot data={data} events={evs} greenFloor={greenFloor} yellowFloor={yellowFloor} band={band} compact={compact} period={period} />
+          <Plot data={data} events={evs} greenFloor={greenFloor} yellowFloor={yellowFloor} band={band} compact={compact} period={range ? (daysSpan(from, to) > 120 ? "365" : "90") : period} />
         )}
         <div className={`mt-4 border-t border-[var(--border-hair)] pt-3 ${compact ? "grid grid-cols-2 gap-2" : "flex flex-wrap items-center gap-x-5 gap-y-2"}`}>
           {!compact && (

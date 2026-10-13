@@ -151,6 +151,19 @@ async function search<T>(customerId: string, query: string, pageToken?: string):
   return body;
 }
 
+/** Todas as páginas de uma consulta GAQL. */
+export async function gaql<T>(customerId: string, query: string): Promise<T[]> {
+  const rows: T[] = [];
+  let pageToken: string | undefined;
+  for (let guard = 0; guard < 20; guard++) {
+    const page = await search<T>(customerId, query, pageToken);
+    rows.push(...(page.results ?? []));
+    pageToken = page.nextPageToken;
+    if (!pageToken) break;
+  }
+  return rows;
+}
+
 export type GoogleCustomer = { id: string; name: string; currency: string | null; manager: boolean };
 
 /** Dados da conta — também prova que a credencial enxerga esse ID. */
