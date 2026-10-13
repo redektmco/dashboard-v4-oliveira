@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { recomputeRange } from "@/lib/repo";
+import { getSetting, recomputeRange, setSetting } from "@/lib/repo";
 import { metaConfigured } from "@/lib/meta/graph";
-import { syncMeta } from "@/lib/meta/sync";
+import { META_RULES, syncMeta } from "@/lib/meta/sync";
 
 export const maxDuration = 300;
 
@@ -24,8 +24,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, skipped: "META_ACCESS_TOKEN não configurado" });
   }
 
-  const weeks = Number(new URL(req.url).searchParams.get("weeks") ?? 3) || 3;
+  let weeks = Number(new URL(req.url).searchParams.get("weeks") ?? 3) || 3;
+  // Regra de leitura nova (ex.: contato no site como lead): relê 12 semanas
+  // uma vez, senão o histórico gravado na regra antiga ficaria para sempre.
+  const rulesChanged = (await getSetting<string | null>("meta_rules", null)) !== META_RULES;
+  if (rulesChanged) weeks = Math.max(weeks, 12);
   const result = await syncMeta({ weeks });
+  if (rulesChanged && result.failed.length === 0) await setSetting("meta_rules", META_RULES);
   // Semanas fechadas podem ter mudado — refaz a série que elas alcançam.
   const recompute = await recomputeRange(Math.min(weeks * 7 + 7, 120));
   return NextResponse.json({ ...result, synced: result.ok, ok: result.failed.length === 0, recompute });

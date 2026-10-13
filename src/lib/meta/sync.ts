@@ -16,16 +16,24 @@ export function recentWeeks(n: number, from = today()): string[] {
 export type SyncResult = { accounts: number; ok: number; failed: { account: string; error: string }[] };
 
 /**
- * Puxa as últimas `weeks` semanas de cada conta ativa (ou só de `adAccountId`).
+ * Versão das regras de leitura da Meta (o que conta como lead, base do CPL).
+ * Mudou a regra? Troque a string: o próximo sync diário relê 12 semanas de
+ * todas as contas, porque o que já estava gravado seguia a regra antiga.
+ */
+export const META_RULES = "2026-10-13.contato-no-site";
+
+/**
+ * Puxa as últimas `weeks` semanas de cada conta ativa (ou só de `adAccountId`,
+ * ou só das contas de `clientId`).
  * A semana em curso vem parcial e só entra no score depois de fechar; as
  * anteriores são regravadas porque a Meta ainda ajusta conversão atrasada.
  * Uma conta com erro (token sem acesso, conta desativada) não para as demais.
  */
-export async function syncMeta({ weeks = 3, adAccountId }: { weeks?: number; adAccountId?: string } = {}) {
+export async function syncMeta({ weeks = 3, adAccountId, clientId }: { weeks?: number; adAccountId?: string; clientId?: number } = {}) {
   const refs = recentWeeks(Math.min(Math.max(weeks, 1), 26));
   const days = dailySyncRange(today());
   const links = (await listMetaLinks()).filter((l) =>
-    adAccountId ? l.ad_account_id === adAccountId : l.active === 1,
+    adAccountId ? l.ad_account_id === adAccountId : l.active === 1 && (!clientId || l.client_id === clientId),
   );
   const result: SyncResult = { accounts: links.length, ok: 0, failed: [] };
   // Poucas por vez: a Marketing API limita por conta e por app.

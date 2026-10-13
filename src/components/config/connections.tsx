@@ -17,6 +17,7 @@ import {
   connectGoogleAccount,
   loadGoogleAccounts,
   changeClientLeadSource,
+  resyncClientMedia,
 } from "@/actions";
 import type { AdAccount } from "@/lib/meta/graph";
 import { formatCustomerId, type GoogleAccount } from "@/lib/google/metrics";
@@ -100,6 +101,19 @@ export function LeadSourcePicker({ clientId, value }: { clientId: number; value:
         </select>
       </span>
       <span className="text-[11px] text-ink-500">{LEAD_SOURCE_HINT[current]}</span>
+      <button
+        type="button"
+        className="mt-0.5 flex w-fit items-center gap-1.5 text-[11.5px] font-semibold text-ink-300 hover:text-ink-100 disabled:opacity-60"
+        disabled={pending}
+        title="Relê as 12 últimas semanas da Meta e do Google deste cliente e recalcula o score"
+        onClick={(e) => {
+          e.preventDefault();
+          start(async () => notify(await resyncClientMedia(clientId)));
+        }}
+      >
+        <Icon name="refresh" size={12} />
+        Atualizar da Meta agora
+      </button>
     </label>
   );
 }

@@ -10,10 +10,12 @@ export type GoogleSyncResult = { accounts: number; ok: number; failed: { account
  * As semanas anteriores são regravadas porque o Google ainda ajusta conversão
  * atrasada. Uma conta com erro não para as demais.
  */
-export async function syncGoogle({ weeks = 3, customerId }: { weeks?: number; customerId?: string } = {}) {
+export async function syncGoogle({ weeks = 3, customerId, clientId }: { weeks?: number; customerId?: string; clientId?: number } = {}) {
   const refs = recentWeeks(Math.min(Math.max(weeks, 1), 26));
   const days = dailySyncRange(today());
-  const links = (await listGoogleLinks()).filter((l) => (customerId ? l.customer_id === customerId : l.active === 1));
+  const links = (await listGoogleLinks()).filter((l) =>
+    customerId ? l.customer_id === customerId : l.active === 1 && (!clientId || l.client_id === clientId),
+  );
   const result: GoogleSyncResult = { accounts: links.length, ok: 0, failed: [] };
   // Poucas por vez: o developer token tem cota diária.
   for (let i = 0; i < links.length; i += 3) {

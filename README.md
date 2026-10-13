@@ -74,7 +74,9 @@ token do **usuário de sistema da unidade** (acesso a todas as BMs). O token viv
   enxerga; um cliente pode ter várias (os números somam). Por conta, escolha o que conta como
   lead: formulário/pixel, conversas iniciadas (WhatsApp/Direct) ou os dois.
 - **Sync:** cron `/api/meta/sync` às 05h30 (antes do recompute), regrava as 3 últimas
-  semanas-ritual (a Meta ainda ajusta conversão atrasada) e recalcula a série. O vínculo já
+  semanas-ritual (a Meta ainda ajusta conversão atrasada) e recalcula a série. Quando a regra de
+  leitura muda (`META_RULES` em `src/lib/meta/sync.ts`, ex.: contato no site virou lead), o próximo
+  sync — do cron ou do botão *Sincronizar agora* — relê 12 semanas de todas as contas, uma vez. O vínculo já
   importa 12 semanas; `?weeks=12` na rota refaz um histórico maior. Mesma proteção do recompute.
 - **No score:** preenche o que o GT deixou em branco no snapshot da semana; semana fechada sem
   snapshot vira um registro "Meta Ads" com as metas vigentes. Número digitado pelo GT sempre
@@ -85,7 +87,9 @@ token do **usuário de sistema da unidade** (acesso a todas as BMs). O token viv
 Cada cliente diz de onde vem o número de leads (`clients.lead_source`): **Conversão de campanha**
 (padrão — Meta + Google), **Webhook (CRM)** ou **Os dois (soma)**. Todo cliente nasce em campanha e
 só muda se alguém trocar no seletor (ficha do cliente, painel rápido ou vínculo de conta); cada troca
-fica no histórico. Quando o padrão deixou de ser webhook, uma migração única passou para campanha
+fica no histórico. Trocar para campanha (ou soma) relê na hora as 12 últimas semanas da Meta e do
+Google do cliente — e o botão *Atualizar da Meta agora*, logo abaixo do seletor, faz o mesmo a
+qualquer momento. Quando o padrão deixou de ser webhook, uma migração única passou para campanha
 os clientes que estavam em webhook só por padrão — quem tinha escolhido webhook no seletor ficou.
 
 ### Região das funções
@@ -283,11 +287,12 @@ próprio painel, e entrega ao cliente por link, em tela cheia ou em PDF.
   Score (`score_snapshots`) e metas (`client_targets`, semanal × semanas do período) vêm do banco.
   Todo bloco de número tem o modo **Digitar** para o que o painel não tem (orgânico, balcão, outra
   ferramenta) — tabela e gráfico aceitam colar direto da planilha.
-- **Escrever com IA:** nos blocos de título e texto, o Claude (`claude-opus-5-5`, via
-  `@anthropic-ai/sdk`) escreve a partir dos números do relatório, usando o que já está no bloco como
+- **Escrever com IA:** nos blocos de título e texto, o Gemini (`gemini-3.8-flash`, via
+  `@google/genai`) escreve a partir dos números do relatório, usando o que já está no bloco como
   roteiro e um pedido opcional; em ⋯ › *Escrever textos com IA* preenche de uma vez todos os textos
-  com roteiro em aberto ("…"). Só no servidor (`src/lib/reports/ai.ts`, rota `/api/relatorios/ia`);
-  a chave fica na env **`ANTHROPIC_API_KEY`** da Vercel. Sem ela, o botão avisa que falta configurar.
+  com roteiro em aberto ("…"). Só no servidor (`src/lib/reports/ai.ts`, rota `/api/relatorios/ia`).
+  A chave do Gemini está na env **`ANTHROPIC_API_KEY`** da Vercel (nome herdado; `GEMINI_API_KEY`,
+  se criada, tem preferência). `GEMINI_MODEL` troca o modelo. Sem chave, o botão avisa.
 - **Modelos:** dois prontos da V4 no código (`src/lib/reports/starters.ts`) e os da unidade
   (`rp_reports.kind = 'template'`), criados do zero ou por *Salvar como modelo*. Usar um modelo
   copia as páginas; os números trocam sozinhos pelo cliente escolhido.
@@ -303,7 +308,7 @@ próprio painel, e entrega ao cliente por link, em tela cheia ou em PDF.
 | Documento, grade e regras puras | `src/lib/reports/{types,layout,metrics}.ts` (testes em `npm test`) |
 | Banco e números do período | `src/lib/reports/db.ts` (`rp_reports`, `reportData`) |
 | Sincronizar com Meta e Google | `src/lib/reports/live.ts`, rota `/api/relatorios/[id]/sincronizar` |
-| Escrever com IA | `src/lib/reports/ai.ts`, rota `/api/relatorios/ia` (env `ANTHROPIC_API_KEY`) |
+| Escrever com IA (Gemini) | `src/lib/reports/ai.ts`, rota `/api/relatorios/ia` (env `ANTHROPIC_API_KEY` com a chave do Gemini) |
 | Desenho dos blocos (editor, link, slide e PDF iguais) | `src/components/reports/blocks.tsx` |
 | Editor | `src/components/reports/editor.tsx`, `editor-page.tsx`, `inspector.tsx` |
 | Link público, apresentação e impressão | `src/components/reports/viewer.tsx`, `src/app/r/[token]` |

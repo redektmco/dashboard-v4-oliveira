@@ -1,18 +1,24 @@
 /**
- * "Escrever com IA" do construtor: o Claude escreve o texto de um bloco
+ * "Escrever com IA" do construtor: o Gemini escreve o texto de um bloco
  * (leitura do período, próximos passos, título) a partir dos números do
- * próprio relatório. Só roda no servidor — a chave (ANTHROPIC_API_KEY) vive
- * na env da Vercel, nunca no navegador nem no banco.
+ * próprio relatório. Só roda no servidor — a chave vive na env da Vercel,
+ * nunca no navegador nem no banco.
+ *
+ * A chave do Gemini foi cadastrada como ANTHROPIC_API_KEY; GEMINI_API_KEY,
+ * se existir, tem preferência. GEMINI_MODEL troca o modelo sem deploy de código.
  */
-import Anthropic from "@anthropic-ai/sdk";
+import { ApiError, FinishReason, GoogleGenAI } from "@google/genai";
 import { autoTarget, deltaPct, formatDelta, formatValue, METRICS, metricOf, periodLabel, shortDay, totalsOf } from "./metrics";
 import type { MetricKey, ReportData, Source } from "./types";
 
-export const aiConfigured = () => Boolean(process.env.ANTHROPIC_API_KEY);
+const apiKey = () => process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY || "";
+
+export const aiConfigured = () => Boolean(apiKey());
 
 export class AiError extends Error {}
 
-const MODEL = "claude-opus-5-5";
+/** Flash estável do Gemini (GA em set/2026). */
+const MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
 
 /* ------------------------------ contexto ------------------------------ */
 
@@ -103,8 +109,8 @@ export type WriteInput = {
 };
 
 export async function writeBlockText(input: WriteInput): Promise<string> {
-  if (!aiConfigured()) throw new AiError("IA não configurada: falta a variável ANTHROPIC_API_KEY na Vercel.");
-  const client = new Anthropic();
+  if (!aiConfigured()) throw new AiError("IA não configurada: falta a chave do Gemini (ANTHROPIC_API_KEY ou GEMINI_API_KEY) na Vercel.");
+  const ai = new GoogleGenAI({ apiKey: apiKey() });
   const words = Math.max(3, Math.min(400, Math.round(input.maxWords)));
   const task =
     input.kind === "heading"
@@ -124,30 +130,33 @@ export async function writeBlockText(input: WriteInput): Promise<string> {
     .join("\n\n");
 
   try {
-    const response = await client.beta.messages.create({
+    const response = await ai.models.generateContent({
       model: MODEL,
-      max_tokens: 4000,
-      // Texto curto de relatório: esforço médio basta e responde rápido.
-      output_config: { effort: "medium" },
-      // Se um filtro de segurança recusar por engano, a própria API tenta o modelo recomendado.
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      system: SYSTEM,
-      messages: [{ role: "user", content: user }],
+      contents: user,
+      config: {
+        systemInstruction: SYSTEM,
+        // Inclui o raciocínio do modelo: folga para o texto não sair cortado.
+        maxOutputTokens: 8192,
+      },
     });
-    if (response.stop_reason === "refusal") throw new AiError("A IA não quis escrever este texto. Ajuste o pedido e tente de novo.");
-    const text = response.content
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("")
-      .trim();
+    if (response.promptFeedback?.blockReason)
+      throw new AiError("O Gemini bloqueou o pedido. Ajuste o pedido e tente de novo.");
+    const finish = response.candidates?.[0]?.finishReason;
+    if (finish === FinishReason.SAFETY || finish === FinishReason.PROHIBITED_CONTENT)
+      throw new AiError("O Gemini não quis escrever este texto. Ajuste o pedido e tente de novo.");
+    const text = (response.text ?? "").trim();
     if (!text) throw new AiError("A IA não devolveu texto. Tente de novo.");
+    if (finish === FinishReason.MAX_TOKENS) throw new AiError("O texto saiu cortado. Tente de novo ou peça um texto mais curto.");
     return text;
   } catch (e) {
     if (e instanceof AiError) throw e;
-    if (e instanceof Anthropic.AuthenticationError) throw new AiError("A chave ANTHROPIC_API_KEY foi recusada. Confira o valor na Vercel.");
-    if (e instanceof Anthropic.RateLimitError) throw new AiError("Muitos pedidos à IA agora. Espere alguns segundos e tente de novo.");
-    if (e instanceof Anthropic.APIError) throw new AiError(`A IA respondeu com erro (${e.status ?? "rede"}). Tente de novo.`);
+    if (e instanceof ApiError) {
+      if (e.status === 400 && /api key/i.test(e.message)) throw new AiError("A chave do Gemini foi recusada. Confira o valor na Vercel.");
+      if (e.status === 401 || e.status === 403) throw new AiError("A chave do Gemini foi recusada ou não tem acesso à API. Confira o valor na Vercel.");
+      if (e.status === 404) throw new AiError(`Modelo ${MODEL} não encontrado para esta chave. Ajuste GEMINI_MODEL na Vercel.`);
+      if (e.status === 429) throw new AiError("Limite de uso do Gemini atingido. Espere alguns segundos e tente de novo.");
+      throw new AiError(`O Gemini respondeu com erro (${e.status}). Tente de novo.`);
+    }
     throw e;
   }
 }

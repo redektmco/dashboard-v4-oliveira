@@ -40,6 +40,8 @@ import {
   type Plan,
   type PlanPriority,
   type PlanTask,
+  getSetting,
+  setSetting,
 } from "@/lib/repo";
 import { logChange } from "@/lib/audit";
 import { completeStepByKey, linkPrevention } from "@/lib/playbook/db";
@@ -62,7 +64,7 @@ import { requireAdmin, requireUser } from "@/lib/auth";
 import type { ActionResult } from "@/lib/action";
 import { listAdAccounts, metaConfigured, type AdAccount } from "@/lib/meta/graph";
 import { LEAD_METRIC_LABEL, type LeadMetric } from "@/lib/meta/metrics";
-import { syncMeta } from "@/lib/meta/sync";
+import { META_RULES, syncMeta } from "@/lib/meta/sync";
 import { getCustomer, googleAdsConfigured, listClientAccounts } from "@/lib/google/ads";
 import type { GoogleAccount } from "@/lib/google/metrics";
 import { formatCustomerId, normalizeCustomerId } from "@/lib/google/metrics";
@@ -437,8 +439,11 @@ export async function connectMetaAccount(_prev: ActionResult, formData: FormData
 export async function syncMetaNow(): Promise<ActionResult> {
   await requireAdmin();
   if (!metaConfigured()) return { error: "Configure META_ACCESS_TOKEN no ambiente." };
-  const r = await syncMeta({ weeks: 3 });
-  await recomputeRange(28);
+  // Regra de leitura nova ainda não aplicada ao histórico: relê 12 semanas (como o cron).
+  const rulesChanged = (await getSetting<string | null>("meta_rules", null)) !== META_RULES;
+  const r = await syncMeta({ weeks: rulesChanged ? 12 : 3 });
+  if (rulesChanged && r.failed.length === 0) await setSetting("meta_rules", META_RULES);
+  await recomputeRange(rulesChanged ? 90 : 28);
   revalidateSettings();
   revalidatePath("/");
   if (r.failed.length) {
@@ -489,12 +494,42 @@ async function setLeadSource(me: { id?: number | null; name?: string | null }, c
   return client;
 }
 
+/**
+ * Relê da Meta e do Google as 12 últimas semanas das contas do cliente, com a
+ * regra de leitura atual. O que está gravado pode ser de uma regra antiga
+ * (ex.: antes de "contato no site" contar como lead) — sem reler, trocar a
+ * fonte dos leads só recalcularia o score com os números velhos.
+ */
+async function resyncClient(clientId: number) {
+  const [meta, google] = await Promise.all([
+    metaConfigured() ? syncMeta({ weeks: 12, clientId }) : null,
+    googleAdsConfigured() ? syncGoogle({ weeks: 12, clientId }) : null,
+  ]);
+  return [...(meta?.failed ?? []), ...(google?.failed ?? [])];
+}
+
+/** Botão "Atualizar da Meta" do painel do cliente. */
+export async function resyncClientMedia(clientId: number): Promise<ActionResult> {
+  await requireUser();
+  const client = await getClient(clientId);
+  if (!client) return { error: "Cliente não encontrado." };
+  const failed = await resyncClient(clientId);
+  await recomputeRange(90);
+  revalidatePath("/clientes");
+  revalidatePath(`/clientes/${clientId}`);
+  revalidatePath("/");
+  if (failed.length) return { error: `Não deu para ler: ${failed.map((f) => `${f.account} (${f.error})`).join("; ")}` };
+  return { ok: `${client.name}: 12 semanas relidas da Meta e do Google e score recalculado.` };
+}
+
 /** Fonte dos leads do cliente: conversão de campanha (padrão), webhook do CRM ou a soma. */
 export async function changeClientLeadSource(clientId: number, source: LeadSource): Promise<ActionResult> {
   const me = await requireAdmin();
   if (!LEAD_SOURCES.includes(source)) return { error: "Fonte de leads inválida." };
   const client = await setLeadSource(me, clientId, source);
   if (!client) return { error: "Cliente não encontrado." };
+  // Campanha (ou soma) precisa dos números da Meta na regra atual: relê antes de recalcular.
+  if (source !== "webhook") await resyncClient(clientId);
   after(() => recomputeRange(90));
   revalidateSettings();
   revalidatePath("/clientes");
