@@ -55,6 +55,13 @@ const MAIN: NavLink[] = [
     ],
   },
   {
+    href: "/relatorios",
+    label: "Relatórios",
+    hint: "Relatórios e apresentações para o cliente",
+    icon: "fileText",
+    drawer: true,
+  },
+  {
     href: "/social",
     label: "Social media",
     hint: "Aprovação e calendário",

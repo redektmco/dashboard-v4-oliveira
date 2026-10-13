@@ -40,9 +40,10 @@ export const config = {
   // marca em /public, as apresentações HTML em /apresentacoes, o recompute e os syncs do Meta Ads e do Google Ads (cron, por
   // token), o webhook de leads do CRM (`/api/integrations/webhook/<token>`),
   // além das rotas públicas do cliente de Social media — o link de aprovação
-  // `/a/<token>` e sua API de decisão `/api/g/...`, todos protegidos por token
-  // na URL. `/api/billing/` também fica fora: o cron de cobrança tem sua
-  // própria checagem de token, e o pixel de rastreio (`/api/billing/track/
+  // `/a/<token>` e sua API de decisão `/api/g/...` — e o link público do
+  // relatório (`/r/<token>`), todos protegidos por token na URL.
+  // `/api/billing/` também fica fora: o cron de cobrança tem sua própria
+  // checagem de token, e o pixel de rastreio (`/api/billing/track/
   // <token>`) precisa carregar dentro do e-mail do cliente, sem sessão nenhuma.
   //
   // O arquivo das artes não passa por aqui de propósito: o navegador pede um
@@ -50,6 +51,6 @@ export const config = {
   // Blob. Com o arquivo no caminho, o Next bufferiza o corpo e o trunca em
   // 10 MB (`proxyClientMaxBodySize`) — era isso que quebrava o upload em lote.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|icon.png|apple-icon.png|brand/|apresentacoes/|api/recompute|api/meta/sync|api/google/sync|api/integrations/webhook/|api/billing/|a/|api/g/).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icon.png|apple-icon.png|brand/|apresentacoes/|api/recompute|api/meta/sync|api/google/sync|api/integrations/webhook/|api/billing/|a/|r/|api/g/).*)",
   ],
 };

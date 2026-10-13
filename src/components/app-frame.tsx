@@ -8,7 +8,7 @@ type Perfil = { name: string; isAdmin: boolean; role: string };
 
 /**
  * Moldura do console (rail lateral e, no celular, cabeçalho + abas). O link
- * de aprovação do cliente (`/a/...`) vive sem ela mesmo quando quem abre está
+ * de aprovação do cliente (`/a/...`) e o do relatório (`/r/...`) vivem sem ela mesmo quando quem abre está
  * logado — a equipe confere o link exatamente como o cliente vai ver.
  *
  * Não há topbar no desktop: a conta mora no rodapé do rail e o título da
@@ -27,7 +27,9 @@ export function AppFrame({
   children: React.ReactNode;
 }) {
   const path = usePathname();
-  if (path.startsWith("/a/")) return <>{children}</>;
+  if (path.startsWith("/a/") || path.startsWith("/r/")) return <>{children}</>;
+  // O construtor de relatórios ocupa a tela inteira, como o Elementor.
+  if (/^\/relatorios\/[^/]+$/.test(path)) return <>{children}</>;
   return (
     <>
       <Sidebar user={user} avisos={avisos} />
