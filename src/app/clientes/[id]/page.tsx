@@ -22,7 +22,7 @@ import {
 import { listClientChanges } from "@/lib/audit";
 import { currentRitualDate } from "@/lib/week";
 import { mediaSplit } from "@/lib/crm/media-split";
-import { goalViews, leadsByOrigin, listGoals, listLeadSources, periodOf } from "@/lib/crm/goals";
+import { goalViews, leadsByOrigin, listGoals, listLeadSources } from "@/lib/crm/goals";
 import { configSnapshot, whenBR, type PendenciaId } from "@/lib/config-status";
 import { MediaChannels } from "@/components/cliente/media-channels";
 import { FichaPane, FichaTabs, type FichaTab } from "@/components/cliente/ficha-tabs";
@@ -63,6 +63,9 @@ import {
   type DrawerDim,
 } from "@/components/cliente/client-ui";
 import { EvolutionSection, type ChartEvent } from "@/components/cliente/evolution";
+import { PeriodPicker } from "@/components/cliente/period-picker";
+import { PerformanceTab } from "@/components/cliente/performance-tab";
+import { parsePeriod, periodQuery } from "@/lib/ficha-period";
 import { brl, TableScroll } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import {
@@ -113,15 +116,20 @@ export default async function ClientePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ plano?: string }>;
+  searchParams: Promise<{ plano?: string; periodo?: string; de?: string; ate?: string }>;
 }) {
   await requireUser();
   const { id } = await params;
-  const { plano } = await searchParams;
+  const sp = await searchParams;
+  const { plano } = sp;
   const clientId = Number(id);
   if (!Number.isInteger(clientId)) notFound();
 
   const at = today();
+  // Período da ficha (filtro do topo): vale para Performance, Saúde, Metas,
+  // Atividades e Histórico. A Visão geral segue o score de hoje.
+  const period = parsePeriod(sp, at);
+  const inPeriod = (day: string) => day >= period.since && day <= period.until;
   const [client, s, series, perf, checkins, plans, targets, users, targetHist, audit, config, churns] = await Promise.all([
     getClient(clientId),
     scoreFor(clientId, at),
@@ -160,13 +168,15 @@ export default async function ClientePage({
   ]);
 
   // Mídia separada por canal: o score lê Meta + Google somados, esta leitura
-  // desfaz a soma para dizer de onde veio o movimento. Últimas 8 semanas-ritual.
+  // desfaz a soma para dizer de onde veio o movimento. As semanas-ritual
+  // fechadas dentro do período da ficha (ao menos uma, no máximo 26).
   // `currentRitualDate` e a ultima sexta que JA passou: a semana fechada.
   // `ritualWeekEnd` devolveria a sexta que ainda vai fechar, e a ultima barra
   // seria sempre uma semana pela metade parecendo queda.
-  const lastWeek = currentRitualDate(new Date(at + "T12:00:00"));
+  const lastWeek = currentRitualDate(new Date(period.until + "T12:00:00"));
+  const nWeeks = Math.min(26, Math.max(1, Math.floor(period.days / 7)));
   const split = mediaSplit({
-    weeks: Array.from({ length: 8 }, (_, i) => shiftDays(lastWeek, -7 * (7 - i))),
+    weeks: Array.from({ length: nWeeks }, (_, i) => shiftDays(lastWeek, -7 * (nWeeks - 1 - i))),
     meta: metaBy.get(clientId),
     google: googleBy.get(clientId),
     metaLinked: metaLinks.some((l) => l.client_id === clientId),
@@ -177,15 +187,16 @@ export default async function ClientePage({
   // configuração desta conta. `configSnapshot` é a mesma fonte que
   // Configurações usa — aqui só filtramos as pendências deste cliente, para
   // a ficha não inventar uma régua paralela.
-  const periodoMes = periodOf("mensal", at);
+  // Metas no período que contém o fim do filtro (mês passado → metas do mês
+  // passado); origem dos leads no período exato do filtro.
   const [metasDoCliente, fontes, origens, webhook, cfg] = await Promise.all([
     listGoals(clientId),
     listLeadSources(clientId),
-    leadsByOrigin(clientId, periodoMes.from, periodoMes.to),
+    leadsByOrigin(clientId, period.since, period.until),
     getIntegration(clientId),
     configSnapshot(),
   ]);
-  const metasView = goalViews(metasDoCliente, perf, at, client.account_type);
+  const metasView = goalViews(metasDoCliente, perf, period.until, client.account_type);
   const leadsNoPeriodo = origens.reduce((acc, o) => acc + o.n, 0);
 
   const metaDoCliente = metaLinks.filter((l) => l.client_id === clientId);
@@ -248,7 +259,7 @@ export default async function ClientePage({
     integrations: integracoes,
     pendencias: pendenciasDoCliente,
     leadsNoPeriodo,
-    periodoLabel: periodoMes.label,
+    periodoLabel: `${period.label} · ${period.range}`,
     lastSync: webhook?.last_event_at ? whenBR(webhook.last_event_at) : null,
   };
 
@@ -309,6 +320,11 @@ export default async function ClientePage({
     .filter((e): e is AccountEvent & { kind: ChartEvent["kind"] } => ["checkin", "meta", "queda", "plano"].includes(e.kind))
     .map((e) => ({ day: e.day, kind: e.kind, title: e.title, detail: e.detail }));
   const rows = checkins.map(checkinRow);
+  // O que as abas mostram no período; a gaveta "histórico completo" segue com tudo.
+  const rowsP = rows.filter((r) => inPeriod(r.day));
+  const eventsP = events.filter((e) => inPeriod(e.day));
+  const pq = periodQuery(period);
+  const evolutionRange = { from: period.since, to: period.until, label: period.range };
 
   // Health Score: o de hoje contra o de 7 dias atrás.
   const ref7 = series.filter((p) => p.day <= addDays(at, -7) && p.score !== null).pop() ?? null;
@@ -395,6 +411,7 @@ export default async function ClientePage({
       count: alertasMetas,
       alert: pendenciasDoCliente.some((pd) => pd.severity === "bloqueia") || metasView.some((g) => g.status === "critico"),
     },
+    { id: "performance", label: "Performance" },
     { id: "atividades", label: "Atividades", count: actions.length },
     { id: "historico", label: "Histórico" },
   ];
@@ -431,7 +448,7 @@ export default async function ClientePage({
       {/* As abas são client-side: a ficha é um ClientUI só, com uma rodada
           de leitura. Ver components/cliente/ficha-tabs.tsx. */}
       <div className="hidden flex-col pb-6 lg:flex">
-        <FichaTabs tabs={fichaTabs}>
+        <FichaTabs tabs={fichaTabs} aside={<PeriodPicker value={period} today={at} />}>
         <FichaPane id="visao">
         {/* Resumo da conta */}
         <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_404px]">
@@ -497,6 +514,7 @@ export default async function ClientePage({
           yellowFloor={config.yellowFloor}
           band={s.band}
           at={at}
+          range={evolutionRange}
         />
         </FichaPane>
 
@@ -504,6 +522,10 @@ export default async function ClientePage({
           <MetasIntegracoes data={metas} />
 
         <MediaChannels split={split} clientId={clientId} />
+        </FichaPane>
+
+        <FichaPane id="performance">
+          <PerformanceTab clientId={clientId} clientName={client.name} query={pq} periodLabel={`${period.label} · ${period.range}`} />
         </FichaPane>
 
         <FichaPane id="atividades">
@@ -519,7 +541,7 @@ export default async function ClientePage({
                 </Link>
               }
             />
-            <CheckinTable rows={rows.slice(0, 4)} />
+            <CheckinTable rows={rowsP.slice(0, 4)} />
           </section>
           <section id="plano" className="flex scroll-mt-20 flex-col gap-4">
             <SectionHead
@@ -552,9 +574,9 @@ export default async function ClientePage({
             }
           />
           <Card className="px-6 py-[22px]">
-            {events.length ? (
+            {eventsP.length ? (
               <div className="flex">
-                {events.slice(0, 5).map((e, i, list) => (
+                {eventsP.slice(0, 5).map((e, i, list) => (
                   <div key={i} className="flex min-w-0 flex-1 flex-col gap-3">
                     <div className="flex items-center gap-2.5">
                       <EventMarker kind={e.kind} fell={e.detail.includes("caiu")} />
@@ -570,7 +592,7 @@ export default async function ClientePage({
                 ))}
               </div>
             ) : (
-              <p className="py-4 text-center text-[13px] text-ink-400">Nada registrado nesta conta ainda.</p>
+              <p className="py-4 text-center text-[13px] text-ink-400">Nada registrado no período.</p>
             )}
           </Card>
         </section>
@@ -581,6 +603,7 @@ export default async function ClientePage({
 
       {/* ============================ CELULAR ============================ */}
       <div className="flex flex-col gap-4 pb-8 lg:hidden">
+        <PeriodPicker value={period} today={at} full />
         <Card className="flex flex-col gap-3.5 p-4">
           <div className="flex items-center justify-between">
             <span className="text-[13px] font-medium text-ink-300">Health Score</span>
@@ -649,6 +672,9 @@ export default async function ClientePage({
 
         <MediaChannels split={split} clientId={clientId} />
 
+        <h2 className="pt-2 font-display text-[16px] font-semibold tracking-[-0.2px] text-ink-100">Performance</h2>
+        <PerformanceTab clientId={clientId} clientName={client.name} query={pq} periodLabel={`${period.label} · ${period.range}`} compact />
+
         <EvolutionSection
           points={series.map((p) => ({ day: p.day, score: p.score }))}
           events={chartEvents}
@@ -657,6 +683,7 @@ export default async function ClientePage({
           band={s.band}
           at={at}
           compact
+          range={evolutionRange}
         />
 
         <div className="flex items-center justify-between pt-2">
@@ -666,7 +693,7 @@ export default async function ClientePage({
             Registrar
           </Link>
         </div>
-        {rows.slice(0, 2).map((r) => (
+        {rowsP.slice(0, 2).map((r) => (
           <CheckinButton key={r.id} id={r.id} className="flex w-full flex-col gap-2.5 rounded-xl border border-[var(--border-hair)] bg-ink-900 p-4 text-left">
             <span className="flex w-full items-center justify-between">
               <span className="flex items-center gap-2 text-[13px]">
@@ -683,7 +710,7 @@ export default async function ClientePage({
             </span>
           </CheckinButton>
         ))}
-        {!rows.length && <Card className="py-6 text-center text-[13px] text-ink-400">Nenhum check-in registrado.</Card>}
+        {!rowsP.length && <Card className="py-6 text-center text-[13px] text-ink-400">Nenhum check-in no período.</Card>}
 
         <div className="flex items-center justify-between pt-2">
           <h2 className="font-display text-[16px] font-semibold tracking-[-0.2px] text-ink-100">Plano de ação</h2>
@@ -699,7 +726,7 @@ export default async function ClientePage({
           <OpenHistory className="text-[13px] font-medium text-ink-300">Ver tudo</OpenHistory>
         </div>
         <Card className="flex flex-col p-4">
-          {events.slice(0, 4).map((e, i, list) => (
+          {eventsP.slice(0, 4).map((e, i, list) => (
             <div key={i} className="flex gap-3">
               <div className="flex w-6 flex-col items-center">
                 <EventMarker kind={e.kind} fell={e.detail.includes("caiu")} size={24} />
@@ -714,7 +741,7 @@ export default async function ClientePage({
               </div>
             </div>
           ))}
-          {!events.length && <p className="py-2 text-center text-[13px] text-ink-400">Nada registrado nesta conta ainda.</p>}
+          {!eventsP.length && <p className="py-2 text-center text-[13px] text-ink-400">Nada registrado no período.</p>}
         </Card>
       </div>
     </ClientUI>
@@ -1025,7 +1052,7 @@ function CheckinTable({ rows }: { rows: ReturnType<typeof checkinRow>[] }) {
               <Icon name="chevronRight" size={16} className="w-4 shrink-0 text-ink-500" />
             </CheckinButton>
           ))}
-          {!rows.length && <p className="px-5 py-10 text-center text-[13px] text-ink-400">Nenhum check-in registrado nesta conta.</p>}
+          {!rows.length && <p className="px-5 py-10 text-center text-[13px] text-ink-400">Nenhum check-in no período.</p>}
         </div>
       </TableScroll>
     </Card>

@@ -25,7 +25,7 @@ export function MediaChannels({ split, clientId }: { split: MediaSplit; clientId
     <section className="flex flex-col gap-4">
       <SectionHead
         title="Mídia por canal"
-        subtitle={`Meta e Google separados nas últimas ${split.weeks.length} semanas. O score usa os dois somados — aqui é para enxergar de onde veio o movimento.`}
+        subtitle={`Meta e Google separados ${split.weeks.length === 1 ? "na semana-ritual fechada do período" : `nas ${split.weeks.length} semanas-ritual fechadas do período`}. O score usa os dois somados — aqui é para enxergar de onde veio o movimento.`}
         action={
           <Link href="/gt/integracoes" className="flex items-center gap-1.5 text-[13px] text-ink-300 hover:text-ink-100">
             <Icon name="plug" size={14} />

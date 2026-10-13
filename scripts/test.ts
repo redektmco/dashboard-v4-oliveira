@@ -28,6 +28,27 @@ import { topPriorities, type PriorityInput } from "../src/lib/priorities";
 import { STEPS, dueOf, ekyteText, howOf, stepTemplate } from "../src/lib/playbook/templates";
 import { creativeAttention, crmAttention } from "../src/lib/playbook/attention";
 import { DORES } from "../src/lib/playbook/dores";
+import { parsePeriod, periodQuery, presetPeriod, rangeLabel } from "../src/lib/ficha-period";
+import {
+  EMPTY_TOTALS,
+  budgetFor,
+  convRate,
+  cpc,
+  cpm,
+  cpr,
+  ctr,
+  delta,
+  frequency,
+  googleStatus,
+  googleType,
+  mergeDaily,
+  metaObjective,
+  metaStatus,
+  roas,
+  sumTotals,
+} from "../src/lib/performance/model";
+import { accountTotals, metaTotals } from "../src/lib/performance/meta-live";
+import { googleTotals, sumDays } from "../src/lib/performance/google-live";
 import { EMPTY_WEEK, campaignTotals, leadSpendOf, leadsOf, metaFields, parseInsight, weekRange } from "../src/lib/meta/metrics";
 import { clientKey, firstPhone, parseBRL, parseClientsSheet, parseCsv } from "../src/lib/import/clients-sheet";
 import {
@@ -1390,4 +1411,112 @@ test("Relatório: documento do banco é saneado e os modelos da V4 são válidos
     const clean = sanitizeDoc(JSON.parse(JSON.stringify(built)), s.format);
     assert.deepEqual(clean.pages.map((p) => p.blocks.map((b) => [b.x, b.y, b.w, b.h])), built.pages.map((p) => p.blocks.map((b) => [b.x, b.y, b.w, b.h])), `${s.id}: todo bloco cabe na página`);
   }
+});
+
+/* ------------------------ período da ficha ------------------------ */
+
+test("ficha: período padrão e presets seguem o 'Últimos N dias' da Meta (até ontem)", () => {
+  const p = parsePeriod({}, "2026-10-13");
+  assert.equal(p.key, "30d");
+  assert.deepEqual([p.since, p.until, p.days], ["2026-09-13", "2026-10-12", 30]);
+  assert.equal(p.range, "13 set – 12 out");
+  assert.deepEqual(p.previous, { since: "2026-08-14", until: "2026-09-12" });
+  assert.deepEqual(presetPeriod("mes", "2026-10-13").since, "2026-10-01");
+  const prev = presetPeriod("mes-anterior", "2026-10-13");
+  assert.deepEqual([prev.since, prev.until, prev.days], ["2026-09-01", "2026-09-30", 30]);
+  assert.equal(parsePeriod({ periodo: "7d" }, "2026-10-13").since, "2026-10-06");
+  assert.equal(parsePeriod({ periodo: "lixo" }, "2026-10-13").key, "30d");
+});
+
+test("ficha: período personalizado é validado e vira preset quando bate", () => {
+  const c = parsePeriod({ de: "2026-10-02", ate: "2026-10-12" }, "2026-10-13");
+  assert.deepEqual([c.key, c.label, c.days], ["custom", "Personalizado", 11]);
+  assert.deepEqual(c.previous, { since: "2026-09-21", until: "2026-10-01" });
+  assert.equal(parsePeriod({ de: "2026-10-01", ate: "2026-10-13" }, "2026-10-13").key, "mes");
+  assert.equal(parsePeriod({ de: "2026-09-01", ate: "2026-09-30" }, "2026-10-13").key, "mes-anterior");
+  // Futuro, invertido, data torta ou longo demais: volta ao padrão.
+  assert.equal(parsePeriod({ de: "2026-10-01", ate: "2026-10-20" }, "2026-10-13").key, "30d");
+  assert.equal(parsePeriod({ de: "2026-10-10", ate: "2026-10-01" }, "2026-10-13").key, "30d");
+  assert.equal(parsePeriod({ de: "2026-02-30", ate: "2026-03-10" }, "2026-10-13").key, "30d");
+  assert.equal(parsePeriod({ de: "2024-01-01", ate: "2026-10-01" }, "2026-10-13").key, "30d");
+  assert.equal(rangeLabel("2025-12-20", "2026-01-10"), "20 dez 2025 – 10 jan 2026");
+  assert.equal(periodQuery(c), "de=2026-10-02&ate=2026-10-12");
+  assert.equal(periodQuery(parsePeriod({}, "2026-10-13")), "");
+  assert.equal(periodQuery(presetPeriod("7d", "2026-10-13")), "periodo=7d");
+});
+
+/* --------------------------- performance --------------------------- */
+
+test("performance: Meta lê campanha a campanha e o CPL só conta campanha de lead (New Cabos)", () => {
+  const range = { date_start: "2026-10-01", date_stop: "2026-10-13" };
+  const contatos = metaTotals(
+    { ...range, spend: "182.35", impressions: "6000", clicks: "114", inline_link_clicks: "90", reach: "4000", actions: [{ action_type: "contact_total", value: "31" }] },
+    "both",
+    "lead_gen",
+  );
+  const instagram = metaTotals(
+    { ...range, spend: "126.33", impressions: "46000", clicks: "1154", reach: "30000", actions: [{ action_type: "link_click", value: "1016" }] },
+    "both",
+    "lead_gen",
+  );
+  assert.equal(contatos.results, 31);
+  assert.equal(contatos.resultSpend, 182.35);
+  assert.equal(instagram.results, 0);
+  assert.equal(instagram.resultSpend, 0);
+  const t = accountTotals(
+    { ...range, spend: "308.68", impressions: "52000", clicks: "1268", reach: "32000" },
+    [contatos, instagram],
+    "lead_gen",
+  );
+  assert.equal(t.spend, 308.68);
+  assert.equal(t.clicks, 1268);
+  assert.equal(t.reach, 32000); // alcance da conta, sem somar pessoa repetida
+  assert.equal(t.results, 31);
+  assert.equal(Math.round(cpr(t)! * 100) / 100, 5.88);
+  assert.equal(Math.round(ctr(t)! * 100) / 100, 2.44);
+  assert.deepEqual(accountTotals(undefined, [], "lead_gen"), EMPTY_TOTALS);
+});
+
+test("performance: Google soma o período e o anterior a partir dos dias", () => {
+  const days = [
+    { segments: { date: "2026-09-30" }, metrics: { costMicros: "50000000", clicks: "10", impressions: "100", conversions: "1" } },
+    { segments: { date: "2026-10-01" }, metrics: { costMicros: "100000000", clicks: "20", impressions: "1000", conversions: "2.5" } },
+    { segments: { date: "2026-10-02" }, metrics: { costMicros: "60000000", clicks: "10", impressions: "500", conversions: "1.5", conversionsValue: "300" } },
+  ];
+  const cur = sumDays(days, { since: "2026-10-01", until: "2026-10-02" }, "lead_gen");
+  assert.deepEqual([cur.spend, cur.clicks, cur.impressions, cur.results, cur.revenue], [160, 30, 1500, 4, 300]);
+  assert.equal(cur.reach, null);
+  const prev = sumDays(days, { since: "2026-09-30", until: "2026-09-30" }, "lead_gen");
+  assert.equal(prev.spend, 50);
+  assert.equal(delta(cpr(cur), cpr(prev)), -20);
+  assert.equal(googleTotals({ costMicros: "1000000", conversions: "2" }, "ecommerce").purchases, 2);
+});
+
+test("performance: contas derivadas, status e soma de canais", () => {
+  const t = { ...EMPTY_TOTALS, spend: 100, impressions: 20000, clicks: 400, reach: 10000, results: 20, resultSpend: 80, revenue: 500 };
+  assert.equal(ctr(t), 2);
+  assert.equal(cpc(t), 0.25);
+  assert.equal(cpm(t), 5);
+  assert.equal(frequency(t), 2);
+  assert.equal(cpr(t), 4); // 80 ÷ 20: só a verba das campanhas com resultado
+  assert.equal(roas(t), 5);
+  assert.equal(convRate(t), 5);
+  assert.equal(cpr({ ...t, results: 0 }), null);
+  assert.equal(cpr({ ...t, resultSpend: 0 }), 5); // sem verba de lead, cai na total
+  assert.equal(delta(110, 100), 10);
+  assert.equal(delta(5, 0), null);
+  assert.equal(metaStatus("ACTIVE"), "ativa");
+  assert.equal(metaStatus("CAMPAIGN_PAUSED"), "pausada");
+  assert.equal(metaStatus(undefined), "encerrada");
+  assert.equal(googleStatus("ENABLED"), "ativa");
+  assert.equal(metaObjective("OUTCOME_LEADS"), "Cadastro");
+  assert.equal(googleType("PERFORMANCE_MAX"), "Performance Max");
+  const s = sumTotals([t, { ...EMPTY_TOTALS, spend: 50, clicks: 100 }]);
+  assert.deepEqual([s.spend, s.clicks, s.reach], [150, 500, 10000]);
+  assert.equal(budgetFor(700, 30), 3000);
+  assert.equal(budgetFor(undefined, 30), null);
+  const d = mergeDaily("2026-10-01", "2026-10-03", { meta: [{ day: "2026-10-02", spend: 10, results: 1 }], google: [{ day: "2026-10-02", spend: 5, results: 2 }] });
+  assert.equal(d.length, 3);
+  assert.deepEqual(d[1], { day: "2026-10-02", meta: 10, google: 5, results: 3 });
+  assert.deepEqual(d[0], { day: "2026-10-01", meta: 0, google: 0, results: 0 });
 });

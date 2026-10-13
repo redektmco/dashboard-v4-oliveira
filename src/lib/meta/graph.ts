@@ -13,7 +13,7 @@ export const metaConfigured = () => Boolean(process.env.META_ACCESS_TOKEN);
 
 export class MetaError extends Error {}
 
-async function get<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+export async function get<T>(path: string, params: Record<string, string> = {}): Promise<T> {
   const token = process.env.META_ACCESS_TOKEN;
   if (!token) throw new MetaError("META_ACCESS_TOKEN não configurado.");
   const url = path.startsWith("http") ? new URL(path) : new URL(`${BASE}/${path}`);
@@ -27,7 +27,7 @@ async function get<T>(path: string, params: Record<string, string> = {}): Promis
   return body;
 }
 
-type Page<T> = { data: T[]; paging?: { next?: string } };
+export type Page<T> = { data: T[]; paging?: { next?: string } };
 
 export type AdAccount = {
   id: string; // act_…
@@ -54,7 +54,7 @@ type RawAccount = {
 const ACCOUNT_FIELDS = "name,currency,account_status,business{name}";
 
 /** Todas as páginas de uma aresta da Graph API. */
-async function allPages<T>(path: string, params: Record<string, string>): Promise<T[]> {
+export async function allPages<T>(path: string, params: Record<string, string>): Promise<T[]> {
   const out: T[] = [];
   let page = await get<Page<T>>(path, { ...params, limit: "200" });
   for (let guard = 0; guard < 20; guard++) {
