@@ -81,8 +81,8 @@ async function loadConfigSnapshot() {
   const naoEnviadas = activeCharges.filter((c) => !chargeWillSend(c, emailOn, waOn));
   const comContato = activeCharges.filter((c) => c.billingEmail || c.billingPhone);
 
-  // Verba sem leads: as duas últimas semanas fechadas com gasto e zero lead
-  // (da Meta, ou do CRM quando ele existe — é a fonte que vence no score).
+  // Verba sem leads: as duas últimas semanas fechadas com gasto e zero lead,
+  // pela fonte que o cliente escolheu (campanha, webhook do CRM ou a soma).
   const w1 = currentRitualDate();
   const d = new Date(w1 + "T12:00:00Z");
   d.setUTCDate(d.getUTCDate() - 7);
@@ -101,7 +101,9 @@ async function loadConfigSnapshot() {
       for (const ref of [w0, w1]) {
         const m = weeks.get(ref);
         if (!m || m.week.spend <= 0) return null;
-        const leads = crmOn.has(c.id) ? (crmBy.get(`${c.id}:${ref}`) ?? 0) : m.leads;
+        const crm = crmBy.get(`${c.id}:${ref}`) ?? 0;
+        const source = crmOn.has(c.id) ? (c.lead_source ?? "webhook") : "campaign";
+        const leads = source === "campaign" ? m.leads : source === "webhook" ? crm : crm + m.leads;
         if (leads > 0) return null;
         spend += m.week.spend;
       }

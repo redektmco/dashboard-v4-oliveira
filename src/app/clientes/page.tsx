@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { crmBoard } from "@/lib/crm/board";
 import { listUsers } from "@/lib/repo";
 import { metaConfigured } from "@/lib/meta/graph";
+import { googleAdsConfigured } from "@/lib/google/ads";
 import { ClientsCrm } from "@/components/crm/clients-crm";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,8 @@ export default async function ClientesPage() {
       isAdmin={Boolean(me.is_admin)}
       metaReady={metaConfigured()}
       linkedAccounts={rows.flatMap((r) => r.meta.map((m) => m.adAccountId))}
+      googleReady={googleAdsConfigured()}
+      linkedGoogle={rows.flatMap((r) => r.google.map((g) => g.customerId))}
     />
   );
 }

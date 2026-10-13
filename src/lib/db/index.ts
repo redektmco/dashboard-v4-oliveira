@@ -884,13 +884,21 @@ CREATE TABLE IF NOT EXISTS crm_lead_sources (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_crm_lead_sources_client ON crm_lead_sources (client_id, active);
+
+-- De onde vem o lead do cliente: conversao das campanhas (Meta/Google),
+-- webhook do CRM ou a soma dos dois. 'webhook' e o comportamento antigo: o
+-- CRM vence quando tem lead na semana; sem webhook, vale a campanha.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS lead_source TEXT NOT NULL DEFAULT 'webhook';
+ALTER TABLE clients DROP CONSTRAINT IF EXISTS clients_lead_source_check;
+ALTER TABLE clients ADD CONSTRAINT clients_lead_source_check
+  CHECK (lead_source IN ('campaign','webhook','both'));
 `;
 
 /**
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-10-09.crm-metas-integracoes";
+export const SCHEMA_VERSION = "2026-10-13.lead-source";
 
 let migrated = false;
 

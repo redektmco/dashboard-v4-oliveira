@@ -145,7 +145,7 @@ const CLIENT_SELECT = `
          c.contract_code, c.services, c.contract_start::text AS contract_start,
          c.fidelity_months, c.notice_days, c.niche, c.proximity,
          c.main_contact, c.contact_email, c.contact_phone,
-         c.checkin_every_days, c.stage_override,
+         c.checkin_every_days, c.stage_override, c.lead_source,
          g.name AS gt_name, a.name AS account_name
   FROM clients c
   LEFT JOIN users g ON g.id = c.gt_user_id
@@ -171,6 +171,7 @@ type ClientExtras = Pick<
   | "contact_phone"
   | "checkin_every_days"
   | "stage_override"
+  | "lead_source"
 >;
 
 export async function createClient(
@@ -218,6 +219,7 @@ export async function updateClient(id: number, c: Partial<Client>) {
       "contact_phone",
       "checkin_every_days",
       "stage_override",
+      "lead_source",
     ] as const
   ).filter((k) => k in c);
   if (!keys.length) return;
@@ -445,17 +447,31 @@ const blank = (v: unknown) => v === undefined || v === null || v === "";
  *  3. o CRM troca o `leads_real` das contas de geração (é a fonte mais
  *     completa de lead) e, na semana em curso ainda sem snapshot, sintetiza um
  *     registro "vivo" ancorado no dia do cálculo, para passar o filtro `<= at`.
+ *     `client.lead_source` decide: "campaign" ignora o webhook, "webhook" é o
+ *     CRM vencendo, "both" soma o CRM com a conversão das campanhas.
  * Semanas da Meta anteriores à primeira com verba ficam de fora: conta
  * vinculada depois de meses parada não inventa "verba zero" retroativa.
  */
 function applyOverlay(client: ClientRow, perf: Snap[], at: string, ov: AutoOverlay): Snap[] {
   const type = client.account_type;
-  const crmLeads = (ref: string) => (type === "lead_gen" ? ov.leadsByWeek.get(ref) : undefined);
+  const source = client.lead_source ?? "webhook";
 
   const firstSpend = [...ov.metaByWeek]
     .filter(([, m]) => m.week.spend > 0)
     .map(([ref]) => ref)
     .sort()[0];
+  const adLeads = (ref: string) => {
+    const m = ov.metaByWeek.get(ref);
+    return m && firstSpend && ref >= firstSpend ? m.leads : undefined;
+  };
+  // Lead da semana vindo do webhook (somado à campanha em "both"); undefined
+  // quando o CRM não tem nada a dizer e a campanha segue sozinha.
+  const crmLeads = (ref: string) => {
+    if (type !== "lead_gen" || source === "campaign") return undefined;
+    const n = ov.leadsByWeek.get(ref);
+    if (n === undefined || source === "webhook") return n;
+    return n + (adLeads(ref) ?? 0);
+  };
   const fromMeta = (ref: string) => {
     const m = ov.metaByWeek.get(ref);
     if (!m || !firstSpend || ref < firstSpend) return null;

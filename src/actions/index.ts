@@ -55,8 +55,8 @@ import {
 import { getConfig, getWeights } from "@/lib/repo";
 import { targetKeysFor } from "@/lib/model/catalog";
 import { parseCheckinForm } from "@/lib/model/form";
-import type { AccountType, Band, Client, DimensionKey } from "@/lib/model/types";
-import { ACCOUNT_TYPE_LABEL } from "@/lib/model/types";
+import type { AccountType, Band, Client, DimensionKey, LeadSource } from "@/lib/model/types";
+import { ACCOUNT_TYPE_LABEL, LEAD_SOURCES, LEAD_SOURCE_LABEL } from "@/lib/model/types";
 import { DIMENSIONS } from "@/lib/model/catalog";
 import { requireAdmin, requireUser } from "@/lib/auth";
 import type { ActionResult } from "@/lib/action";
@@ -405,6 +405,8 @@ export async function connectMetaAccount(_prev: ActionResult, formData: FormData
   if (!clientId) return { error: "Escolha o cliente." };
   if (!accountId) return { error: "Escolha a conta de anúncio." };
   if (!LEAD_METRICS.includes(metric)) return { error: "Escolha o que conta como lead." };
+  const source = leadSourceOf(formData);
+  if (source === false) return { error: "Escolha a fonte dos leads." };
 
   // Revalida no servidor: só vincula conta que o token realmente enxerga.
   let acc: AdAccount | undefined;
@@ -420,6 +422,7 @@ export async function connectMetaAccount(_prev: ActionResult, formData: FormData
     };
 
   await linkMetaAccount(clientId, { id: acc.id, name: acc.name, currency: acc.currency }, metric, me.id ?? null);
+  if (source) await updateClient(clientId, { lead_source: source });
   const linked = await getClient(clientId);
   await logChange(me, "integracao", `Meta Ads vinculado: ${linked?.name ?? acc.name}`, { clientId });
   // Histórico de 12 semanas já no vínculo, para o score não esperar o cron.
@@ -463,6 +466,31 @@ export async function changeMetaLeadMetric(adAccountId: string, metric: LeadMetr
   return { ok: `Lead agora conta como: ${LEAD_METRIC_LABEL[metric].toLowerCase()}.` };
 }
 
+/**
+ * `lead_source` do formulário de vínculo: null quando o campo não veio (a
+ * janela sem cliente fixo não mexe na escolha), false quando é inválido.
+ */
+function leadSourceOf(formData: FormData): LeadSource | null | false {
+  const v = formData.get("lead_source");
+  if (v === null) return null;
+  return LEAD_SOURCES.includes(v as LeadSource) ? (v as LeadSource) : false;
+}
+
+/** Fonte dos leads do cliente: conversão de campanha, webhook do CRM ou a soma. */
+export async function changeClientLeadSource(clientId: number, source: LeadSource): Promise<ActionResult> {
+  const me = await requireAdmin();
+  if (!LEAD_SOURCES.includes(source)) return { error: "Fonte de leads inválida." };
+  const client = await getClient(clientId);
+  if (!client) return { error: "Cliente não encontrado." };
+  await updateClient(clientId, { lead_source: source });
+  await logChange(me, "integracao", `Fonte de leads = ${LEAD_SOURCE_LABEL[source].toLowerCase()}: ${client.name}`, { clientId });
+  after(() => recomputeRange(90));
+  revalidateSettings();
+  revalidatePath("/clientes");
+  revalidatePath("/");
+  return { ok: `Leads de ${client.name}: ${LEAD_SOURCE_LABEL[source].toLowerCase()}.` };
+}
+
 export async function removeMetaAccount(adAccountId: string): Promise<ActionResult> {
   await requireAdmin();
   const link = await getMetaLink(adAccountId);
@@ -493,6 +521,8 @@ export async function connectGoogleAccount(_prev: ActionResult, formData: FormDa
   const customerId = normalizeCustomerId(str(formData, "customer_id"));
   if (!clientId) return { error: "Escolha o cliente." };
   if (!customerId) return { error: "Informe o ID da conta do Google Ads (10 dígitos, ex.: 124-444-3600)." };
+  const source = leadSourceOf(formData);
+  if (source === false) return { error: "Escolha a fonte dos leads." };
 
   // Só vincula conta que a credencial realmente enxerga — e que tenha métricas.
   let acc;
@@ -504,6 +534,7 @@ export async function connectGoogleAccount(_prev: ActionResult, formData: FormDa
   if (acc.manager) return { error: "Esse ID é de uma MCC (conta gerente). Informe o ID da conta de anúncio do cliente." };
 
   await linkGoogleAccount(clientId, { id: customerId, name: acc.name, currency: acc.currency }, me.id ?? null);
+  if (source) await updateClient(clientId, { lead_source: source });
   const linked = await getClient(clientId);
   await logChange(me, "integracao", `Google Ads vinculado: ${linked?.name ?? acc.name}`, { clientId });
   // Histórico de 12 semanas já no vínculo, para o score não esperar o cron.

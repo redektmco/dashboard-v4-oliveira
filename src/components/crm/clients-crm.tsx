@@ -56,6 +56,8 @@ export function ClientsCrm({
   isAdmin,
   metaReady,
   linkedAccounts,
+  googleReady,
+  linkedGoogle,
 }: {
   rows: CrmRow[];
   summary: CrmSummary;
@@ -65,6 +67,10 @@ export function ClientsCrm({
   metaReady: boolean;
   /** Contas de anúncio já vinculadas a algum cliente. */
   linkedAccounts: string[];
+  /** Credencial do Google Ads configurada na Vercel. */
+  googleReady: boolean;
+  /** Contas do Google Ads já vinculadas a algum cliente. */
+  linkedGoogle: string[];
 }) {
   const params = useSearchParams();
   const router = useRouter();
@@ -332,6 +338,8 @@ export function ClientsCrm({
             isAdmin={isAdmin}
             metaReady={metaReady}
             linkedAccounts={linkedAccounts}
+            googleReady={googleReady}
+            linkedGoogle={linkedGoogle}
           />
         )}
       </SidePanel>

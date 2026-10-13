@@ -122,6 +122,16 @@ export type Client = {
   checkin_every_days: number | null;
   /** Correção manual da etapa derivada. null = vale a regra de `lib/crm/stage`. */
   stage_override: Stage | null;
+  /** De onde vem o lead: conversão da campanha, webhook do CRM ou a soma. */
+  lead_source: LeadSource;
+};
+
+export type LeadSource = "campaign" | "webhook" | "both";
+export const LEAD_SOURCES: LeadSource[] = ["webhook", "campaign", "both"];
+export const LEAD_SOURCE_LABEL: Record<LeadSource, string> = {
+  campaign: "Conversão de campanha",
+  webhook: "Webhook (CRM)",
+  both: "Os dois (soma)",
 };
 
 /**

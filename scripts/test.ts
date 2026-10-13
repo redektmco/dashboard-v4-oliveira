@@ -940,6 +940,7 @@ const crmRow = (over: Partial<CrmRow> = {}): CrmRow => ({
   openTasks: 0,
   targets: { set: 2, total: 3 },
   leadSources: ["Meta Ads"],
+  leadSource: "webhook",
   charge: null,
   churn: null,
   hook: null,

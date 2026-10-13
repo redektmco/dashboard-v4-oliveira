@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   changeMetaLeadMetric,
   connectMetaAccount,
@@ -14,10 +14,14 @@ import {
   setMetaAccountPaused,
   removeGoogleAccount,
   setGoogleAccountPaused,
+  connectGoogleAccount,
+  loadGoogleAccounts,
+  changeClientLeadSource,
 } from "@/actions";
 import type { AdAccount } from "@/lib/meta/graph";
-import { formatCustomerId } from "@/lib/google/metrics";
+import { formatCustomerId, type GoogleAccount } from "@/lib/google/metrics";
 import { LEAD_METRIC_LABEL, type LeadMetric } from "@/lib/meta/metrics";
+import { LEAD_SOURCE_LABEL, LEAD_SOURCES, type LeadSource } from "@/lib/model/types";
 import type { ActionResult } from "@/lib/action";
 import { ActionMenu, type MenuItem } from "../action-menu";
 import { ActionForm, SubmitButton } from "../form-controls";
@@ -25,7 +29,7 @@ import { ConfirmDialog, Modal } from "../modal";
 import { CopyField } from "../copy-field";
 import { toast } from "../toast";
 import { Icon } from "../icon";
-import { Pill } from "../kit";
+import { Pill, Segmented } from "../kit";
 
 export const CRMS = ["RD Station", "Kommo", "HubSpot", "Zapier / Make", "Formulário próprio", "Outro"] as const;
 
@@ -36,9 +40,74 @@ const notify = (r: ActionResult) => {
 
 /* ------------------------------ Meta Ads ------------------------------ */
 
+type Platform = "meta" | "google";
+
+const LEAD_SOURCE_HINT: Record<LeadSource, string> = {
+  webhook: "Vale o que chega pelo webhook do CRM; semana sem lead no webhook usa a conversão da campanha.",
+  campaign: "Vale só a conversão das campanhas (Meta + Google). O webhook segue registrando, mas não entra no score.",
+  both: "Soma o webhook com a conversão das campanhas. Se o mesmo lead cai nos dois, conta duas vezes.",
+};
+
+/** Fonte dos leads do cliente — campo do formulário de vínculo. */
+function LeadSourceField({ initial }: { initial: LeadSource }) {
+  const [value, setValue] = useState<LeadSource>(initial);
+  return (
+    <label className="block">
+      <span className="label">Fonte dos leads do cliente</span>
+      <select name="lead_source" className="field mt-1" value={value} onChange={(e) => setValue(e.target.value as LeadSource)}>
+        {LEAD_SOURCES.map((s) => (
+          <option key={s} value={s}>
+            {LEAD_SOURCE_LABEL[s]}
+          </option>
+        ))}
+      </select>
+      <span className="mt-1 block text-[11px] text-ink-500">{LEAD_SOURCE_HINT[value]}</span>
+    </label>
+  );
+}
+
+/** Fonte dos leads no painel do cliente: troca na hora e recalcula o score. */
+export function LeadSourcePicker({ clientId, value }: { clientId: number; value: LeadSource }) {
+  const [current, setCurrent] = useState<LeadSource>(value);
+  const [pending, start] = useTransition();
+  return (
+    <label className="flex flex-col gap-1 rounded-lg bg-ink-850 px-3 py-2">
+      <span className="flex items-center gap-2">
+        <Icon name="filter" size={15} className="shrink-0 text-ink-300" />
+        <span className="flex-1 text-[12px] text-ink-300">Leads contam de</span>
+        {pending && <span className="spinner" aria-hidden />}
+        <select
+          value={current}
+          disabled={pending}
+          aria-label="Fonte dos leads"
+          className="min-w-0 bg-transparent text-right text-[13px] text-ink-100 outline-none"
+          onChange={(e) => {
+            const next = e.target.value as LeadSource;
+            const prev = current;
+            setCurrent(next);
+            start(async () => {
+              const r = await changeClientLeadSource(clientId, next);
+              if (r?.error) setCurrent(prev);
+              notify(r);
+            });
+          }}
+        >
+          {LEAD_SOURCES.map((s) => (
+            <option key={s} value={s}>
+              {LEAD_SOURCE_LABEL[s]}
+            </option>
+          ))}
+        </select>
+      </span>
+      <span className="text-[11px] text-ink-500">{LEAD_SOURCE_HINT[current]}</span>
+    </label>
+  );
+}
+
 /**
  * Vincular conta de anúncio. Lista todas as contas que o usuário de sistema
  * enxerga; com `clientId` o cliente já vem escolhido (painel do cliente).
+ * Com `google`, a janela ganha a escolha entre Meta Ads e Google Ads.
  */
 export function MetaConnectDialog({
   open,
@@ -46,21 +115,33 @@ export function MetaConnectDialog({
   clientId,
   clients = [],
   linked,
+  metaReady = true,
+  google,
+  leadSource,
 }: {
   open: boolean;
   onClose: () => void;
   clientId?: number;
   clients?: { id: number; label: string }[];
   linked: string[];
+  /** Token do usuário de sistema da Meta configurado. */
+  metaReady?: boolean;
+  /** Habilita a aba do Google Ads: credencial pronta e contas já vinculadas. */
+  google?: { ready: boolean; linked: string[] };
+  /** Fonte dos leads atual do cliente; sem ela, o vínculo não mexe na escolha. */
+  leadSource?: LeadSource;
 }) {
+  const [platform, setPlatform] = useState<Platform>(metaReady || !google ? "meta" : "google");
   const [accounts, setAccounts] = useState<AdAccount[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  const [gAccounts, setGAccounts] = useState<GoogleAccount[] | null>(null);
+  const [gError, setGError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
-  // As contas só são buscadas na Meta quando a janela abre pela primeira vez.
+  // As contas só são buscadas na Meta / no Google quando a aba abre pela primeira vez.
   useEffect(() => {
-    if (!open || accounts) return;
+    if (!open || platform !== "meta" || !metaReady || accounts || loadError) return;
     let alive = true;
     loadMetaAdAccounts().then((r) => {
       if (!alive) return;
@@ -73,7 +154,20 @@ export function MetaConnectDialog({
     return () => {
       alive = false;
     };
-  }, [open, accounts]);
+  }, [open, platform, metaReady, accounts, loadError]);
+
+  useEffect(() => {
+    if (!open || platform !== "google" || !google?.ready || gAccounts || gError) return;
+    let alive = true;
+    loadGoogleAccounts().then((r) => {
+      if (!alive) return;
+      if (r.error) setGError(r.error);
+      else setGAccounts(r.accounts ?? []);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [open, platform, google?.ready, gAccounts, gError]);
 
   const linkedSet = useMemo(() => new Set(linked), [linked]);
   const options = useMemo(() => {
@@ -86,14 +180,110 @@ export function MetaConnectDialog({
   const ready = options.filter((a) => a.access);
   const blocked = options.filter((a) => !a.access);
 
+  const gLinked = google?.linked;
+  const gLinkedSet = useMemo(() => new Set(gLinked ?? []), [gLinked]);
+  const gOptions = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const digits = q.replace(/\D/g, "");
+    return (gAccounts ?? []).filter((a) => !gLinkedSet.has(a.id) && (!q || a.name.toLowerCase().includes(q) || (digits !== "" && a.id.includes(digits))));
+  }, [gAccounts, gLinkedSet, query]);
+
+  const clientField = clientId ? (
+    <input type="hidden" name="client_id" value={clientId} />
+  ) : (
+    <label className="block">
+      <span className="label">Cliente</span>
+      <select name="client_id" required className="field mt-1" defaultValue="">
+        <option value="" disabled>
+          Selecione…
+        </option>
+        {clients.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+
   return (
     <Modal
       open={open}
       onClose={onClose}
       title="Vincular conta de anúncio"
-      description="Lista todas as contas que o usuário de sistema enxerga, em todas as BMs. Um cliente pode ter mais de uma conta: os números somam."
+      description={
+        platform === "google"
+          ? "Lista todas as contas de cliente da MCC. Um cliente pode ter mais de uma conta: os números somam, junto com o Meta."
+          : "Lista todas as contas que o usuário de sistema enxerga, em todas as BMs. Um cliente pode ter mais de uma conta: os números somam."
+      }
     >
-      {loadError ? (
+      {google && (
+        <div className="mb-4">
+          <Segmented<Platform>
+            full
+            value={platform}
+            onChange={(p) => {
+              setPlatform(p);
+              setQuery("");
+            }}
+            options={[
+              { value: "meta", label: "Meta Ads" },
+              { value: "google", label: "Google Ads" },
+            ]}
+          />
+        </div>
+      )}
+      {platform === "google" ? (
+        !google?.ready ? (
+          <p className="rounded-lg bg-vermelho-dim px-3 py-2 text-[13px] font-semibold text-vermelho-fg">
+            Credencial do Google Ads não configurada — veja Performance › Integrações.
+          </p>
+        ) : !gAccounts && !gError ? (
+          <p className="flex items-center gap-2 py-6 text-[13px] text-ink-400">
+            <span className="spinner" aria-hidden /> Buscando contas na MCC…
+          </p>
+        ) : (
+          <ActionForm action={connectGoogleAccount} onSuccess={onClose}>
+            {clientField}
+            {gAccounts ? (
+              <label className="block">
+                <span className="label">Conta do Google Ads</span>
+                <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filtrar por nome ou ID…" className="field mt-1" />
+                <select name="customer_id" required className="field mt-2" size={Math.min(8, Math.max(3, gOptions.length))}>
+                  {gOptions.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} · {formatCustomerId(a.id)}
+                    </option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-[11px] text-ink-500">
+                  {gAccounts.length === 0 ? "A MCC não tem contas de cliente ativas." : `${gOptions.length} conta(s) disponível(is)`}
+                  {gLinkedSet.size > 0 && ` · ${gLinkedSet.size} já vinculada(s) não aparecem`}
+                </span>
+              </label>
+            ) : (
+              <>
+                <p className="rounded-lg bg-vermelho-dim px-3 py-2 text-[13px] font-semibold text-vermelho-fg">{gError}</p>
+                <label className="block">
+                  <span className="label">Ou informe o ID da conta do cliente</span>
+                  <input name="customer_id" required inputMode="numeric" placeholder="123-456-7890" className="field mt-1" autoComplete="off" />
+                </label>
+              </>
+            )}
+            {leadSource && <LeadSourceField initial={leadSource} />}
+            <div className="modal-actions">
+              <button type="button" className="btn" onClick={onClose}>
+                Cancelar
+              </button>
+              <SubmitButton pendingLabel="Importando 12 semanas…">Vincular e importar</SubmitButton>
+            </div>
+          </ActionForm>
+        )
+      ) : !metaReady ? (
+        <p className="rounded-lg bg-vermelho-dim px-3 py-2 text-[13px] font-semibold text-vermelho-fg">
+          Token do usuário do sistema da Meta não configurado — veja Performance › Integrações.
+        </p>
+      ) : loadError ? (
         <p className="rounded-lg bg-vermelho-dim px-3 py-2 text-[13px] font-semibold text-vermelho-fg">{loadError}</p>
       ) : !accounts ? (
         <p className="flex items-center gap-2 py-6 text-[13px] text-ink-400">
@@ -101,23 +291,7 @@ export function MetaConnectDialog({
         </p>
       ) : (
         <ActionForm action={connectMetaAccount} onSuccess={onClose}>
-          {clientId ? (
-            <input type="hidden" name="client_id" value={clientId} />
-          ) : (
-            <label className="block">
-              <span className="label">Cliente</span>
-              <select name="client_id" required className="field mt-1" defaultValue="">
-                <option value="" disabled>
-                  Selecione…
-                </option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+          {clientField}
           <label className="block">
             <span className="label">Conta de anúncio</span>
             <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filtrar por nome, BM ou ID…" className="field mt-1" />
@@ -164,9 +338,11 @@ export function MetaConnectDialog({
               ))}
             </select>
             <span className="mt-1 block text-[11px] text-ink-500">
-              Campanha de WhatsApp/Direct gera conversas, não leads de formulário. Se o cliente tiver CRM conectado, a contagem do CRM vence.
+              Campanha de WhatsApp/Direct gera conversas, não leads de formulário.
+              {!leadSource && " A fonte dos leads (campanha, webhook ou os dois) é escolhida no painel do cliente."}
             </span>
           </label>
+          {leadSource && <LeadSourceField initial={leadSource} />}
           <div className="modal-actions">
             <button type="button" className="btn" onClick={onClose}>
               Cancelar

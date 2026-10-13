@@ -10,7 +10,7 @@ import { hasMediaService } from "@/lib/model/services";
 import { ActionForm, SubmitButton } from "../form-controls";
 import { Modal } from "../modal";
 import { Icon, type IconName } from "../icon";
-import { GoogleLinkRow, MetaConnectDialog, MetaLinkRow, WebhookBox } from "../config/connections";
+import { GoogleLinkRow, LeadSourcePicker, MetaConnectDialog, MetaLinkRow, WebhookBox } from "../config/connections";
 import { BAND_STYLE, brl, Sparkline } from "../ui";
 
 /**
@@ -30,6 +30,8 @@ export function CrmQuickPanel({
   isAdmin,
   metaReady,
   linkedAccounts,
+  googleReady,
+  linkedGoogle,
 }: {
   row: CrmRow;
   /** "3 de 12" da fila atual. */
@@ -40,6 +42,8 @@ export function CrmQuickPanel({
   isAdmin: boolean;
   metaReady: boolean;
   linkedAccounts: string[];
+  googleReady: boolean;
+  linkedGoogle: string[];
 }) {
   const [logging, setLogging] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -162,6 +166,7 @@ export function CrmQuickPanel({
         {/* conexões — gerar e girar o webhook do cliente só existe aqui */}
         {isAdmin && (
           <Block title="Fonte de leads">
+            <LeadSourcePicker key={row.leadSource} clientId={row.id} value={row.leadSource} />
             <WebhookBox clientId={row.id} hook={row.hook} />
             {row.meta.map((m) => (
               <MetaLinkRow key={m.adAccountId} link={m} />
@@ -169,24 +174,25 @@ export function CrmQuickPanel({
             {row.google.map((g) => (
               <GoogleLinkRow key={g.customerId} link={g} />
             ))}
-            {metaReady ? (
+            {metaReady || googleReady ? (
               <button type="button" className="btn btn-sm w-fit" onClick={() => setConnecting(true)}>
                 <Icon name="plus" size={14} />
                 Vincular conta de anúncio
               </button>
             ) : (
               <p className="text-[12px] text-ink-400">
-                Token do usuário do sistema da Meta não configurado — veja Performance › Integrações.
+                Credenciais da Meta e do Google Ads não configuradas — veja Performance › Integrações.
               </p>
             )}
-            <MetaConnectDialog open={connecting} onClose={() => setConnecting(false)} clientId={row.id} linked={linkedAccounts} />
-            <p className="text-[12px] text-ink-500">
-              Contas do Google Ads são vinculadas em{" "}
-              <Link href="/gt/integracoes" className="text-ink-300 underline hover:text-ink-100">
-                Performance › Integrações
-              </Link>
-              , que lista a MCC inteira.
-            </p>
+            <MetaConnectDialog
+              open={connecting}
+              onClose={() => setConnecting(false)}
+              clientId={row.id}
+              linked={linkedAccounts}
+              metaReady={metaReady}
+              google={{ ready: googleReady, linked: linkedGoogle }}
+              leadSource={row.leadSource}
+            />
           </Block>
         )}
 

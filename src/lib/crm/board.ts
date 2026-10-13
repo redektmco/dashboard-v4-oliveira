@@ -15,7 +15,7 @@ import { lateSteps } from "../playbook/db";
 import { listRequests } from "../churn/db";
 import { isOpen, type ChurnStatus } from "../churn/types";
 import { nextActions, type NextAction } from "../client-view";
-import { ACCOUNT_TYPE_LABEL, type AccountType, type Band, type Stage } from "../model/types";
+import { ACCOUNT_TYPE_LABEL, type AccountType, type Band, type LeadSource, type Stage } from "../model/types";
 import { targetFields } from "../model/target-fields";
 import { daysBetween } from "../model/scoring";
 import { stageOf } from "./stage";
@@ -76,6 +76,8 @@ export type CrmRow = {
   /** Metas: quantas das previstas para o tipo de conta estão definidas. */
   targets: { set: number; total: number };
   leadSources: string[];
+  /** De onde vem o número de leads do score. */
+  leadSource: LeadSource;
   charge: { amount: number; dueDate: string; willSend: boolean } | null;
   churn: { id: number; status: ChurnStatus } | null;
 
@@ -287,6 +289,7 @@ export async function crmBoard({ baseUrl, at = today() }: { baseUrl: string; at?
 
       targets: { set: fields.filter((f) => targets[f.key] !== undefined).length, total: fields.length },
       leadSources: sourcesBy.get(client.id) ?? [],
+      leadSource: client.lead_source ?? "webhook",
       charge: charge
         ? { amount: charge.amount, dueDate: charge.dueDate, willSend: snap.naoEnviadas.every((n) => n.id !== charge.id) }
         : null,
