@@ -23,6 +23,8 @@ import { lastInteractionByClient, type Interaction, type InteractionKind } from 
 import { whenBR } from "../config-status";
 import type { GoogleLinkRowView, MetaLinkView, WebhookView } from "../../components/config/connections";
 import { describeUnread, GOOGLE_UNREAD } from "../meta/metrics";
+import { forecastLines, type ForecastLine } from "./forecast-view";
+import { clientSources, type SourceView } from "./sources";
 
 /**
  * O agregado da tela de Clientes (CRM).
@@ -90,6 +92,11 @@ export type CrmRow = {
   hook: WebhookView | null;
   meta: MetaLinkView[];
   google: GoogleLinkRowView[];
+
+  /** Forecast × realizado por indicador, como o score leu — igual na ficha e em Performance. */
+  forecast: ForecastLine[];
+  /** Fontes de dados (Meta, Google, CRM) no formato único de `lib/crm/sources`. */
+  sources: SourceView[];
 };
 
 export type CrmSummary = {
@@ -168,12 +175,15 @@ export async function crmBoard({ baseUrl, at = today() }: { baseUrl: string; at?
     for (const c of p.clients) tag(c.id, { id: p.id, label: p.shortTitle, severity: p.severity });
   }
 
+  // Mesmos rótulos das pílulas de Performance ("Meta Ads", "CRM · Kommo").
   const sourcesBy = new Map<number, string[]>();
-  const addSource = (clientId: number, label: string) =>
-    sourcesBy.set(clientId, [...(sourcesBy.get(clientId) ?? []), label]);
-  for (const i of snap.integrations) if (i.active) addSource(i.client_id, i.crm_name || "CRM");
+  const addSource = (clientId: number, label: string) => {
+    const list = sourcesBy.get(clientId) ?? [];
+    if (!list.includes(label)) sourcesBy.set(clientId, [...list, label]);
+  };
   for (const m of snap.metaLinks) if (m.active) addSource(m.client_id, "Meta Ads");
   for (const g of snap.googleLinks) if (g.active) addSource(g.client_id, "Google Ads");
+  for (const i of snap.integrations) if (i.active) addSource(i.client_id, i.crm_name ? `CRM · ${i.crm_name}` : "CRM");
 
   // As mesmas conexões, agora na forma que os controles de edição esperam.
   const hookBy = new Map<number, WebhookView>(
@@ -181,11 +191,16 @@ export async function crmBoard({ baseUrl, at = today() }: { baseUrl: string; at?
       i.client_id,
       {
         url: `${baseUrl}/api/integrations/webhook/${i.token}`,
+        salesUrl: `${baseUrl}/api/integrations/webhook/${i.token}/vendas`,
         active: Boolean(i.active),
         crmName: i.crm_name,
         lastEvent: whenBR(i.last_event_at ?? i.last_lead_at),
         weekLeads: i.week_leads,
         totalLeads: i.total_leads,
+        weekSales: i.week_sales,
+        weekRevenue: i.week_revenue,
+        totalSales: i.total_sales,
+        lastSale: i.last_sale_at ? whenBR(i.last_sale_at) : null,
       },
     ]),
   );
@@ -301,6 +316,14 @@ export async function crmBoard({ baseUrl, at = today() }: { baseUrl: string; at?
       hook: hookBy.get(client.id) ?? null,
       meta: metaBy.get(client.id) ?? [],
       google: googleBy.get(client.id) ?? [],
+
+      forecast: forecastLines(client.account_type, targets, p?.score ?? null),
+      sources: clientSources({
+        clientId: client.id,
+        meta: snap.metaLinks.filter((l) => l.client_id === client.id),
+        google: snap.googleLinks.filter((l) => l.client_id === client.id),
+        hook: snap.integrations.find((i) => i.client_id === client.id) ?? null,
+      }),
     };
   };
 

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { lineTone } from "@/lib/crm/forecast-view";
 import { agoLabel, type CrmRow } from "@/lib/crm/board";
 import { INTERACTION_LABEL } from "@/lib/crm/interactions";
 import { STAGE_LABEL } from "@/lib/model/types";
@@ -11,15 +12,19 @@ import { GoogleLinkRow, LeadSourcePicker, MetaConnectDialog, MetaLinkRow, Webhoo
 import { BAND_STYLE, brl, Sparkline } from "../ui";
 
 /**
- * Visualização rápida: resolve "o que está acontecendo nesta conta?" sem
- * sair da listagem. O que exige edição de verdade (metas, integrações,
- * plano de ação) continua na ficha — aqui só o atalho.
+ * Painel da conta: resolve "o que está acontecendo nesta conta?" sem sair da
+ * listagem. Mora em Performance › Metas: lá ganha o forecast editável
+ * (`forecast`) e o rodapé de salvar (`footer`). Fontes de dados, webhook do
+ * CRM (leads e vendas) e contas de anúncio se configuram aqui mesmo.
  */
 
 const ddmmyyyy = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
 export function CrmQuickPanel({
   row,
+  eyebrow = "Visualização rápida",
+  forecast,
+  footer,
   position,
   onPrev,
   onNext,
@@ -31,6 +36,11 @@ export function CrmQuickPanel({
   linkedGoogle,
 }: {
   row: CrmRow;
+  eyebrow?: string;
+  /** Editor do forecast (Performance). Sem ele, o painel mostra forecast × realizado só para leitura. */
+  forecast?: ReactNode;
+  /** Rodapé próprio (salvar metas). Sem ele, "Abrir ficha completa". */
+  footer?: ReactNode;
   /** "3 de 12" da fila atual. */
   position: { i: number; n: number } | null;
   onPrev: () => void;
@@ -49,7 +59,7 @@ export function CrmQuickPanel({
     <>
       <header className="flex items-center gap-2 border-b border-[var(--border-hair)] px-4 py-3">
         <span className="eyebrow flex-1">
-          Visualização rápida
+          {eyebrow}
           {position && <span className="ml-2 text-ink-500">{position.i} de {position.n}</span>}
         </span>
         <IconBtn icon="chevronUp" label="Anterior" onClick={onPrev} />
@@ -61,7 +71,9 @@ export function CrmQuickPanel({
         {/* identificação */}
         <section className="flex flex-col gap-1.5">
           <div className="flex items-start gap-2">
-            <h2 className="font-display text-[20px] font-semibold tracking-[-0.3px] text-ink-100">{row.name}</h2>
+            <Link href={`/clientes/${row.id}`} className="font-display text-[20px] font-semibold tracking-[-0.3px] text-ink-100 hover:underline">
+              {row.name}
+            </Link>
             {row.churn && (
               <span className="mt-1 shrink-0 rounded-full bg-vermelho-dim px-2 py-0.5 text-[10px] font-semibold text-vermelho-fg">
                 Churn solicitado
@@ -131,18 +143,33 @@ export function CrmQuickPanel({
           )}
         </Block>
 
-        {/* metas e fontes */}
-        <Block title="Forecast e fontes">
-          <Line
-            icon="target"
-            text={`${row.targets.set} de ${row.targets.total} valores do forecast definidos`}
-            tone={row.targets.set === 0 ? "critico" : row.targets.set < row.targets.total ? "atencao" : undefined}
-          />
-          <Line
-            icon="webhook"
-            text={row.leadSources.length ? row.leadSources.join(" · ") : "Nenhuma fonte de leads conectada"}
-            tone={row.leadSources.length ? undefined : "critico"}
-          />
+        {/* forecast: editor em Performance, leitura nos demais lugares */}
+        {forecast ?? (
+          <Block title="Forecast × realizado">
+            {row.forecast.every((f) => f.target === null) ? (
+              <Line icon="target" text="Sem forecast — o score não é calculado" tone="critico" />
+            ) : (
+              row.forecast.map((f) => (
+                <p key={f.key} className="flex items-baseline gap-2 text-[13px]">
+                  <span className="min-w-0 flex-1 truncate text-ink-300">{f.label}</span>
+                  <span className={`tnum ${FORECAST_TONE[lineTone(f.score)]}`}>{f.actual ?? "—"}</span>
+                  <span className="tnum text-ink-500">/ {f.target ?? "—"}</span>
+                </p>
+              ))
+            )}
+          </Block>
+        )}
+
+        {/* fontes de dados — a mesma lista da ficha e das pílulas de Performance */}
+        <Block title="Fontes de dados">
+          {row.sources.map((src) => (
+            <Line
+              key={src.id}
+              icon={src.icon}
+              text={`${src.name} — ${src.detail}`}
+              tone={src.state === "erro" ? "critico" : src.state === "pendente" ? "atencao" : undefined}
+            />
+          ))}
           {/* Canal no contrato mas sem conta vinculada: o número não chega. */}
           {hasMediaService(row.services, "meta") && !row.meta.length && (
             <Line icon="megaphone" text="Meta Ads está no contrato, mas nenhuma conta de anúncio foi vinculada" tone="atencao" />
@@ -150,18 +177,11 @@ export function CrmQuickPanel({
           {hasMediaService(row.services, "google") && !row.google.length && (
             <Line icon="search" text="Google Ads está no contrato, mas nenhuma conta foi vinculada" tone="atencao" />
           )}
-          {row.charge && (
-            <Line
-              icon="receipt"
-              text={`${brl(row.charge.amount)} · vence ${ddmmyyyy(row.charge.dueDate)}${row.charge.willSend ? "" : " · não sai por nenhum canal"}`}
-              tone={row.charge.willSend ? undefined : "atencao"}
-            />
-          )}
         </Block>
 
-        {/* conexões — gerar e girar o webhook do cliente só existe aqui */}
+        {/* conexões — webhook do CRM (leads e vendas), contas de anúncio e fonte dos leads */}
         {isAdmin && (
-          <Block title="Fonte de leads">
+          <Block title="Configurar fontes e CRM">
             <LeadSourcePicker key={row.leadSource} clientId={row.id} value={row.leadSource} />
             <WebhookBox clientId={row.id} hook={row.hook} />
             {row.meta.map((m) => (
@@ -192,9 +212,19 @@ export function CrmQuickPanel({
           </Block>
         )}
 
+        {row.charge && (
+          <Block title="Cobrança">
+            <Line
+              icon="receipt"
+              text={`${brl(row.charge.amount)} · vence ${ddmmyyyy(row.charge.dueDate)}${row.charge.willSend ? "" : " · não sai por nenhum canal"}`}
+              tone={row.charge.willSend ? undefined : "atencao"}
+            />
+          </Block>
+        )}
+
         {/* módulos */}
         <Block title="Nos outros módulos">
-          <ModuleLink icon="chart" label="Performance e forecast" href={`/gt?c=${row.id}`} />
+          {!forecast && <ModuleLink icon="chart" label="Performance e forecast" href={`/gt?c=${row.id}`} />}
           <ModuleLink icon="users" label="Check-in" href={`/account/${row.id}`} />
           <ModuleLink
             icon="userMinus"
@@ -206,12 +236,14 @@ export function CrmQuickPanel({
         </Block>
       </div>
 
-      <footer className="flex flex-col gap-2 border-t border-[var(--border-hair)] px-4 py-3">
-        <Link href={`/clientes/${row.id}`} className="btn btn-light w-full justify-center">
-          Abrir ficha completa
-          <Icon name="arrowRight" size={15} />
-        </Link>
-      </footer>
+      {footer ?? (
+        <footer className="flex flex-col gap-2 border-t border-[var(--border-hair)] px-4 py-3">
+          <Link href={`/clientes/${row.id}`} className="btn btn-light w-full justify-center">
+            Abrir ficha completa
+            <Icon name="arrowRight" size={15} />
+          </Link>
+        </footer>
+      )}
     </>
   );
 }
@@ -232,16 +264,25 @@ function IconBtn({ icon, label, onClick }: { icon: IconName; label: string; onCl
   );
 }
 
-function Block({ title, children }: { title: string; children: React.ReactNode }) {
+export function Block({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="eyebrow">{title}</h3>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="eyebrow">{title}</h3>
+        {action}
+      </div>
       <div className="flex flex-col gap-1.5">{children}</div>
     </section>
   );
 }
 
 const TONE: Record<string, string> = { critico: "text-vermelho-fg", atencao: "text-amarelo-fg" };
+const FORECAST_TONE: Record<string, string> = {
+  verde: "text-verde-fg",
+  amarelo: "text-amarelo-fg",
+  vermelho: "text-vermelho-fg",
+  neutro: "text-ink-100",
+};
 
 function Line({ icon, text, tone }: { icon: IconName; text: string; tone?: "critico" | "atencao" }) {
   return (

@@ -13,6 +13,8 @@ import {
   cpm,
   cpr,
   ctr,
+  dailyMetricSeries,
+  dailyMetricsFor,
   delta,
   frequency,
   mergeDaily,
@@ -21,12 +23,15 @@ import {
   type Campaign,
   type CampaignStatus,
   type Channel,
+  type DailyMetric,
+  type DailyMetricDef,
   type PerformanceData,
   type Totals,
 } from "@/lib/performance/model";
 import { Icon } from "../icon";
 import { Card, Segmented } from "../kit";
-import { CHANNEL_COLOR, DailySpendChart } from "./performance-chart";
+import { CHANNEL_COLOR, DailyMetricChart, DailySpendChart } from "./performance-chart";
+import { Demographics } from "./demographics";
 
 /**
  * Aba Performance da ficha: Meta e Google lidos ao vivo no período da ficha.
@@ -115,7 +120,7 @@ export function PerformanceTab({
           </button>
         </Card>
       ) : (
-        <PerformanceView data={state.data!} clientName={clientName} mobile={mobile} />
+        <PerformanceView data={state.data!} clientName={clientName} mobile={mobile} clientId={clientId} query={query} />
       )}
     </div>
   );
@@ -139,9 +144,42 @@ function Skeleton({ label }: { label: string }) {
 
 /* ------------------------------ visão ------------------------------ */
 
-function PerformanceView({ data, clientName, mobile }: { data: PerformanceData; clientName: string; mobile: boolean }) {
+/** Rótulo da métrica no seletor e no gráfico. */
+function metricLabel(m: DailyMetric, type: AccountType) {
+  const r = RESULT_LABEL[type];
+  const labels: Record<DailyMetric, string> = {
+    results: r.one,
+    cpr: r.cost,
+    revenue: "Receita",
+    roas: "ROAS",
+    clicks: "Cliques",
+    impressions: "Impressões",
+    ctr: "CTR",
+    cpc: "CPC",
+    cpm: "CPM",
+  };
+  return labels[m];
+}
+
+const metricFormat = (d: DailyMetricDef) => (n: number) =>
+  d.format === "money"
+    ? n >= 1000
+      ? brl0(n)
+      : brl2(n)
+    : d.format === "pct"
+      ? pct(n)
+      : d.format === "x"
+        ? `${n.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}x`
+        : compact(n);
+
+function PerformanceView({ data, clientName, mobile, clientId, query }: { data: PerformanceData; clientName: string; mobile: boolean; clientId: number; query: string }) {
   const [channel, setChannel] = useState<ChannelFilter>("todos");
   const [compare, setCompare] = useState(true);
+  const metricOptions = dailyMetricsFor(data.accountType);
+  // Gráficos abaixo do investimento: o resultado da conta aberto por padrão.
+  const [metrics, setMetrics] = useState<DailyMetric[]>(() => [metricOptions[0].id]);
+  const toggleMetric = (m: DailyMetric) =>
+    setMetrics((cur) => (cur.includes(m) ? cur.filter((x) => x !== m) : [...cur, m].slice(-3)));
   const linked = CHANNELS.filter((c) => data.channels[c].linked);
   const sel = channel === "todos" ? linked : linked.filter((c) => c === channel);
   const label = RESULT_LABEL[data.accountType];
@@ -168,9 +206,9 @@ function PerformanceView({ data, clientName, mobile }: { data: PerformanceData; 
         <p className="max-w-[440px] text-[13px] text-ink-400">
           Vincule a conta do Meta Ads ou do Google Ads deste cliente para ver investimento, resultados e campanhas aqui.
         </p>
-        <Link href="#metas" className="btn mt-2 h-8">
+        <Link href={`/gt?c=${clientId}`} className="btn mt-2 h-8">
           <Icon name="plug" size={14} />
-          Metas e integrações
+          Vincular em Performance › Metas
         </Link>
       </Card>
     );
@@ -255,6 +293,52 @@ function PerformanceView({ data, clientName, mobile }: { data: PerformanceData; 
               Sem investimento no período.
             </p>
           )}
+          {/* Seletor: cada métrica marcada vira um gráfico logo abaixo (até 3). */}
+          {totals.spend > 0 && (
+            <div className="flex flex-col gap-4 border-t border-[var(--border-hair)] pt-4">
+              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Métricas nos gráficos de baixo">
+                <span className="mr-1 text-[12px] text-ink-400">Ver também</span>
+                {metricOptions.map((m) => {
+                  const on = metrics.includes(m.id);
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => toggleMetric(m.id)}
+                      className={`flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[12px] font-semibold transition-colors ${
+                        on ? "border-[var(--border-strong)] bg-ink-800 text-ink-100" : "border-[var(--border-hair)] text-ink-400 hover:text-ink-100"
+                      }`}
+                    >
+                      {on && <Icon name="check" size={12} />}
+                      {metricLabel(m.id, data.accountType)}
+                    </button>
+                  );
+                })}
+              </div>
+              {metrics.map((id) => {
+                const def = metricOptions.find((m) => m.id === id);
+                if (!def) return null;
+                const name = metricLabel(id, data.accountType);
+                const series = dailyMetricSeries(data.since, data.until, Object.fromEntries(sel.map((c) => [c, data.channels[c].daily])), id);
+                return (
+                  <div key={id} className="flex flex-col gap-2">
+                    <span className="flex items-center justify-between gap-3">
+                      <h4 className="text-[13px] font-semibold text-ink-100">{name} por dia</h4>
+                      <button type="button" onClick={() => toggleMetric(id)} aria-label={`Tirar ${name}`} className="text-ink-500 hover:text-ink-100">
+                        <Icon name="x" size={14} />
+                      </button>
+                    </span>
+                    {series.some((d) => d.total) ? (
+                      <DailyMetricChart days={series} channels={sel} additive={def.additive} format={metricFormat(def)} label={name} />
+                    ) : (
+                      <p className="rounded-xl border border-[var(--border-hair)] px-5 py-6 text-center text-[12px] text-ink-400">Sem {name.toLowerCase()} no período.</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
           {errors.map((e) => (
             <p key={e.id} className="flex items-start gap-2 text-[12px] text-ink-300">
               <Icon name="alert" size={14} className="mt-px shrink-0 text-amarelo-fg" />
@@ -267,6 +351,8 @@ function PerformanceView({ data, clientName, mobile }: { data: PerformanceData; 
 
         <ByChannel data={data} channels={linked.filter((c) => sel.includes(c))} />
       </div>
+
+      {linked.includes("meta") && <Demographics clientId={clientId} query={query} type={data.accountType} />}
 
       <Campaigns
         type={data.accountType}

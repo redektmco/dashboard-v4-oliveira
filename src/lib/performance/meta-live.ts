@@ -99,8 +99,16 @@ export function dailyOf(rows: MetaRow[], metric: LeadMetric, type: AccountType, 
   const by = new Map<string, DayPoint>();
   for (const r of rows) {
     const t = metaTotals(r, metric, type, goals);
-    const cur = by.get(r.date_start) ?? { day: r.date_start, spend: 0, results: 0 };
-    by.set(r.date_start, { day: r.date_start, spend: cur.spend + t.spend, results: cur.results + (type === "branding" ? 0 : t.results) });
+    const cur = by.get(r.date_start) ?? { day: r.date_start, spend: 0, results: 0, resultSpend: 0, impressions: 0, clicks: 0, revenue: 0 };
+    by.set(r.date_start, {
+      day: r.date_start,
+      spend: cur.spend + t.spend,
+      results: cur.results + (type === "branding" ? 0 : t.results),
+      resultSpend: (cur.resultSpend ?? 0) + (type === "branding" ? 0 : t.resultSpend),
+      impressions: (cur.impressions ?? 0) + t.impressions,
+      clicks: (cur.clicks ?? 0) + t.clicks,
+      revenue: (cur.revenue ?? 0) + t.revenue,
+    });
   }
   return [...by.values()].sort((a, b) => (a.day < b.day ? -1 : 1));
 }
@@ -123,7 +131,7 @@ export async function metaPerformance(
     // Dia a dia por campanha: o resultado depende do que cada uma otimiza.
     allPages<MetaRow>(`${adAccountId}/insights`, {
       level: "campaign",
-      fields: "campaign_id,spend,actions,conversions",
+      fields: `campaign_id,spend,impressions,clicks,${EVENT_FIELDS}`,
       time_range: JSON.stringify(cur),
       time_increment: "1",
     }),

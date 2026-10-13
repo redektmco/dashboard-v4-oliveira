@@ -86,18 +86,21 @@ export function CrmTable({
           return (
             <li key={r.id} className="relative border-b border-[var(--border-hair)] last:border-b-0">
               {open && <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-v4-red" />}
+              {/* A linha inteira abre a ficha; checkbox, links e botões das células seguem com o próprio clique. */}
               <div
-                className={`grid items-center gap-3 px-4 transition-colors sm:px-5 ${
+                className={`grid cursor-pointer items-center gap-3 px-4 transition-colors sm:px-5 ${
                   open ? "bg-ink-850" : checked ? "bg-ink-900" : "hover:bg-ink-850"
                 }`}
                 style={{ gridTemplateColumns: template }}
+                onClick={(e) => {
+                  if (!(e.target as HTMLElement).closest("button, a, input, label, select")) onOpen(r.id);
+                }}
               >
                 <Check checked={checked} onChange={(v) => onToggle(r.id, v)} label={`Selecionar ${r.name}`} />
                 <button
                   type="button"
                   onClick={() => onOpen(r.id)}
                   className="flex min-w-0 items-center py-2.5 text-left"
-                  aria-expanded={open}
                 >
                   <ClientCell row={r} />
                 </button>

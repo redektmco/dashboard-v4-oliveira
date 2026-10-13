@@ -42,7 +42,9 @@ import {
   type PlanTask,
   getSetting,
   setSetting,
+  listUsers,
 } from "@/lib/repo";
+import { addInteraction } from "@/lib/crm/interactions";
 import { logChange } from "@/lib/audit";
 import { completeStepByKey, linkPrevention } from "@/lib/playbook/db";
 import { refreshClient } from "@/lib/refresh";
@@ -102,7 +104,14 @@ export async function saveCheckin(formData: FormData) {
 
   const data = parseCheckinForm((k) => str(formData, k));
 
-  await saveSnapshot("checkin", clientId, refDate, filledBy, data);
+  const checkinId = await saveSnapshot("checkin", clientId, refDate, filledBy, data);
+  // O check-in também é contato com o cliente: entra em "Última interação",
+  // no Contato do painel e no histórico da ficha.
+  const filler = filledBy ? (await listUsers()).find((u) => u.id === filledBy) : null;
+  await addInteraction(
+    { clientId, kind: "checkin", title: "Check-in registrado", note: String(data.summary ?? ""), checkinId },
+    filler ? { id: filler.id, name: filler.name } : me,
+  );
 
   const renewal = str(formData, "renewal_date");
   if (renewal) await updateClient(clientId, { renewal_date: renewal });
@@ -723,7 +732,7 @@ export async function loadTargetSuggestions(clientId: number) {
   return suggestTargets(clientId);
 }
 
-/** Metas do mês salvas pelo painel "Configurar cliente" em Clientes. */
+/** Forecast salvo pelo painel da conta em Performance › Metas. */
 export async function saveClientTargets(clientId: number, values: Record<string, number | null>): Promise<ActionResult> {
   const me = await requireUser();
   const client = await getClient(clientId);

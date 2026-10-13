@@ -91,7 +91,11 @@ function CheckinFormInner({ client, history, accounts, me, scales, previous, tod
       return null; // rascunho corrompido: começa limpo
     }
   }, [storageKey]);
-  const [d, setD] = useState<Draft>(() => (saved ? { ...initial, ...saved.d, scales: { ...initial.scales, ...saved.d.scales } } : initial));
+  const [d, setD] = useState<Draft>(() =>
+    // O rascunho guarda as respostas, não a data: check-in retomado dias
+    // depois vale para hoje (antes caía no dia do rascunho, fora do período da ficha).
+    saved ? { ...initial, ...saved.d, refDate: initial.refDate, scales: { ...initial.scales, ...saved.d.scales } } : initial,
+  );
   const [savedAt, setSavedAt] = useState<string | null>(saved?.at ?? null);
   const [script, setScript] = useState(false);
   const [ficha, setFicha] = useState(false);

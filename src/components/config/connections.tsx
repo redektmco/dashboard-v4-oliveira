@@ -482,15 +482,28 @@ export function GoogleLinkRow({ link }: { link: GoogleLinkRowView }) {
 /* ------------------------------ CRM ------------------------------ */
 
 export type WebhookView = {
+  /** URL de leads: cada POST = um lead. */
   url: string;
+  /** URL de vendas (mesmo token): cada POST = uma venda com o valor do payload. */
+  salesUrl: string;
   active: boolean;
   crmName: string | null;
   lastEvent: string;
   weekLeads: number;
   totalLeads: number;
+  weekSales: number;
+  weekRevenue: number;
+  totalSales: number;
+  lastSale: string | null;
 };
 
-/** Webhook de leads de um cliente: gerar, copiar, trocar CRM, pausar, girar, remover. */
+const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+
+/**
+ * Webhook do CRM de um cliente: gerar, copiar as duas URLs (leads e vendas),
+ * trocar CRM, pausar, girar, remover. As duas URLs dividem o token: girar ou
+ * pausar vale para as duas.
+ */
 export function WebhookBox({ clientId, hook }: { clientId: number; hook: WebhookView | null }) {
   const [dialog, setDialog] = useState<"rotate" | "remove" | null>(null);
   const [crm, setCrm] = useState<string>(hook?.crmName ?? "RD Station");
@@ -509,8 +522,9 @@ export function WebhookBox({ clientId, hook }: { clientId: number; hook: Webhook
         </label>
         <SubmitButton className="" pendingLabel="Gerando…">
           <Icon name="webhook" size={15} />
-          Gerar URL do webhook
+          Gerar URLs do webhook
         </SubmitButton>
+        <span className="w-full text-[11px] text-ink-500">Gera duas URLs: uma de leads e outra de vendas (faturamento, ROAS e ROI).</span>
       </ActionForm>
     );
 
@@ -541,10 +555,22 @@ export function WebhookBox({ clientId, hook }: { clientId: number; hook: Webhook
         {!hook.active && <Pill tone="neutro">Pausado</Pill>}
         <ActionMenu items={menu} label="Ações do webhook" size="sm" />
       </div>
-      <CopyField value={hook.url} />
-      <span className="text-[11px] text-ink-400">
-        {hook.weekLeads} lead(s) nesta semana · {hook.totalLeads} no total · último em {hook.lastEvent}
-      </span>
+      <div className="flex flex-col gap-1">
+        <span className="text-[11px] font-semibold text-ink-300">Leads · gatilho “lead criado”</span>
+        <CopyField value={hook.url} />
+        <span className="text-[11px] text-ink-400">
+          {hook.weekLeads} lead(s) nesta semana · {hook.totalLeads} no total · último em {hook.lastEvent}
+        </span>
+      </div>
+      <div className="flex flex-col gap-1">
+        <span className="text-[11px] font-semibold text-ink-300">Vendas · gatilho “negócio ganho”</span>
+        <CopyField value={hook.salesUrl} />
+        <span className="text-[11px] text-ink-400">
+          {hook.totalSales
+            ? `${hook.weekSales} venda(s) nesta semana · ${brl(hook.weekRevenue)} · ${hook.totalSales} no total · última em ${hook.lastSale}`
+            : "Nenhuma venda recebida. Mande o valor em “valor”, “value”, “price” ou “amount” — vira Faturamento, ROAS e ROI no score."}
+        </span>
+      </div>
       <ConfirmDialog
         open={dialog === "rotate"}
         onClose={() => setDialog(null)}
@@ -553,7 +579,7 @@ export function WebhookBox({ clientId, hook }: { clientId: number; hook: Webhook
         tone="default"
         onConfirm={() => rotateIntegration(clientId)}
       >
-        <p>O endereço atual para de funcionar na hora. Cole o novo no CRM para não perder leads.</p>
+        <p>Os dois endereços atuais (leads e vendas) param de funcionar na hora. Cole os novos no CRM para não perder leads nem vendas.</p>
       </ConfirmDialog>
       <ConfirmDialog
         open={dialog === "remove"}

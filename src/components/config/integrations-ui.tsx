@@ -63,7 +63,7 @@ export function SystemUserButton({
             O token vive só na variável <code className="rounded bg-ink-850 px-1 font-mono text-[12px]">META_ACCESS_TOKEN</code> da Vercel — nunca no banco. Precisa do escopo{" "}
             <code className="rounded bg-ink-850 px-1 font-mono text-[12px]">ads_read</code> e acesso às BMs dos clientes.
           </p>
-          <p>Cada cliente é vinculado à sua conta de anúncio no painel do cliente (Clientes › Fonte de leads) ou aqui.</p>
+          <p>Cada cliente é vinculado à sua conta de anúncio no painel da conta (Performance › Metas › Configurar fontes e CRM) ou aqui.</p>
         </div>
         <div className="modal-actions">
           <button type="button" className="btn" onClick={() => setOpen(false)}>
@@ -93,6 +93,8 @@ export function SystemUserButton({
 export function TestWebhookButton({ url, lastEvent }: { url: string; lastEvent: string }) {
   const [open, setOpen] = useState(false);
   const curl = `curl -X POST '${url}' -H 'Content-Type: application/json' -d '{"email":"teste@exemplo.com","nome":"Lead de teste"}'`;
+  const salesUrl = `${url}/vendas`;
+  const curlSale = `curl -X POST '${salesUrl}' -H 'Content-Type: application/json' -d '{"id":"teste-1","valor":1500}'`;
   return (
     <>
       <button type="button" className="btn h-[30px] shrink-0" onClick={() => setOpen(true)}>
@@ -115,6 +117,17 @@ export function TestWebhookButton({ url, lastEvent }: { url: string; lastEvent: 
               <CopyField value={curl} />
             </div>
           </div>
+          <div>
+            <span className="label">URL de vendas</span>
+            <p className="mt-1 text-[12px] text-ink-400">
+              No CRM, gatilho “negócio ganho”. Cada POST conta uma venda com o valor do payload (valor, value, price ou amount) e entra em
+              Faturamento, ROAS e ROI. Teste com id de teste — mesmo id não soma duas vezes.
+            </p>
+            <div className="mt-1.5 space-y-1.5">
+              <CopyField value={salesUrl} />
+              <CopyField value={curlSale} />
+            </div>
+          </div>
         </div>
         <div className="modal-actions">
           <button type="button" className="btn btn-light" onClick={() => setOpen(false)}>
@@ -127,21 +140,32 @@ export function TestWebhookButton({ url, lastEvent }: { url: string; lastEvent: 
 }
 
 const STEP2: Record<(typeof CRMS)[number], string> = {
-  "RD Station": "No RD Station: Integrações → Webhooks → Criar, gatilho “Conversão”.",
-  Kommo: "No Kommo: Configurações → Integrações → Webhooks, evento “Lead adicionado”.",
-  HubSpot: "No HubSpot: Automação → Fluxos de trabalho, ação “Enviar webhook” (POST) quando o contato é criado.",
-  "Zapier / Make": "No Zapier ou Make: gatilho do formulário/CRM → ação de webhook (POST, JSON) para a URL.",
-  "Formulário próprio": "No seu formulário: ao enviar, faça um POST com os dados do lead (JSON) para a URL.",
-  Outro: "Em qualquer sistema: um POST (JSON) para a URL a cada lead novo. Mande id ou e-mail para não contar duplicado.",
+  "RD Station": "No RD Station: Integrações → Webhooks → Criar, gatilho “Conversão” com a URL de leads.",
+  Kommo: "No Kommo: Configurações → Integrações → Webhooks, evento “Lead adicionado” com a URL de leads.",
+  HubSpot: "No HubSpot: Automação → Fluxos de trabalho, ação “Enviar webhook” (POST) quando o contato é criado, com a URL de leads.",
+  "Zapier / Make": "No Zapier ou Make: gatilho do formulário/CRM → ação de webhook (POST, JSON) para a URL de leads.",
+  "Formulário próprio": "No seu formulário: ao enviar, faça um POST com os dados do lead (JSON) para a URL de leads.",
+  Outro: "Em qualquer sistema: um POST (JSON) para a URL de leads a cada lead novo. Mande id ou e-mail para não contar duplicado.",
+};
+
+/** Vendas: o gatilho de "negócio ganho" de cada CRM, apontando para a URL de vendas. */
+const STEP3: Record<(typeof CRMS)[number], string> = {
+  "RD Station": "Vendas: no RD Station CRM, Integrações → Webhooks, evento “Oportunidade ganha” com a URL de vendas (o valor vai em amount_total).",
+  Kommo: "Vendas: no Kommo, Webhooks, evento “Status do lead alterado” filtrado para a etapa Ganho, com a URL de vendas (o valor vai em price).",
+  HubSpot: "Vendas: fluxo de Negócios com gatilho “Fase = Ganho”, ação “Enviar webhook” para a URL de vendas com o valor (amount).",
+  "Zapier / Make": "Vendas: gatilho “negócio ganho/venda” → webhook (POST, JSON) para a URL de vendas com o valor e o id do negócio.",
+  "Formulário próprio": "Vendas: ao fechar uma venda, POST (JSON) com {\"id\", \"valor\"} para a URL de vendas.",
+  Outro: "Vendas: um POST (JSON) para a URL de vendas a cada venda fechada, com o valor (valor, value, price ou amount) e o id do negócio.",
 };
 
 /** "Como conectar o CRM": escolhe o CRM e mostra o passo a passo. */
 export function CrmGuide({ host }: { host: string }) {
   const [crm, setCrm] = useState<(typeof CRMS)[number]>("RD Station");
   const steps = [
-    "No painel do cliente, em Fonte de leads, gere a URL do webhook.",
+    "Em Performance › Metas, abra o cliente e, em Fontes de dados, gere as URLs do webhook (leads e vendas).",
     STEP2[crm],
-    "Cole a URL e envie um lead de teste — ele aparece aqui em até 1 minuto.",
+    STEP3[crm],
+    "Envie um lead e uma venda de teste — aparecem aqui em até 1 minuto.",
   ];
   return (
     <div id="como-conectar" className="flex scroll-mt-6 flex-col gap-4 rounded-xl border border-[var(--border-hair)] bg-ink-900 p-5">
@@ -172,6 +196,9 @@ export function CrmGuide({ host }: { host: string }) {
         <span className="text-[11px] text-ink-400">Formato da URL</span>
         <code className="block overflow-x-auto whitespace-nowrap rounded-md border border-[var(--border-hair)] bg-ink-950 px-2.5 py-2 font-mono text-[11px] text-ink-300">
           {host}/api/integrations/webhook/&lt;token-do-cliente&gt;
+        </code>
+        <code className="block overflow-x-auto whitespace-nowrap rounded-md border border-[var(--border-hair)] bg-ink-950 px-2.5 py-2 font-mono text-[11px] text-ink-300">
+          {host}/api/integrations/webhook/&lt;token-do-cliente&gt;/vendas
         </code>
       </div>
     </div>

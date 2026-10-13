@@ -22,11 +22,13 @@ import {
 import { listClientChanges } from "@/lib/audit";
 import { currentRitualDate } from "@/lib/week";
 import { mediaSplit } from "@/lib/crm/media-split";
-import { goalViews, leadsByOrigin, listGoals, listLeadSources } from "@/lib/crm/goals";
+import { leadsByOrigin, listLeadSources } from "@/lib/crm/goals";
+import { forecastLines } from "@/lib/crm/forecast-view";
+import { clientSources } from "@/lib/crm/sources";
 import { configSnapshot, whenBR, type PendenciaId } from "@/lib/config-status";
 import { MediaChannels } from "@/components/cliente/media-channels";
 import { FichaPane, FichaTabs, type FichaTab } from "@/components/cliente/ficha-tabs";
-import { MetasIntegracoes, type IntegrationRow, type MetasData } from "@/components/cliente/metas-integracoes";
+import { MetasIntegracoes, type MetasData } from "@/components/cliente/metas-integracoes";
 import { requestsForClient } from "@/lib/churn/db";
 import { isOpen } from "@/lib/churn/types";
 import { ACCOUNT_TYPE_LABEL, type Band, type DimensionKey } from "@/lib/model/types";
@@ -49,7 +51,6 @@ import {
 import { CheckinHeatmap } from "@/components/charts";
 import { ClientActions } from "@/components/client-actions";
 import { PageHead } from "@/components/page-head";
-import { describeUnread, GOOGLE_UNREAD } from "@/lib/meta/metrics";
 import { SyncClientButton } from "@/components/cliente/sync-button";
 import { Icon, type IconName } from "@/components/icon";
 import { BAND_TEXT, Bar, BandPill, Card, ColLabel, DotLabel, Initials, KV, Pill, SectionHead, TONE, type Tone } from "@/components/kit";
@@ -184,92 +185,43 @@ export default async function ClientePage({
     metaLinked: metaLinks.some((l) => l.client_id === clientId),
     googleLinked: googleLinks.some((l) => l.client_id === clientId),
   });
-  // ---------------------------- Metas e integrações ----------------------
-  // A meta do período, de onde vêm os leads e o que está quebrado na
-  // configuração desta conta. `configSnapshot` é a mesma fonte que
-  // Configurações usa — aqui só filtramos as pendências deste cliente, para
-  // a ficha não inventar uma régua paralela.
-  // Metas no período que contém o fim do filtro (mês passado → metas do mês
-  // passado); origem dos leads no período exato do filtro.
-  const [metasDoCliente, fontes, origens, webhook, cfg] = await Promise.all([
-    listGoals(clientId),
+  // ----------------------------- Forecast e fontes ------------------------
+  // O forecast (a régua do score, o mesmo de Performance), de onde vêm os
+  // leads e o que está quebrado na configuração desta conta.
+  // `configSnapshot` é a mesma fonte que Configurações usa — aqui só
+  // filtramos as pendências deste cliente, para a ficha não inventar uma
+  // régua paralela. Origem dos leads no período exato do filtro.
+  const [fontes, origens, webhook, cfg] = await Promise.all([
     listLeadSources(clientId),
     leadsByOrigin(clientId, period.since, period.until),
     getIntegration(clientId),
     configSnapshot(),
   ]);
-  const metasView = goalViews(metasDoCliente, perf, period.until, client.account_type);
   const leadsNoPeriodo = origens.reduce((acc, o) => acc + o.n, 0);
 
-  const metaDoCliente = metaLinks.filter((l) => l.client_id === clientId);
-  const googleDoCliente = googleLinks.filter((l) => l.client_id === clientId);
-  const integracoes: IntegrationRow[] = [
-    ...metaDoCliente.map((l) => {
-      // Vigia do sync: evento de conversão que o painel não contou vira alerta, não zero calado.
-      const unread = describeUnread(l.unread_events);
-      return {
-        id: `meta-${l.id}`,
-        name: "Meta Ads",
-        icon: "megaphone" as const,
-        detail: l.last_error
-          ? l.last_error
-          : unread ?? `${l.ad_account_id} · sincronizado ${whenBR(l.last_sync_at).toLowerCase()}`,
-        state: (l.last_error || unread ? "erro" : l.active ? "conectada" : "pendente") as IntegrationRow["state"],
-        action: l.last_error
-          ? { label: "Reconectar", href: "/gt/integracoes" }
-          : unread
-            ? { label: "Ver eventos", href: `/api/meta/eventos?cliente=${clientId}` }
-            : undefined,
-      };
-    }),
-    ...googleDoCliente.map((l) => {
-      const unread = describeUnread(l.unread_events, GOOGLE_UNREAD);
-      return {
-        id: `google-${l.id}`,
-        name: "Google Ads",
-        icon: "chart" as const,
-        detail: l.last_error
-          ? l.last_error
-          : unread ?? `${l.customer_id} · sincronizado ${whenBR(l.last_sync_at).toLowerCase()}`,
-        state: (l.last_error || unread ? "erro" : l.active ? "conectada" : "pendente") as IntegrationRow["state"],
-        action: l.last_error
-          ? { label: "Reconectar", href: "/gt/integracoes" }
-          : unread
-            ? { label: "Ver conversões", href: `/api/google/eventos?cliente=${clientId}` }
-            : undefined,
-      };
-    }),
-    {
-      id: "crm",
-      name: webhook?.crm_name ? `CRM · ${webhook.crm_name}` : "CRM do cliente",
-      icon: "webhook" as const,
-      detail: !webhook
-        ? "webhook não gerado — os leads do CRM não entram no score"
-        : !webhook.active
-          ? "webhook pausado"
-          : webhook.last_event_at
-            ? `último lead ${whenBR(webhook.last_event_at).toLowerCase()}`
-            : "webhook gerado, nenhum lead recebido ainda",
-      state: (!webhook || !webhook.active
-        ? "pendente"
-        : webhook.last_event_at
-          ? "conectada"
-          : "pendente") as IntegrationRow["state"],
-      action: { label: webhook ? "Gerenciar" : "Gerar webhook", href: "/gt/integracoes" },
-    },
-  ];
+  // Fontes de dados e forecast × realizado: as mesmas funções que montam a
+  // linha e o painel de Performance — as duas telas não podem divergir.
+  const integracoes = clientSources({
+    clientId,
+    meta: metaLinks.filter((l) => l.client_id === clientId),
+    google: googleLinks.filter((l) => l.client_id === clientId),
+    hook: webhook,
+  });
+  const forecast = forecastLines(client.account_type, targets, s);
 
   // O título da pendência conta a carteira inteira ("2 clientes sem fonte");
   // dentro da ficha ele fala só desta conta.
   const pendenciasDoCliente = cfg.pendencias
     .filter((pd) => pd.clients.some((c) => c.id === clientId))
     .map((pd) => ({ ...pd, title: PENDENCIA_DA_CONTA[pd.id] }));
-  const metasFora = metasView.filter((g) => g.status === "critico" || g.status === "atencao").length;
+  const metasFora = forecast.filter((f) => f.target !== null && f.score !== null && f.score < config.yellowFloor).length;
 
   const metas: MetasData = {
     clientId,
     clientName: client.name,
-    goals: metasView,
+    forecast,
+    greenFloor: config.greenFloor,
+    yellowFloor: config.yellowFloor,
     sources: fontes,
     split,
     origins: origens,
@@ -339,7 +291,11 @@ export default async function ClientePage({
   const rows = checkins.map(checkinRow);
   // O que as abas mostram no período; a gaveta "histórico completo" segue com tudo.
   const rowsP = rows.filter((r) => inPeriod(r.day));
-  const eventsP = events.filter((e) => inPeriod(e.day));
+  // A faixa do Histórico mostra o que aconteceu com a conta (check-in, plano,
+  // forecast, queda, performance). Alteração de cadastro e de integração
+  // ("outro") fica só no histórico completo: num dia de configuração, cinco
+  // delas empurravam o check-in para fora da faixa.
+  const eventsP = events.filter((e) => inPeriod(e.day) && e.kind !== "outro");
   const pq = periodQuery(period);
   const evolutionRange = { from: period.since, to: period.until, label: period.range };
 
@@ -424,9 +380,9 @@ export default async function ClientePage({
     { id: "saude", label: "Saúde" },
     {
       id: "metas",
-      label: "Metas e integrações",
+      label: "Forecast e fontes",
       count: alertasMetas,
-      alert: pendenciasDoCliente.some((pd) => pd.severity === "bloqueia") || metasView.some((g) => g.status === "critico"),
+      alert: pendenciasDoCliente.some((pd) => pd.severity === "bloqueia") || metasFora > 0,
     },
     { id: "performance", label: "Performance" },
     { id: "atividades", label: "Atividades", count: actions.length },

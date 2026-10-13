@@ -57,6 +57,37 @@ export const DIMENSION_LABEL = Object.fromEntries(
 /* Campos do GT — aba de Performance (briefing 3)                      */
 /* ------------------------------------------------------------------ */
 
+/**
+ * ROI do cliente: o que sobra do faturamento depois de pagar a mídia e a V4,
+ * sobre o que ele investiu (verba + fee da V4 proporcional à semana). O
+ * faturamento vem do webhook de vendas do CRM; sem venda recebida, sai do
+ * cálculo. Mesmo campo para geração de lead e e-commerce, pesos diferentes.
+ */
+function ROI_FIELD(accountTypes: FieldDef["accountTypes"], weight: number): FieldDef {
+  return {
+    key: "roi",
+    label: "ROI",
+    definition:
+      "(Faturamento − verba − fee da V4) ÷ (verba + fee da V4), na semana. Faturamento = vendas do webhook de vendas do CRM; fee = mensalidade × 12 ÷ 52.",
+    dimension: "performance",
+    source: "gt",
+    weight,
+    weightRationale:
+      "Retorno que o cliente sente no bolso, já descontado o que ele paga para a V4. Sai do cálculo enquanto o CRM não manda vendas.",
+    rule: "A",
+    accountTypes,
+    targetKey: "roi_meta",
+    input: {
+      kind: "pair",
+      realKey: "roi_real",
+      metaKey: "roi_meta",
+      realLabel: "ROI (%)",
+      metaLabel: "ROI do forecast (%)",
+      decimals: 1,
+    },
+  };
+}
+
 const GT_LEAD_GEN: FieldDef[] = [
   {
     key: "leads",
@@ -65,7 +96,7 @@ const GT_LEAD_GEN: FieldDef[] = [
       "Total de leads da semana no gerenciador/CRM, mesma fonte toda semana. O forecast é o contratado para a semana.",
     dimension: "performance",
     source: "gt",
-    weight: 40,
+    weight: 30,
     weightRationale: "Entregável contratado. É o que o cliente compra — maior peso da dimensão.",
     rule: "A",
     accountTypes: ["lead_gen"],
@@ -85,7 +116,7 @@ const GT_LEAD_GEN: FieldDef[] = [
       "Custo por lead da semana = verba investida / leads gerados. O forecast é o CPL contratado.",
     dimension: "performance",
     source: "gt",
-    weight: 30,
+    weight: 20,
     weightRationale:
       "Eficiência. Volume com CPL estourado não é entrega saudável, mas é subordinado ao volume.",
     rule: "B",
@@ -108,7 +139,7 @@ const GT_LEAD_GEN: FieldDef[] = [
       "Verba efetivamente gasta na semana vs verba contratada para a semana. Com mídia vinculada, vale o mês até hoje contra a verba contratada proporcional aos dias. Verba parada é risco silencioso.",
     dimension: "performance",
     source: "gt",
-    weight: 30,
+    weight: 20,
     weightRationale:
       "Verba parada antecede queda de volume em 1–2 semanas. Pesa igual ao CPL porque é causa, não sintoma.",
     rule: "A",
@@ -144,6 +175,29 @@ const GT_LEAD_GEN: FieldDef[] = [
       metaLabel: "Forecast de taxa de MQL (%)",
     },
   },
+  {
+    key: "roas",
+    label: "ROAS",
+    definition:
+      "Faturamento das vendas que o CRM do cliente mandou pelo webhook de vendas, dividido pela verba investida na semana, vs ROAS do forecast.",
+    dimension: "performance",
+    source: "gt",
+    weight: 15,
+    weightRationale:
+      "Lead que não vira venda corrói o contrato mesmo com CPL bom. Sai do cálculo enquanto o CRM não manda vendas.",
+    rule: "A",
+    accountTypes: ["lead_gen"],
+    targetKey: "roas_meta",
+    input: {
+      kind: "pair",
+      realKey: "roas_real",
+      metaKey: "roas_meta",
+      realLabel: "ROAS real",
+      metaLabel: "ROAS do forecast",
+      decimals: 2,
+    },
+  },
+  ROI_FIELD(["lead_gen"], 15),
 ];
 
 const GT_ECOMMERCE: FieldDef[] = [
@@ -154,7 +208,7 @@ const GT_ECOMMERCE: FieldDef[] = [
       "Receita atribuída à mídia na semana (mesmo modelo de atribuição sempre) vs forecast da semana.",
     dimension: "performance",
     source: "gt",
-    weight: 40,
+    weight: 35,
     weightRationale: "É o resultado contratado. Maior peso da dimensão.",
     rule: "A",
     accountTypes: ["ecommerce"],
@@ -174,7 +228,7 @@ const GT_ECOMMERCE: FieldDef[] = [
     definition: "Faturamento atribuído / verba investida na semana, vs ROAS do forecast contratado.",
     dimension: "performance",
     source: "gt",
-    weight: 35,
+    weight: 25,
     weightRationale:
       "Eficiência da operação. Faturar batendo o forecast com ROAS abaixo do contratado é insustentável — quase pareia com faturamento.",
     rule: "A",
@@ -212,6 +266,7 @@ const GT_ECOMMERCE: FieldDef[] = [
       decimals: 2,
     },
   },
+  ROI_FIELD(["ecommerce"], 15),
   {
     key: "ticket",
     label: "Ticket médio",

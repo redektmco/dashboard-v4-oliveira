@@ -127,6 +127,7 @@ export default async function IntegracoesPage() {
         { k: "Leads sem.", v: String(i.week_leads), tone: i.active && i.week_leads === 0 ? "amarelo" : undefined },
         { k: "Anterior", v: String(i.prev_week_leads) },
         { k: "Acumulado", v: String(i.total_leads) },
+        { k: "Vendas sem.", v: i.total_sales ? `${i.week_sales} · ${brl0(i.week_revenue)}` : "—", muted: !i.total_sales },
         { k: "Último dado", v: whenBR(last), muted: true },
       ],
       action: <TestWebhookButton url={`${base}/api/integrations/webhook/${i.token}`} lastEvent={whenBR(last)} />,
@@ -139,7 +140,7 @@ export default async function IntegracoesPage() {
 
   return (
     <ConfigPage>
-      <PageTitle title="Integrações" description="De onde vem o número da semana de cada conta — não há preenchimento manual. Vincular cada cliente acontece no painel do cliente, em Clientes." />
+      <PageTitle title="Integrações" description="De onde vem o número da semana de cada conta — não há preenchimento manual. Vincular cada cliente acontece no painel da conta, em Performance › Metas." />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Connection
@@ -236,7 +237,7 @@ export default async function IntegracoesPage() {
               <div key={`${r.clientId}-${r.source}`} className="flex flex-col gap-3 border-b border-[var(--border-hair)] px-5 py-4">
                 <div className="flex items-center gap-2.5">
                   <Letter name={r.name} />
-                  <Link href={`/clientes?c=${r.clientId}`} className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <Link href={`/gt?c=${r.clientId}`} className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="truncate text-[13px] font-semibold text-ink-100 hover:underline">{r.name}</span>
                     <span className="truncate text-[11px] text-ink-400">{r.source}</span>
                   </Link>
@@ -264,8 +265,8 @@ export default async function IntegracoesPage() {
                   : "Todos os clientes têm fonte de leads"}
               </span>
               {snap.semFonte.length > 0 && (
-                <Link href="/clientes?filtro=sem_fonte&seq=1" className="flex items-center gap-1 text-[13px] font-semibold text-ink-100 hover:underline">
-                  Conectar em Clientes
+                <Link href="/gt?filtro=sem_fonte" className="flex items-center gap-1 text-[13px] font-semibold text-ink-100 hover:underline">
+                  Conectar em Performance › Metas
                   <Icon name="arrowRight" size={14} />
                 </Link>
               )}

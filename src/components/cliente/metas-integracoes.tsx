@@ -2,34 +2,30 @@ import Link from "next/link";
 import { Icon, type IconName } from "../icon";
 import { Card, ColLabel, Pill, SectionHead, type Tone } from "../kit";
 import { TableScroll } from "../ui";
-import { GoalRowActions, NewGoalButton, NewSourceButton, SourceRowActions } from "./metas-ui";
-import { GOAL_STATUS_LABEL, PERIOD_LABEL, SEM_ORIGEM, type GoalStatus, type GoalView, type LeadSource } from "@/lib/crm/goals";
-import { fmtBR } from "@/lib/model/target-fields";
+import { NewSourceButton, SourceRowActions } from "./metas-ui";
+import { SEM_ORIGEM, type LeadSource } from "@/lib/crm/goals";
+import { lineTone, type ForecastLine } from "@/lib/crm/forecast-view";
+import type { SourceState, SourceView } from "@/lib/crm/sources";
 import type { MediaSplit } from "@/lib/crm/media-split";
 import { CHANNEL_LABEL } from "@/lib/crm/media-split";
 import type { Pendencia } from "@/lib/config-status";
 
 /**
- * Aba "Metas e integrações" da ficha.
+ * Aba "Forecast e fontes" da ficha.
  *
- * Junta quatro coisas que até agora moravam em telas diferentes: a meta do
- * período (nova, de `crm_goals`), de onde vêm os leads (`mediaSplit` para o
- * que tem API + `crm_lead_sources` para o que é informado na mão), o que está
- * quebrado na configuração (`configSnapshot`, as mesmas pendências que
- * Configurações mostra) e o estado de cada integração.
+ * Mesma leitura do painel da conta em Performance › Metas: o forecast
+ * semanal contra o realizado que o score leu (`forecastLines`), as fontes de
+ * dados (`clientSources`), de onde vêm os leads (`mediaSplit` para o que tem
+ * API + `crm_lead_sources` para o que é informado na mão) e o que está
+ * quebrado na configuração (`configSnapshot`). Editar o forecast e as fontes
+ * acontece no painel de Performance — os botões daqui levam para lá.
  *
  * Presentacional de propósito — recebe tudo pronto. Quem calcula é a página,
  * numa rodada de leitura só, como o resto da ficha.
  */
 
-const STATUS_TONE: Record<GoalStatus, Tone> = {
-  saudavel: "verde",
-  atencao: "amarelo",
-  critico: "vermelho",
-  sem_leitura: "neutro",
-};
-
-export type IntegrationState = "conectada" | "erro" | "pendente";
+export type IntegrationState = SourceState;
+export type IntegrationRow = SourceView;
 
 const STATE_TONE: Record<IntegrationState, Tone> = {
   conectada: "verde",
@@ -43,27 +39,20 @@ const STATE_LABEL: Record<IntegrationState, string> = {
   pendente: "Pendente",
 };
 
-export type IntegrationRow = {
-  id: string;
-  name: string;
-  icon: IconName;
-  /** Linha de contexto: id da conta, última sincronização, o que falta. */
-  detail: string;
-  state: IntegrationState;
-  action?: { label: string; href: string };
-};
-
 export type OriginRow = { origem: string; n: number };
 
 export type MetasData = {
   clientId: number;
   /** Nome do cliente — usado nos diálogos, para confirmar o que se está mexendo. */
   clientName: string;
-  goals: GoalView[];
+  /** Forecast × realizado, indicador a indicador (o mesmo de Performance). */
+  forecast: ForecastLine[];
+  greenFloor: number;
+  yellowFloor: number;
   sources: LeadSource[];
   split: MediaSplit;
   origins: OriginRow[];
-  integrations: IntegrationRow[];
+  integrations: SourceView[];
   /** Pendências de configuração desta conta, já filtradas. */
   pendencias: Pendencia[];
   /** Leads do período somados — denominador da fatia sem origem. */
@@ -76,19 +65,13 @@ export type MetasData = {
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-/** Meta formatada com a unidade do catálogo (R$, %, casas) quando existe. */
-function fmtGoal(v: number, g: GoalView) {
-  const f = g.field;
-  if (!f) return fmtBR(v, 0);
-  const n = fmtBR(v, f.decimals);
-  return `${f.prefix ? `${f.prefix} ` : ""}${n}${f.suffix && f.suffix !== "/sem." ? f.suffix : ""}`;
-}
-
 export function MetasIntegracoes({ data }: { data: MetasData }) {
   const {
     clientId,
     clientName,
-    goals,
+    forecast,
+    greenFloor,
+    yellowFloor,
     sources,
     split,
     origins,
@@ -101,6 +84,10 @@ export function MetasIntegracoes({ data }: { data: MetasData }) {
 
   const semOrigem = origins.find((o) => o.origem === SEM_ORIGEM)?.n ?? 0;
   const semOrigemShare = leadsNoPeriodo > 0 ? semOrigem / leadsNoPeriodo : 0;
+  const tone = (score: number | null) => lineTone(score, greenFloor, yellowFloor);
+  const definidos = forecast.filter((f) => f.target !== null);
+  const abaixo = definidos.filter((f) => f.score !== null && f.score < yellowFloor).length;
+  const panel = `/gt?c=${clientId}`;
   const conectadas = integrations.filter((i) => i.state === "conectada").length;
   const comErro = integrations.filter((i) => i.state === "erro").length;
   const pendentes = integrations.filter((i) => i.state === "pendente").length;
@@ -139,32 +126,30 @@ export function MetasIntegracoes({ data }: { data: MetasData }) {
           tone={comErro ? "vermelho" : pendentes ? "amarelo" : undefined}
         />
         <Kpi
-          label="Metas no período"
-          value={String(goals.length)}
-          hint={
-            goals.length === 0
-              ? "nenhuma meta definida"
-              : (() => {
-                  const fora = goals.filter((g) => g.status === "critico" || g.status === "atencao").length;
-                  return fora ? `${fora} fora do ritmo` : "todas no ritmo";
-                })()
-          }
-          tone={goals.some((g) => g.status === "critico") ? "vermelho" : undefined}
+          label="Forecast"
+          value={`${definidos.length} de ${forecast.length}`}
+          hint={definidos.length === 0 ? "sem forecast — o score não é calculado" : abaixo ? `${abaixo} abaixo da régua` : "valores definidos"}
+          tone={definidos.length === 0 || abaixo ? "vermelho" : undefined}
         />
       </div>
 
-      {/* Metas */}
+      {/* Forecast × realizado — a régua do score, igual ao painel de Performance */}
       <section className="flex flex-col gap-4">
         <SectionHead
-          title="Metas"
-          subtitle="O compromisso do período. Meta de piso é julgada pelo ritmo; meta de teto, pelo valor."
-          action={<NewGoalButton clientId={clientId} clientName={clientName} />}
+          title="Forecast semanal"
+          subtitle="A régua do score: o forecast de cada indicador contra o realizado que o score leu. Mesmo número de Performance › Metas."
+          action={
+            <Link href={panel} className="btn h-8">
+              <Icon name="target" size={15} />
+              Ajustar forecast
+            </Link>
+          }
         />
-        {goals.length === 0 ? (
+        {definidos.length === 0 ? (
           <Empty
             icon="target"
-            title="Nenhuma meta definida para esta conta"
-            text="Sem meta, a aba mostra o realizado mas não tem com o que comparar. Comece pelo número que o cliente cobra."
+            title="Nenhum forecast definido para esta conta"
+            text="Sem forecast não há régua: o score desta conta não é calculado. Defina em Performance › Metas — a sugestão pela média de 90 dias ajuda."
           />
         ) : (
           <TableScroll>
@@ -172,57 +157,39 @@ export function MetasIntegracoes({ data }: { data: MetasData }) {
               <thead>
                 <tr>
                   <th>
-                    <ColLabel>Meta</ColLabel>
+                    <ColLabel>Indicador</ColLabel>
                   </th>
                   <th>
-                    <ColLabel>Progresso no período</ColLabel>
+                    <ColLabel>Realizado</ColLabel>
                   </th>
                   <th>
-                    <ColLabel>Status</ColLabel>
+                    <ColLabel>Forecast</ColLabel>
                   </th>
-                  <th className="w-10" />
+                  <th>
+                    <ColLabel>Atingimento</ColLabel>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {goals.map((g) => (
-                  <tr key={g.goal.id}>
+                {forecast.map((f) => (
+                  <tr key={f.key}>
                     <td>
                       <div className="flex flex-col gap-0.5">
-                        <span className="text-[13px] font-medium text-ink-100">{g.goal.label}</span>
-                        <span className="text-[12px] text-ink-400">
-                          {PERIOD_LABEL[g.goal.period]} · {g.period.label}
-                          {g.goal.direction === "teto"
-                            ? ` · teto de ${fmtGoal(g.goal.target, g)}`
-                            : ` · meta de ${fmtGoal(g.goal.target, g)}`}
-                          {g.goal.scope && g.goal.scope !== "todas" ? ` · ${g.goal.scope}` : ""}
-                        </span>
+                        <span className="text-[13px] font-medium text-ink-100">{f.label}</span>
+                        {(f.period || f.note) && <span className="text-[12px] text-ink-400">{f.note ?? f.period}</span>}
                       </div>
                     </td>
+                    <td className="tnum text-[13px] text-ink-100">{f.actual ?? "—"}</td>
+                    <td className="tnum text-[13px] text-ink-300">{f.target ?? "não definido"}</td>
                     <td>
-                      {g.real === null ? (
-                        <span className="text-[13px] text-ink-500">sem leitura no período</span>
+                      {f.score === null ? (
+                        <span className="text-[12px] text-ink-500">fora do cálculo</span>
                       ) : (
-                        <div className="flex flex-col gap-1">
-                          <span className="tnum text-[13px] text-ink-100">
-                            {g.goal.direction === "teto"
-                              ? `${fmtGoal(g.real, g)} · ${
-                                  g.ratio !== null && g.ratio > 1
-                                    ? `${Math.round((g.ratio - 1) * 100)}% acima`
-                                    : "dentro do teto"
-                                }`
-                              : `${fmtGoal(g.real, g)} de ${fmtGoal(g.goal.target, g)} · ${
-                                  g.ratio !== null ? pct(g.ratio) : "—"
-                                }`}
-                          </span>
-                          <Progress ratio={g.ratio ?? 0} elapsed={g.period.elapsed} tone={STATUS_TONE[g.status]} />
+                        <div className="flex items-center gap-2">
+                          <Progress ratio={f.score / 100} tone={tone(f.score)} />
+                          <Pill tone={tone(f.score)}>{Math.round(f.score)}</Pill>
                         </div>
                       )}
-                    </td>
-                    <td>
-                      <Pill tone={STATUS_TONE[g.status]}>{GOAL_STATUS_LABEL[g.status]}</Pill>
-                    </td>
-                    <td>
-                      <GoalRowActions id={g.goal.id} label={g.goal.label} />
                     </td>
                   </tr>
                 ))}
@@ -357,12 +324,12 @@ export function MetasIntegracoes({ data }: { data: MetasData }) {
       {/* Integrações */}
       <section className="flex flex-col gap-4">
         <SectionHead
-          title="Integrações"
-          subtitle="De onde os números desta conta entram no sistema."
+          title="Fontes de dados"
+          subtitle="De onde os números desta conta entram no sistema: Meta Ads, Google Ads e o CRM (leads e vendas)."
           action={
-            <Link href="/gt/integracoes" className="flex items-center gap-1.5 text-[13px] text-ink-300 hover:text-ink-100">
+            <Link href={panel} className="flex items-center gap-1.5 text-[13px] text-ink-300 hover:text-ink-100">
               <Icon name="sliders" size={14} />
-              Saúde das integrações
+              Configurar fontes e CRM
             </Link>
           }
         />
@@ -376,7 +343,7 @@ export function MetasIntegracoes({ data }: { data: MetasData }) {
                 <p className="text-[13px] font-medium text-ink-100">{i.name}</p>
                 <p className="mt-0.5 text-[12px] text-ink-400">{i.detail}</p>
               </div>
-              <Pill tone={STATE_TONE[i.state]}>{STATE_LABEL[i.state]}</Pill>
+              <Pill tone={STATE_TONE[i.state]}>{i.missing ? "Não conectado" : STATE_LABEL[i.state]}</Pill>
               {i.action && (
                 <Link href={i.action.href} className="btn btn-light h-8 shrink-0">
                   {i.action.label}
@@ -415,18 +382,16 @@ function Kpi({ label, value, hint, tone }: { label: string; value: string; hint:
  * 31% parece pouco em qualquer dia do mês. Com ele, dá para ver que 31% no
  * dia 9 está à frente do esperado.
  */
-function Progress({ ratio, elapsed, tone }: { ratio: number; elapsed: number; tone: Tone }) {
+function Progress({ ratio, elapsed, tone }: { ratio: number; elapsed?: number; tone: Tone }) {
   const w = Math.max(0, Math.min(1, ratio));
-  const mark = Math.max(0, Math.min(1, elapsed));
+  const mark = elapsed === undefined ? null : Math.max(0, Math.min(1, elapsed));
   const bar = tone === "vermelho" ? "bg-vermelho" : tone === "amarelo" ? "bg-amarelo" : "bg-verde";
   return (
     <span className="relative block h-1.5 w-full max-w-[220px] overflow-hidden rounded-full bg-ink-800">
       <span className={`absolute inset-y-0 left-0 rounded-full ${bar}`} style={{ width: `${w * 100}%` }} />
-      <span
-        className="absolute inset-y-0 w-px bg-ink-100/60"
-        style={{ left: `${mark * 100}%` }}
-        aria-hidden="true"
-      />
+      {mark !== null && (
+        <span className="absolute inset-y-0 w-px bg-ink-100/60" style={{ left: `${mark * 100}%` }} aria-hidden="true" />
+      )}
     </span>
   );
 }

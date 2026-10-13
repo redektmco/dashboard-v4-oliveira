@@ -409,9 +409,9 @@ export async function saveSnapshot(
   data: Record<string, unknown>,
 ) {
   const table = kind === "performance" ? "performance_snapshots" : "checkin_snapshots";
-  await run(
+  return insert(
     `INSERT INTO ${table} (client_id, ref_date, filled_by, data)
-     VALUES (?, ?::date, ?, ?::jsonb)`,
+     VALUES (?, ?::date, ?, ?::jsonb) RETURNING id`,
     [clientId, refDate, filledBy, JSON.stringify(data)],
   );
 }
@@ -432,6 +432,8 @@ export type MetaAgg = { week: MetaWeek; leads: number; leadSpend: number };
  */
 export type AutoOverlay = {
   leadsByWeek: Map<string, number>;
+  /** Vendas do webhook de vendas do CRM por semana-ritual: quantidade e soma do valor. */
+  salesByWeek?: Map<string, CrmSalesWeek>;
   metaByWeek: Map<string, MetaAgg>;
   targets: Record<string, number>;
   /** Verba diária de Meta + Google — a "Verba investida" usa o mês até hoje. */
@@ -439,6 +441,32 @@ export type AutoOverlay = {
 };
 
 const blank = (v: unknown) => v === undefined || v === null || v === "";
+
+export type CrmSalesWeek = { n: number; revenue: number };
+
+/** Fee semanal da V4: a mensalidade (MRR) espalhada pelas 52 semanas do ano. */
+export const weeklyFee = (mrr: number) => Math.round(((mrr * 12) / 52) * 100) / 100;
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Campos de performance que as vendas do CRM preenchem na semana. O CRM vence
+ * a Meta no faturamento (é a venda de verdade, não a atribuída pelo pixel):
+ *  - Faturamento atribuído = soma das vendas (e-commerce);
+ *  - ROAS = faturamento ÷ verba de mídia (só com verba na semana);
+ *  - ROI (%) = (faturamento − verba − fee V4) ÷ (verba + fee V4) × 100.
+ */
+export function crmSaleFields(type: AccountType, w: CrmSalesWeek, spend: number, mrr: number): Record<string, number> {
+  const fee = weeklyFee(mrr);
+  const out: Record<string, number> = { sales_real: w.n, crm_revenue_real: round2(w.revenue) };
+  if (type === "ecommerce") {
+    out.revenue_real = round2(w.revenue);
+    if (w.n > 0) out.ticket_real = round2(w.revenue / w.n);
+  }
+  if (spend > 0) out.roas_real = round2(w.revenue / spend);
+  if (spend + fee > 0) out.roi_real = Math.round(((w.revenue - spend - fee) / (spend + fee)) * 1000) / 10;
+  return out;
+}
 
 /**
  * Sobrepõe os dados automáticos nos snapshots de performance:
@@ -480,6 +508,17 @@ function applyOverlay(client: ClientRow, perf: Snap[], at: string, ov: AutoOverl
     if (!m || !firstSpend || ref < firstSpend) return null;
     return metaFields(type, m.week, crmLeads(ref) ?? m.leads, m.leadSpend);
   };
+  // Vendas do CRM (webhook de vendas): faturamento, ROAS e ROI da semana.
+  // Semana sem venda depois da primeira recebida conta zero de verdade; antes
+  // dela, o CRM ainda não estava ligado e não inventa zero retroativo.
+  const firstSale = ov.salesByWeek ? [...ov.salesByWeek.keys()].sort()[0] : undefined;
+  const crmSales = (ref: string) => {
+    if ((type !== "lead_gen" && type !== "ecommerce") || !firstSale || ref < firstSale) return undefined;
+    const w = ov.salesByWeek!.get(ref) ?? { n: 0, revenue: 0 };
+    const m = ov.metaByWeek.get(ref);
+    const spend = m && firstSpend && ref >= firstSpend ? m.week.spend : 0;
+    return crmSaleFields(type, w, spend, client.mrr ?? 0);
+  };
 
   const list = perf.map((s) => {
     let data = s.data;
@@ -490,6 +529,12 @@ function applyOverlay(client: ClientRow, perf: Snap[], at: string, ov: AutoOverl
     }
     const n = crmLeads(s.ref_date);
     if (n !== undefined) data = { ...data, leads_real: n };
+    const sales = crmSales(s.ref_date);
+    if (sales) {
+      data = { ...data, ...sales };
+      for (const k of ["revenue_meta", "roas_meta", "roi_meta"])
+        if (blank(data[k]) && ov.targets[k] !== undefined) data[k] = ov.targets[k];
+    }
     return data === s.data ? s : { ...s, data };
   });
 
@@ -504,12 +549,25 @@ function applyOverlay(client: ClientRow, perf: Snap[], at: string, ov: AutoOverl
       filled_by: null,
       filled_at: ref + "T23:59:00",
       filler: "Meta Ads",
-      data: { ...ov.targets, ...meta },
+      data: { ...ov.targets, ...meta, ...crmSales(ref) },
     });
   }
 
   const curWeek = ritualWeekEnd(at);
+  // Semana fechada com venda do CRM e sem registro (conta sem mídia): vira um
+  // registro "CRM" com as metas vigentes, como a Meta faz acima.
+  const filledNow = new Set(list.map((s) => s.ref_date));
+  for (const ref of ov.salesByWeek?.keys() ?? []) {
+    const sales = ref <= at && !filledNow.has(ref) ? crmSales(ref) : undefined;
+    if (!sales) continue;
+    list.push({ id: 0, client_id: client.id, ref_date: ref, filled_by: null, filled_at: ref + "T23:59:00", filler: "CRM", data: { ...ov.targets, ...sales } });
+  }
+
+  // Semana em curso: só o webhook de LEADS sintetiza um registro "vivo" (as
+  // vendas da semana aberta entram quando ela fecha — um registro só com
+  // faturamento viraria o mais recente e apagaria verba, CPL e leads).
   const curCount = crmLeads(curWeek);
+  const curSales = crmSales(curWeek);
   const hasCur = list.some((s) => s.ref_date === curWeek && s.ref_date <= at);
   if (!hasCur && curCount !== undefined) {
     list.push({
@@ -519,7 +577,11 @@ function applyOverlay(client: ClientRow, perf: Snap[], at: string, ov: AutoOverl
       filled_by: null,
       filled_at: at + "T12:00:00",
       filler: "CRM",
-      data: { leads_real: curCount, leads_meta: ov.targets.leads_meta ?? undefined },
+      data: {
+        leads_real: curCount,
+        leads_meta: ov.targets.leads_meta ?? undefined,
+        ...(curSales ? { ...curSales, roas_meta: ov.targets.roas_meta, roi_meta: ov.targets.roi_meta } : {}),
+      },
     });
   }
   list.sort((a, b) => (a.ref_date < b.ref_date ? 1 : a.ref_date > b.ref_date ? -1 : b.id - a.id));
@@ -846,11 +908,12 @@ export type Integration = {
   active: number;
   created_at: string;
   last_event_at: string | null;
+  last_sale_at: string | null;
 };
 
 const INTEGRATION_SELECT = `
   SELECT id, client_id, token, provider, crm_name, active, created_at::text AS created_at,
-         last_event_at::text AS last_event_at
+         last_event_at::text AS last_event_at, last_sale_at::text AS last_sale_at
   FROM crm_integrations`;
 
 export const getIntegration = (clientId: number) =>
@@ -903,9 +966,50 @@ export async function recordLead(
   return rows.length > 0;
 }
 
+/**
+ * Grava uma venda recebida pelo webhook de vendas. Idempotente com `dedupKey`
+ * (id do negócio no CRM): o mesmo negócio ganho reenviado não soma duas vezes.
+ */
+export async function recordSale(
+  clientId: number,
+  refDate: string,
+  dedupKey: string | null,
+  value: number,
+  payload: unknown,
+): Promise<boolean> {
+  const rows = await all<{ id: number }>(
+    `INSERT INTO crm_sales (client_id, ref_date, dedup_key, value, payload)
+     VALUES (?, ?::date, ?, ?, ?::jsonb)
+     ON CONFLICT (client_id, dedup_key) WHERE dedup_key IS NOT NULL DO NOTHING
+     RETURNING id`,
+    [clientId, refDate, dedupKey, value, JSON.stringify(payload ?? {})],
+  );
+  await run(`UPDATE crm_integrations SET last_sale_at = now() WHERE client_id = ?`, [clientId]);
+  return rows.length > 0;
+}
+
+/** Vendas do CRM por cliente e semana-ritual (só integrações ativas). */
+async function crmSalesWeeks(clientId?: number): Promise<Map<number, Map<string, CrmSalesWeek>>> {
+  const rows = await all<{ client_id: number; ref_date: string; n: number; revenue: number }>(
+    `SELECT s.client_id, s.ref_date::text AS ref_date, COUNT(*)::int AS n, COALESCE(SUM(s.value), 0)::float AS revenue
+     FROM crm_sales s
+     JOIN crm_integrations i ON i.client_id = s.client_id AND i.active = 1
+     ${clientId ? "WHERE s.client_id = ?" : ""}
+     GROUP BY s.client_id, s.ref_date`,
+    clientId ? [clientId] : [],
+  );
+  const map = new Map<number, Map<string, CrmSalesWeek>>();
+  for (const r of rows) {
+    const m = map.get(r.client_id) ?? new Map<string, CrmSalesWeek>();
+    m.set(r.ref_date, { n: Number(r.n), revenue: Number(r.revenue) });
+    map.set(r.client_id, m);
+  }
+  return map;
+}
+
 /** Overlay de todos os clientes com CRM ou Meta Ads ativos — uma passada só. */
 async function autoOverlays(): Promise<Map<number, AutoOverlay>> {
-  const [counts, targets, meta, daily] = await Promise.all([
+  const [counts, targets, meta, daily, sales] = await Promise.all([
     all<{ client_id: number; ref_date: string; n: number }>(
       `SELECT l.client_id, l.ref_date::text AS ref_date, COUNT(*)::int AS n
        FROM crm_leads l
@@ -915,6 +1019,7 @@ async function autoOverlays(): Promise<Map<number, AutoOverlay>> {
     getAllTargets(),
     mediaWeeks(),
     mediaDaily(),
+    crmSalesWeeks(),
   ]);
   const map = new Map<number, AutoOverlay>();
   const of = (clientId: number) => {
@@ -926,6 +1031,7 @@ async function autoOverlays(): Promise<Map<number, AutoOverlay>> {
     return ov;
   };
   for (const r of counts) of(r.client_id).leadsByWeek.set(r.ref_date, Number(r.n));
+  for (const [clientId, weeks] of sales) of(clientId).salesByWeek = weeks;
   for (const [clientId, weeks] of meta) {
     const ov = of(clientId);
     ov.metaByWeek = weeks;
@@ -936,12 +1042,14 @@ async function autoOverlays(): Promise<Map<number, AutoOverlay>> {
 
 /** Overlay de um cliente só — usado no recompute pontual após cada webhook. */
 async function autoOverlay(clientId: number): Promise<AutoOverlay | null> {
-  const [active, meta, daily] = await Promise.all([
+  const [active, meta, daily, sales] = await Promise.all([
     one<{ id: number }>(`SELECT id FROM crm_integrations WHERE client_id = ? AND active = 1`, [clientId]),
     mediaWeeks(clientId),
     mediaDaily(clientId),
+    crmSalesWeeks(clientId),
   ]);
   const metaByWeek = meta.get(clientId) ?? new Map<string, MetaAgg>();
+  const salesByWeek = sales.get(clientId);
   if (!active && !metaByWeek.size) return null;
   const [counts, targets] = await Promise.all([
     active
@@ -955,7 +1063,7 @@ async function autoOverlay(clientId: number): Promise<AutoOverlay | null> {
   ]);
   const leadsByWeek = new Map<string, number>();
   for (const c of counts) leadsByWeek.set(c.ref_date, Number(c.n));
-  return { leadsByWeek, metaByWeek, targets, daily: daily.get(clientId) };
+  return { leadsByWeek, metaByWeek, salesByWeek, targets, daily: daily.get(clientId) };
 }
 
 export type IntegrationRow = Integration & {
@@ -966,6 +1074,11 @@ export type IntegrationRow = Integration & {
   week_leads: number;
   prev_week_leads: number;
   last_lead_at: string | null;
+  /** Webhook de vendas: vendas e faturamento da semana-ritual corrente e no total. */
+  week_sales: number;
+  week_revenue: number;
+  total_sales: number;
+  last_sale_at: string | null;
 };
 
 /** Integrações cadastradas com a contabilidade de leads da semana. */
@@ -979,14 +1092,25 @@ export async function listIntegrations(): Promise<IntegrationRow[]> {
             COUNT(l.id)::int AS total_leads,
             COUNT(l.id) FILTER (WHERE l.ref_date = ?::date)::int AS week_leads,
             COUNT(l.id) FILTER (WHERE l.ref_date = ?::date)::int AS prev_week_leads,
-            MAX(l.received_at)::text AS last_lead_at
+            MAX(l.received_at)::text AS last_lead_at,
+            COALESCE(v.week_sales, 0)::int AS week_sales,
+            COALESCE(v.week_revenue, 0)::float AS week_revenue,
+            COALESCE(v.total_sales, 0)::int AS total_sales,
+            i.last_sale_at::text AS last_sale_at
      FROM crm_integrations i
      JOIN clients c ON c.id = i.client_id
      LEFT JOIN crm_leads l ON l.client_id = i.client_id
+     LEFT JOIN (
+       SELECT client_id,
+              COUNT(*) FILTER (WHERE ref_date = ?::date) AS week_sales,
+              SUM(value) FILTER (WHERE ref_date = ?::date) AS week_revenue,
+              COUNT(*) AS total_sales
+       FROM crm_sales GROUP BY client_id
+     ) v ON v.client_id = i.client_id
      WHERE c.active = 1
-     GROUP BY i.id, c.name, c.account_type, c.active
+     GROUP BY i.id, c.name, c.account_type, c.active, v.week_sales, v.week_revenue, v.total_sales
      ORDER BY c.name`,
-    [cur, prev],
+    [cur, prev, cur, cur],
   );
 }
 

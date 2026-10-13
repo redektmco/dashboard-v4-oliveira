@@ -1,119 +1,20 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import {
-  createGoal,
-  createLeadSource,
-  removeGoal,
-  removeLeadSource,
-  restoreGoalAction,
-  restoreLeadSourceAction,
-} from "@/actions/goals";
+import { createLeadSource, removeLeadSource, restoreLeadSourceAction } from "@/actions/goals";
 import { ActionForm, SubmitButton } from "../form-controls";
 import { Modal } from "../modal";
 import { toast } from "../toast";
 import { Icon } from "../icon";
 
 /**
- * Os controles da aba Metas e integrações.
+ * Os controles de fontes de leads da aba Forecast e fontes.
  *
- * Remover meta ou fonte **arquiva** no servidor, e é isso que torna o
+ * Remover fonte **arquiva** no servidor, e é isso que torna o
  * "Desfazer" do toast honesto: o botão não desfaz um efeito local, ele chama
  * a ação inversa e a linha volta com o mesmo id. Um toast que oferece
  * desfazer sem ter como reverter é pior do que não oferecer.
  */
-
-/* ------------------------------- metas ------------------------------- */
-
-export function NewGoalButton({ clientId, clientName }: { clientId: number; clientName: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button type="button" onClick={() => setOpen(true)} className="btn h-8">
-        <Icon name="plus" size={16} />
-        Nova meta
-      </button>
-      <Modal
-        open={open}
-        onClose={() => setOpen(false)}
-        title="Nova meta"
-        description={`O compromisso do período para ${clientName}.`}
-        cardClassName="modal-card--form"
-      >
-        <ActionForm action={createGoal} onSuccess={() => setOpen(false)}>
-          <input type="hidden" name="client_id" value={clientId} />
-          <label className="block">
-            <span className="label">Nome da meta *</span>
-            <input name="label" className="field mt-1" placeholder="Leads qualificados" required maxLength={80} />
-          </label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block">
-              <span className="label">Valor *</span>
-              <input name="target" className="field mt-1" placeholder="200" inputMode="decimal" required />
-            </label>
-            <label className="block">
-              <span className="label">Período</span>
-              <select name="period" className="field mt-1" defaultValue="mensal">
-                <option value="mensal">Mensal</option>
-                <option value="trimestral">Trimestral</option>
-              </select>
-            </label>
-          </div>
-          <label className="block">
-            <span className="label">O número é</span>
-            <select name="direction" className="field mt-1" defaultValue="piso">
-              <option value="piso">Piso — quanto mais, melhor (leads, visitas, vendas)</option>
-              <option value="teto">Teto — quanto menos, melhor (CPL, custo por venda)</option>
-            </select>
-            <span className="mt-1 block text-[11px] leading-[16px] text-ink-500">Piso é julgado pelo ritmo do período. Teto é comparado direto com o limite.</span>
-          </label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block">
-              <span className="label">Chave no formulário do GT</span>
-              <input name="metric" className="field mt-1" placeholder="leads" maxLength={40} />
-              <span className="mt-1 block text-[11px] leading-[16px] text-ink-500">Liga a meta ao que o GT já preenche. Em branco, fica sem leitura.</span>
-            </label>
-            <label className="block">
-              <span className="label">Escopo</span>
-              <input name="scope" className="field mt-1" placeholder="todas as fontes" maxLength={60} />
-            </label>
-          </div>
-          <div className="modal-actions">
-            <button type="button" className="btn" onClick={() => setOpen(false)}>
-              Cancelar
-            </button>
-            <SubmitButton pendingLabel="Criando…">Criar meta</SubmitButton>
-          </div>
-        </ActionForm>
-      </Modal>
-    </>
-  );
-}
-
-export function GoalRowActions({ id, label }: { id: number; label: string }) {
-  const [pending, start] = useTransition();
-  const remove = () =>
-    start(async () => {
-      const r = await removeGoal(id);
-      if (r?.error) {
-        toast(r.error, { tone: "error" });
-        return;
-      }
-      toast(r?.ok ?? `Meta "${label}" removida.`, {
-        action: {
-          label: "Desfazer",
-          onClick: () =>
-            start(async () => {
-              const back = await restoreGoalAction(id);
-              if (back?.error) toast(back.error, { tone: "error" });
-            }),
-        },
-        duration: 7000,
-      });
-    });
-
-  return <RowRemove onClick={remove} pending={pending} title={`Remover a meta ${label}`} />;
-}
 
 /* ---------------------------- fontes de leads --------------------------- */
 

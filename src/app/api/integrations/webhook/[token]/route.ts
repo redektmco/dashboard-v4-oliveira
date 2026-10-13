@@ -1,36 +1,11 @@
 import { NextResponse } from "next/server";
 import { getIntegrationByToken, persistScore, recordLead, scoreFor, today } from "@/lib/repo";
 import { ritualWeekEnd } from "@/lib/week";
+import { dedupFrom, readBody } from "@/lib/crm/webhook";
 
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ token: string }> };
-
-/**
- * Chave de dedup tirada do payload, quando o CRM manda algo estável (id do
- * lead, e-mail, telefone). Sem ela cada POST conta um lead — o que também é o
- * comportamento certo para um CRM que só dispara "lead novo". Aceita os campos
- * no topo ou aninhados em `lead`/`data`/`contact`, cobrindo os formatos comuns.
- */
-function dedupFrom(bag: Record<string, unknown>): string | null {
-  const nested = (k: string) => (bag[k] as Record<string, unknown> | undefined) ?? {};
-  const lead = nested("lead");
-  const data = nested("data");
-  const contact = nested("contact");
-  const cand =
-    bag.id ??
-    bag.lead_id ??
-    bag.leadId ??
-    bag.uuid ??
-    bag.email ??
-    bag.phone ??
-    lead.id ??
-    lead.email ??
-    data.email ??
-    contact.email;
-  const s = cand == null ? "" : String(cand).trim().toLowerCase();
-  return s ? s.slice(0, 200) : null;
-}
 
 /**
  * Webhook genérico de leads do CRM. Autenticado pelo token do cliente na URL
@@ -44,8 +19,7 @@ async function ingest(req: Request, token: string) {
     return NextResponse.json({ error: "integração inválida ou inativa" }, { status: 404 });
   }
 
-  const body = await req.json().catch(() => ({}));
-  const bag = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const bag = await readBody(req);
 
   const refDate = ritualWeekEnd(today());
   const counted = await recordLead(integration.client_id, refDate, dedupFrom(bag), bag);

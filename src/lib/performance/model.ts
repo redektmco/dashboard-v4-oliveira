@@ -65,7 +65,16 @@ export type Campaign = Totals & {
   dailyBudget: number | null;
 };
 
-export type DayPoint = { day: string; spend: number; results: number };
+export type DayPoint = {
+  day: string;
+  spend: number;
+  results: number;
+  /** Verba das campanhas com resultado no dia (base do custo por resultado). */
+  resultSpend?: number;
+  impressions?: number;
+  clicks?: number;
+  revenue?: number;
+};
 
 export type ChannelData = {
   channel: Channel;
@@ -243,3 +252,94 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 /** Verba contratada do período: meta semanal ÷ 7 × dias. */
 export const budgetFor = (weekly: number | undefined | null, days: number) =>
   weekly && weekly > 0 ? round2((weekly / 7) * days) : null;
+
+/* ------------------------- métricas do dia a dia ------------------------- */
+
+/** O que dá para pôr no gráfico de baixo da aba Performance, dia a dia. */
+export type DailyMetric = "results" | "cpr" | "clicks" | "impressions" | "ctr" | "cpc" | "cpm" | "revenue" | "roas";
+
+export type DailyMetricDef = {
+  id: DailyMetric;
+  /** Soma entre canais (barra empilhada) ou é razão (uma barra do total). */
+  additive: boolean;
+  format: "int" | "money" | "pct" | "x";
+  /** Para quais tipos de conta a métrica faz sentido. */
+  types?: AccountType[];
+};
+
+export const DAILY_METRICS: DailyMetricDef[] = [
+  { id: "results", additive: true, format: "int", types: ["lead_gen", "ecommerce"] },
+  { id: "cpr", additive: false, format: "money", types: ["lead_gen", "ecommerce"] },
+  { id: "revenue", additive: true, format: "money", types: ["ecommerce"] },
+  { id: "roas", additive: false, format: "x", types: ["ecommerce"] },
+  { id: "clicks", additive: true, format: "int" },
+  { id: "impressions", additive: true, format: "int" },
+  { id: "ctr", additive: false, format: "pct" },
+  { id: "cpc", additive: false, format: "money" },
+  { id: "cpm", additive: false, format: "money" },
+];
+
+export const dailyMetricsFor = (type: AccountType) => DAILY_METRICS.filter((m) => !m.types || m.types.includes(type));
+
+type DayAgg = { spend: number; results: number; resultSpend: number; impressions: number; clicks: number; revenue: number };
+
+const aggOf = (p: DayPoint | undefined): DayAgg => ({
+  spend: p?.spend ?? 0,
+  results: p?.results ?? 0,
+  resultSpend: p?.resultSpend ?? (p && p.results > 0 ? p.spend : 0),
+  impressions: p?.impressions ?? 0,
+  clicks: p?.clicks ?? 0,
+  revenue: p?.revenue ?? 0,
+});
+
+/** Valor da métrica num dia; razão sem denominador é `null` (fica sem barra). */
+export function dayValue(m: DailyMetric, a: DayAgg): number | null {
+  switch (m) {
+    case "results":
+      return a.results;
+    case "clicks":
+      return a.clicks;
+    case "impressions":
+      return a.impressions;
+    case "revenue":
+      return a.revenue;
+    case "cpr":
+      return a.results > 0 ? round2((a.resultSpend || a.spend) / a.results) : null;
+    case "ctr":
+      return a.impressions > 0 ? round2((a.clicks / a.impressions) * 100) : null;
+    case "cpc":
+      return a.clicks > 0 ? round2(a.spend / a.clicks) : null;
+    case "cpm":
+      return a.impressions > 0 ? round2((a.spend / a.impressions) * 1000) : null;
+    case "roas":
+      return a.spend > 0 ? round2(a.revenue / a.spend) : null;
+  }
+}
+
+export type MetricDay = { day: string; parts: Partial<Record<Channel, number | null>>; total: number | null };
+
+/** Série dia a dia de uma métrica, por canal e no total, de `since` a `until` (dia sem dado = zero). */
+export function dailyMetricSeries(
+  since: string,
+  until: string,
+  series: Partial<Record<Channel, DayPoint[]>>,
+  metric: DailyMetric,
+): MetricDay[] {
+  const channels = CHANNELS.filter((c) => series[c]);
+  const idx = Object.fromEntries(channels.map((c) => [c, new Map((series[c] ?? []).map((p) => [p.day, p]))])) as Record<Channel, Map<string, DayPoint>>;
+  const out: MetricDay[] = [];
+  for (let d = since; d <= until; ) {
+    const parts: Partial<Record<Channel, number | null>> = {};
+    const total: DayAgg = aggOf(undefined);
+    for (const c of channels) {
+      const a = aggOf(idx[c].get(d));
+      parts[c] = dayValue(metric, a);
+      for (const k of Object.keys(total) as (keyof DayAgg)[]) total[k] += a[k];
+    }
+    out.push({ day: d, parts, total: dayValue(metric, total) });
+    const next = new Date(d + "T00:00:00Z");
+    next.setUTCDate(next.getUTCDate() + 1);
+    d = next.toISOString().slice(0, 10);
+  }
+  return out;
+}

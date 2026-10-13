@@ -92,6 +92,31 @@ Google do cliente — e o botão *Atualizar da Meta agora*, logo abaixo do selet
 qualquer momento. Quando o padrão deixou de ser webhook, uma migração única passou para campanha
 os clientes que estavam em webhook só por padrão — quem tinha escolhido webhook no seletor ficou.
 
+### Vendas do CRM (faturamento, ROAS e ROI)
+
+Cada cliente tem um webhook de CRM com **duas URLs** (mesmo token, geradas juntas no painel da conta em
+Performance › Metas › *Configurar fontes e CRM*):
+
+| URL | Gatilho no CRM | O que conta |
+|---|---|---|
+| `/api/integrations/webhook/<token>` | lead criado | um lead por POST (`crm_leads`) |
+| `/api/integrations/webhook/<token>/vendas` | negócio ganho / venda | uma venda por POST, com o valor (`crm_sales`) |
+
+- O valor da venda é lido em qualquer nível do payload, JSON ou formulário (Kommo), pelas chaves
+  `valor_venda`, `sale_value`, `deal_value`, `amount_total`, `price`, `valor`, `amount`, `value`,
+  `revenue`, `total` — nessa ordem; aceita `1500`, `"1500.50"` e `"R$ 1.500,50"`. Venda sem valor
+  responde 422 (nada vira zero calado). O id do negócio (`deal_id`, `order_id`, `id`…) evita somar
+  o mesmo negócio duas vezes. Leitura em `src/lib/crm/webhook.ts`.
+- **No score** (geração de lead e e-commerce), por semana-ritual, a partir da primeira venda recebida
+  (`crmSaleFields` em `src/lib/repo.ts`):
+  - **Faturamento atribuído** (e-commerce) = soma das vendas do CRM — vence o faturamento da Meta;
+  - **ROAS** = faturamento ÷ verba de mídia da semana;
+  - **ROI (%)** = (faturamento − verba − fee V4) ÷ (verba + fee V4), com fee = MRR × 12 ÷ 52.
+- Pesos de Performance — geração de lead: Leads 30 · CPL 20 · Verba 20 · ROAS 15 · ROI 15;
+  e-commerce: Faturamento 35 · ROAS 25 · ROI 15 · Verba 15 · Ticket 10. Conta sem venda recebida
+  fica sem ROAS/ROI e os pesos se renormalizam — ninguém é punido por não ter o webhook de vendas.
+  ROAS e ROI ganham forecast no painel da conta, como os demais indicadores.
+
 ### O que a Meta conta como resultado
 
 Toda leitura da Meta (sync diário, aba Performance, Sincronizar do relatório e da ficha) segue a
@@ -135,9 +160,9 @@ um round-trip HTTP; com a função no padrão `iad1` (EUA), cada uma cruzava o c
 | Rota | Papel | Cadência | Responde |
 |---|---|---|---|
 | `/` | **Coordenador** | diária + semanal | "Quem eu ataco primeiro?" |
-| `/gt` | **GT** | quando a meta muda | Metas de cada conta. O número da semana vem só das integrações — não há preenchimento manual |
+| `/gt` | **GT** | quando a meta muda | Forecast × realizado de cada conta. O painel da conta (score, contato, alertas, forecast editável, fontes de dados, webhook do CRM e contas de anúncio) mora aqui. O número da semana vem só das integrações |
 | `/account` → `/account/[id]` | **Account** | a cada check-in | "O cliente está satisfeito e engajado?" |
-| `/clientes` | coordenação | — | cadastro, metas (com sugestão pela média de 90 dias) e fonte de leads, cliente a cliente ou em sequência |
+| `/clientes` | coordenação | — | CRM da carteira; abre filtrado nas contas de quem está logado (Account/GT); clicar numa conta abre a ficha |
 | `/clientes/[id]` | todos | — | decomposição, histórico, planos; botão **Churn** abre a solicitação de cancelamento da conta |
 | `/gt/integracoes` | admin | — | Meta Ads, Google Ads, webhooks de CRM e saúde de cada integração |
 | `/gt/canais` | admin | — | e-mail e WhatsApp das cobranças (credenciais nas variáveis de ambiente) |
@@ -162,6 +187,14 @@ Toda tela usa o mesmo cabeçalho (`PageHead`, em `src/components/page-head.tsx`)
 alta, o título, uma linha de contexto, as ações à direita e, quando a seção tem, as abas embaixo.
 Seções com abas (Configurações, Performance) declaram seção e abas no layout com `SectionProvider`;
 cada página só diz o próprio título.
+
+A ficha do cliente e Performance › Metas leem o forecast e as fontes pelas mesmas funções
+(`src/lib/crm/forecast-view.ts` e `src/lib/crm/sources.ts`): mesmo realizado, mesmo forecast, mesmo
+estado de integração nas duas telas. A aba *Forecast e fontes* da ficha substituiu as "metas por
+período" (`crm_goals`, que ficam no banco sem uso) — a meta é uma só, a régua do score.
+
+Todo check-in registrado também vira uma interação (`client_interactions.kind = 'checkin'`): aparece
+em "Última interação" de Clientes, no Contato do painel e no histórico da ficha.
 
 A ficha do cliente (`/clientes/[id]`) mostra o Health Score, o status da conta, as próximas
 ações (metas pendentes, check-in agendado, planos), o diagnóstico por dimensão com o

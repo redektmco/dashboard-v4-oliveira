@@ -37,7 +37,16 @@ function channelOf(channel: Channel, accounts: AccountResult[]): ChannelData {
   for (const a of ok)
     for (const p of a.data!.daily) {
       const cur = daily.get(p.day) ?? { day: p.day, spend: 0, results: 0 };
-      daily.set(p.day, { day: p.day, spend: cur.spend + p.spend, results: cur.results + p.results });
+      const add = (k: "resultSpend" | "impressions" | "clicks" | "revenue") => (cur[k] ?? 0) + (p[k] ?? 0);
+      daily.set(p.day, {
+        day: p.day,
+        spend: cur.spend + p.spend,
+        results: cur.results + p.results,
+        resultSpend: add("resultSpend"),
+        impressions: add("impressions"),
+        clicks: add("clicks"),
+        revenue: add("revenue"),
+      });
     }
   return {
     channel,

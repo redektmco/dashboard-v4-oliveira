@@ -12,6 +12,7 @@ import { all, insert } from "../db";
  */
 
 export type InteractionKind =
+  | "checkin"
   | "reuniao"
   | "ligacao"
   | "mensagem"
@@ -21,6 +22,7 @@ export type InteractionKind =
   | "observacao";
 
 export const INTERACTION_LABEL: Record<InteractionKind, string> = {
+  checkin: "Check-in",
   reuniao: "Reunião",
   ligacao: "Ligação",
   mensagem: "Mensagem",
@@ -59,13 +61,15 @@ export type NewInteraction = {
   channel?: string | null;
   /** Quando aconteceu. Sem isto, agora. */
   at?: string | null;
+  /** Snapshot de check-in que gerou a interação (um por check-in). */
+  checkinId?: number | null;
 };
 
 export const addInteraction = (i: NewInteraction, who: { id?: number | null; name?: string | null } | null) =>
   insert(
-    `INSERT INTO client_interactions (client_id, at, kind, channel, title, note, user_id, user_name)
-     VALUES (?, COALESCE(?::timestamptz, now()), ?, ?, ?, ?, ?, ?) RETURNING id`,
-    [i.clientId, i.at ?? null, i.kind, i.channel ?? null, i.title, i.note ?? "", who?.id ?? null, who?.name ?? null],
+    `INSERT INTO client_interactions (client_id, at, kind, channel, title, note, user_id, user_name, checkin_id)
+     VALUES (?, COALESCE(?::timestamptz, now()), ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    [i.clientId, i.at ?? null, i.kind, i.channel ?? null, i.title, i.note ?? "", who?.id ?? null, who?.name ?? null, i.checkinId ?? null],
   );
 
 export const deleteInteraction = (id: number) => all(`DELETE FROM client_interactions WHERE id = ?`, [id]);

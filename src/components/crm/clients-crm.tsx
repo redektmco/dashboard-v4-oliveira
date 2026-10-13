@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { importClientsSheet } from "@/actions";
 import type { CrmRow, CrmSummary } from "@/lib/crm/board";
 import { CORE_COLUMNS, visibleColumns, type ColumnId } from "@/lib/crm/columns";
@@ -23,14 +23,12 @@ import type { User } from "@/lib/model/types";
 import { ActionForm, SubmitButton } from "../form-controls";
 import { Modal } from "../modal";
 import { PageHead } from "../page-head";
-import { SidePanel } from "../side-panel";
 import { ActionMenu } from "../action-menu";
 import { Icon } from "../icon";
 import { brl, Empty } from "../ui";
 import { CrmBulkBar } from "./crm-bulk-bar";
 import { CrmFilters } from "./crm-filters";
 import { CrmKanban } from "./crm-kanban";
-import { CrmQuickPanel } from "./crm-quick-panel";
 import { CrmTable } from "./crm-table";
 
 /**
@@ -41,9 +39,14 @@ import { CrmTable } from "./crm-table";
  * dezenas de contas, não milhares — paginar no servidor custaria mais do que
  * resolve, e filtrar no cliente mantém a tela instantânea.
  *
+ * Clicar numa conta abre a ficha. O painel rápido (forecast, fontes de
+ * dados, webhook do CRM) mora em Performance › Metas.
+ *
  * Os filtros sobrevivem à navegação via `sessionStorage`: sair para a ficha
- * e voltar não desfaz a triagem. Links de fora (`?c=`, `?filtro=`, `?seq=`)
- * têm precedência sobre o que estava guardado.
+ * e voltar não desfaz a triagem. Links de fora (`?filtro=`) têm precedência
+ * sobre o que estava guardado; `?c=` (link antigo do painel) abre a ficha.
+ * Sem nada guardado, a tela já abre filtrada pela pessoa logada: o Account
+ * nas contas dele, o GT nas dele.
  */
 
 const PAGE = 25;
@@ -63,34 +66,24 @@ export function ClientsCrm({
   summary,
   users,
   isAdmin,
-  metaReady,
-  linkedAccounts,
-  googleReady,
-  linkedGoogle,
+  me,
 }: {
   rows: CrmRow[];
   summary: CrmSummary;
   users: User[];
   isAdmin: boolean;
-  /** Token do usuário de sistema da Meta configurado na Vercel. */
-  metaReady: boolean;
-  /** Contas de anúncio já vinculadas a algum cliente. */
-  linkedAccounts: string[];
-  /** Credencial do Google Ads configurada na Vercel. */
-  googleReady: boolean;
-  /** Contas do Google Ads já vinculadas a algum cliente. */
-  linkedGoogle: string[];
+  /** Quem está logado: Account e GT abrem a lista já filtrada nas próprias contas. */
+  me: { name: string; role: User["role"] };
 }) {
   const params = useSearchParams();
   const router = useRouter();
-  const pathname = usePathname();
 
   // Aba, filtros, colunas e ordenação andam juntos: é "a triagem atual", e é
   // ela inteira que vai e volta do `sessionStorage` numa tacada só.
   const legacy = fromLegacyFilter(params.get("filtro"));
   const [triage, setTriage] = useState<Stored>(() => ({
     view: legacy.view,
-    filters: legacy.filters,
+    filters: { ...legacy.filters, ...loginFilter(me, rows) },
     columns: CORE_COLUMNS,
     sort: "risco",
     dir: "desc",
@@ -101,7 +94,6 @@ export function ClientsCrm({
   const patch = (p: Partial<Stored>) => setTriage((t) => ({ ...t, ...p }));
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [openId, setOpenId] = useState<number | null>(null);
   const [page, setPage] = useState(0);
   const [importing, setImporting] = useState(false);
   const [wide, setWide] = useState(true);
@@ -172,31 +164,12 @@ export function ClientsCrm({
     setPage(0);
   };
 
-  /* -------------------- links de fora: ?c= e ?seq= ------------------- */
+  /* ------------- clicar abre a ficha; ?c= antigo também --------------- */
+  const open = (id: number) => router.push(`/clientes/${id}`);
   const cParam = params.get("c");
-  const seqParam = params.get("seq");
-  const [handled, setHandled] = useState<string | null>(null);
-  const key = `${cParam}|${seqParam}|${params.get("filtro")}`;
-  if (handled !== key) {
-    setHandled(key);
-    if (cParam && rows.some((r) => r.id === Number(cParam))) setOpenId(Number(cParam));
-    else if (seqParam && list[0]) setOpenId(list[0].id);
-  }
-
-  const row = rows.find((r) => r.id === openId) ?? null;
-  const idx = row ? list.findIndex((r) => r.id === row.id) : -1;
-
-  const go = (step: number) => {
-    if (!list.length) return;
-    const i = idx < 0 ? 0 : (idx + step + list.length) % list.length;
-    setOpenId(list[i].id);
-    setPage(Math.floor(i / PAGE));
-  };
-
-  const close = () => {
-    setOpenId(null);
-    if (cParam || seqParam) router.replace(pathname, { scroll: false });
-  };
+  useEffect(() => {
+    if (cParam && /^\d+$/.test(cParam)) router.replace(`/clientes/${cParam}`);
+  }, [cParam, router]);
 
   /* --------------------------- seleção ------------------------------ */
   const toggle = (id: number, on: boolean) =>
@@ -320,8 +293,8 @@ export function ClientsCrm({
           users={users}
           groupBy={groupBy}
           onGroupBy={(g) => patch({ groupBy: g })}
-          openId={openId}
-          onOpen={(id) => setOpenId((v) => (v === id ? null : id))}
+          openId={null}
+          onOpen={open}
         />
       ) : (
         <section className="panel">
@@ -347,8 +320,8 @@ export function ClientsCrm({
               selected={selected}
               onToggle={toggle}
               onToggleAll={toggleAll}
-              onOpen={(id) => setOpenId((v) => (v === id ? null : id))}
-              openId={openId}
+              onOpen={open}
+              openId={null}
               sort={sort}
               dir={dir}
               onSort={onSort}
@@ -374,24 +347,6 @@ export function ClientsCrm({
           )}
         </section>
       )}
-
-      <SidePanel open={Boolean(row)} onClose={close} label="Visualização rápida do cliente" width={440}>
-        {row && (
-          <CrmQuickPanel
-            key={row.id}
-            row={row}
-            position={idx >= 0 ? { i: idx + 1, n: list.length } : null}
-            onPrev={() => go(-1)}
-            onNext={() => go(1)}
-            onClose={close}
-            isAdmin={isAdmin}
-            metaReady={metaReady}
-            linkedAccounts={linkedAccounts}
-            googleReady={googleReady}
-            linkedGoogle={linkedGoogle}
-          />
-        )}
-      </SidePanel>
 
       <ImportDialog open={importing} onClose={() => setImporting(false)} />
     </div>
@@ -466,6 +421,17 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose: () => void })
       </ActionForm>
     </Modal>
   );
+}
+
+/**
+ * Filtro inicial pela pessoa logada: Account vê as contas em que é Account,
+ * GT as que é GT. Só aplica se ela de fato tem conta na carteira — senão a
+ * tela abriria vazia sem explicação. Coordenação e social veem tudo.
+ */
+function loginFilter(me: { name: string; role: User["role"] }, rows: CrmRow[]): Partial<Filters> {
+  if (me.role === "account" && rows.some((r) => r.accountName === me.name)) return { account: me.name };
+  if (me.role === "gt" && rows.some((r) => r.gtName === me.name)) return { gt: me.name };
+  return {};
 }
 
 const uniq = (list: (string | null)[]) => [...new Set(list.filter((x): x is string => Boolean(x)))].sort((a, b) => a.localeCompare(b, "pt-BR"));

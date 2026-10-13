@@ -1034,6 +1034,8 @@ const crmRow = (over: Partial<CrmRow> = {}): CrmRow => ({
   hook: null,
   meta: [],
   google: [],
+  forecast: [],
+  sources: [],
   ...over,
 });
 

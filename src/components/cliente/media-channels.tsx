@@ -38,8 +38,8 @@ export function MediaChannels({ split, clientId }: { split: MediaSplit; clientId
         <Card className="px-5 py-8 text-center">
           <p className="text-[13px] text-ink-400">
             Nenhuma conta de mídia vinculada a este cliente. Vincule em{" "}
-            <Link href={`/clientes?c=${clientId}`} className="text-ink-200 underline hover:text-ink-100">
-              Clientes
+            <Link href={`/gt?c=${clientId}`} className="text-ink-200 underline hover:text-ink-100">
+              Performance › Metas
             </Link>{" "}
             para ver Meta e Google separados.
           </p>

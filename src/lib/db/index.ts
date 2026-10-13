@@ -951,13 +951,45 @@ ALTER TABLE meta_ad_accounts ADD COLUMN IF NOT EXISTS unread_events JSONB;
 ALTER TABLE google_insights ADD COLUMN IF NOT EXISTS lead_spend DOUBLE PRECISION NOT NULL DEFAULT 0;
 ALTER TABLE google_insights ALTER COLUMN conversions TYPE DOUBLE PRECISION;
 ALTER TABLE google_ad_accounts ADD COLUMN IF NOT EXISTS unread_events JSONB;
+
+-- Vendas do CRM: segunda URL do mesmo webhook do cliente
+-- (/api/integrations/webhook/<token>/vendas). Cada venda ganha, datada pela
+-- semana-ritual que fecha, com o valor que o CRM mandou. Mesmo principio de
+-- crm_leads: nunca sobrescreve, a soma da semana e um SUM desta tabela.
+-- Alimenta Faturamento, ROAS e ROI no score (geracao de lead e e-commerce).
+CREATE TABLE IF NOT EXISTS crm_sales (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  ref_date DATE NOT NULL,
+  received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  dedup_key TEXT,
+  value DOUBLE PRECISION NOT NULL DEFAULT 0,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+CREATE INDEX IF NOT EXISTS idx_crm_sales_client ON crm_sales (client_id, ref_date);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_sales_dedup
+  ON crm_sales (client_id, dedup_key) WHERE dedup_key IS NOT NULL;
+ALTER TABLE crm_integrations ADD COLUMN IF NOT EXISTS last_sale_at TIMESTAMPTZ;
+
+-- Check-in vira interacao: alimenta "Ultima interacao" da listagem, o Contato
+-- do painel e o historico da ficha. checkin_id liga ao snapshot e evita
+-- duplicar; o INSERT abaixo traz os check-ins que ja existiam.
+ALTER TABLE client_interactions DROP CONSTRAINT IF EXISTS client_interactions_kind_check;
+ALTER TABLE client_interactions ADD CONSTRAINT client_interactions_kind_check
+  CHECK (kind IN ('checkin','reuniao','ligacao','mensagem','feedback','reclamacao','acordo','observacao'));
+ALTER TABLE client_interactions ADD COLUMN IF NOT EXISTS checkin_id INTEGER REFERENCES checkin_snapshots(id) ON DELETE CASCADE;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_interactions_checkin ON client_interactions (checkin_id) WHERE checkin_id IS NOT NULL;
+INSERT INTO client_interactions (client_id, at, kind, title, note, user_id, user_name, checkin_id)
+  SELECT s.client_id, s.filled_at, 'checkin', 'Check-in registrado', COALESCE(s.data->>'summary', ''), s.filled_by, u.name, s.id
+  FROM checkin_snapshots s LEFT JOIN users u ON u.id = s.filled_by
+  WHERE NOT EXISTS (SELECT 1 FROM client_interactions i WHERE i.checkin_id = s.id);
 `;
 
 /**
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-10-13.google-por-campanha";
+export const SCHEMA_VERSION = "2026-10-13.crm-vendas-checkin";
 
 let migrated = false;
 

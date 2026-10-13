@@ -107,7 +107,15 @@ export async function googlePerformance(
       .filter((d) => d.segments?.date && d.segments.date >= cur.since)
       .map((d) => {
         const t = googleTotals(d.metrics, type);
-        return { day: d.segments!.date!, spend: t.spend, results: t.results };
+        return {
+          day: d.segments!.date!,
+          spend: t.spend,
+          results: t.results,
+          resultSpend: t.results > 0 ? t.spend : 0,
+          impressions: t.impressions,
+          clicks: t.clicks,
+          revenue: t.revenue,
+        };
       }),
     campaigns,
   };

@@ -180,3 +180,161 @@ export function DailySpendChart({
     </div>
   );
 }
+
+/* ---------------------- métrica escolhida, dia a dia --------------------- */
+
+/** Cor da barra de uma métrica que é razão (CPL, CTR…): o total, não um canal. */
+const TOTAL_COLOR = "#8a8a8a";
+
+/**
+ * Gráfico de uma métrica escolhida no seletor, dia a dia. Métrica que soma
+ * entre canais (leads, cliques) empilha Meta e Google como o de investimento;
+ * razão (CPL, CTR, CPC…) desenha uma barra só com o valor do total e mostra
+ * cada canal no balão.
+ */
+export function DailyMetricChart({
+  days,
+  channels,
+  additive,
+  format,
+  label,
+  height = 200,
+}: {
+  days: { day: string; parts: Partial<Record<Channel, number | null>>; total: number | null }[];
+  channels: Channel[];
+  additive: boolean;
+  format: (n: number) => string;
+  label: string;
+  height?: number;
+}) {
+  const wrap = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(720);
+  const [hover, setHover] = useState<number | null>(null);
+
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setWidth(Math.max(280, Math.round(e.contentRect.width))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const H = height;
+  const pad = { l: 56, r: 8, t: 12, b: 28 };
+  const plotW = width - pad.l - pad.r;
+  const plotH = H - pad.t - pad.b;
+  const totals = days.map((d) => d.total ?? 0);
+  const max = niceMax(Math.max(0, ...totals));
+  const ticks = [0, 1, 2, 3].map((i) => (max / 3) * i);
+  const slot = plotW / Math.max(days.length, 1);
+  const barW = Math.max(2, Math.min(28, slot - (days.length > 60 ? 1 : 4)));
+  const y = (v: number) => pad.t + plotH - (v / max) * plotH;
+
+  const labelIdx = useMemo(() => {
+    const n = days.length;
+    if (n <= 1) return new Set([0]);
+    const step = Math.max(1, Math.round((n - 1) / 4));
+    const s = new Set<number>();
+    let last = 0;
+    for (let i = 0; i < n; i += step) s.add((last = i));
+    if (last !== n - 1 && n - 1 - last < step / 2) s.delete(last);
+    s.add(n - 1);
+    return s;
+  }, [days.length]);
+
+  const h = hover !== null ? days[hover] : null;
+  const bar = (x: number, top: number, bottom: number, fill: string, round: boolean, key: string) => {
+    const hgt = Math.max(0, bottom - top);
+    const r = round ? Math.min(4, barW / 2, hgt) : 0;
+    return round ? (
+      <path
+        key={key}
+        d={`M${x},${top + hgt} V${top + r} Q${x},${top} ${x + r},${top} H${x + barW - r} Q${x + barW},${top} ${x + barW},${top + r} V${top + hgt} Z`}
+        fill={fill}
+      />
+    ) : (
+      <rect key={key} x={x} y={top} width={barW} height={hgt} fill={fill} />
+    );
+  };
+
+  return (
+    <div ref={wrap} className="relative w-full" onMouseLeave={() => setHover(null)}>
+      <svg width={width} height={H} role="img" aria-label={`${label} por dia`} className="block">
+        {ticks.map((t) => (
+          <g key={t}>
+            <line x1={pad.l} x2={width - pad.r} y1={y(t)} y2={y(t)} stroke="rgba(255,255,255,0.06)" />
+            <text x={0} y={y(t) + 4} className="fill-ink-500 font-mono text-[11px]">
+              {t === 0 ? "0" : format(t)}
+            </text>
+          </g>
+        ))}
+        {days.map((d, i) => {
+          const x = pad.l + i * slot + (slot - barW) / 2;
+          let segs: { key: string; v: number; fill: string }[] = [];
+          if (additive) segs = channels.map((c) => ({ key: c, v: d.parts[c] ?? 0, fill: CHANNEL_COLOR[c] })).filter((s) => s.v > 0);
+          else if (d.total) segs = [{ key: "total", v: d.total, fill: channels.length === 1 ? CHANNEL_COLOR[channels[0]] : TOTAL_COLOR }];
+          let base = 0;
+          return (
+            <g key={d.day} opacity={hover === null || hover === i ? 1 : 0.55}>
+              {segs.map((s, k) => {
+                const y0 = y(base);
+                base += s.v;
+                return bar(x, y(base), y0 - (k > 0 ? 2 : 0), s.fill, k === segs.length - 1, s.key);
+              })}
+              <rect
+                x={pad.l + i * slot}
+                y={pad.t}
+                width={slot}
+                height={plotH}
+                fill="transparent"
+                onMouseEnter={() => setHover(i)}
+                onFocus={() => setHover(i)}
+                tabIndex={0}
+                aria-label={`${dayLabel(d.day)}: ${d.total === null ? "—" : format(d.total)}`}
+              />
+            </g>
+          );
+        })}
+        {days.map((d, i) =>
+          labelIdx.has(i) ? (
+            <text
+              key={d.day}
+              x={Math.min(Math.max(pad.l + i * slot + slot / 2, pad.l + 14), width - pad.r - 14)}
+              y={H - 8}
+              textAnchor="middle"
+              className="fill-ink-500 font-mono text-[11px]"
+            >
+              {dayLabel(d.day)}
+            </text>
+          ) : null,
+        )}
+      </svg>
+
+      {h && hover !== null && (
+        <div
+          className="pointer-events-none absolute top-2 z-10 flex min-w-[170px] flex-col gap-1.5 rounded-lg border border-[var(--border-strong)] bg-ink-800 px-3 py-2.5 shadow-[var(--shadow-2)]"
+          style={{ left: Math.min(Math.max(pad.l + hover * slot + slot / 2 - 85, 0), width - 180) }}
+        >
+          <span className="text-[11px] font-medium text-ink-400">
+            {label} · {dayLabel(h.day)}
+          </span>
+          {channels.map((c) => (
+            <span key={c} className="flex items-center justify-between gap-4 text-[12px]">
+              <span className="flex items-center gap-1.5 text-ink-300">
+                <span className="h-2 w-2 rounded-sm" style={{ background: CHANNEL_COLOR[c] }} />
+                {c === "meta" ? "Meta Ads" : "Google Ads"}
+              </span>
+              <span className="font-mono font-semibold text-ink-100">{h.parts[c] == null ? "—" : format(h.parts[c]!)}</span>
+            </span>
+          ))}
+          {channels.length > 1 && (
+            <span className="flex items-center justify-between gap-4 border-t border-[var(--border-hair)] pt-1.5 text-[12px]">
+              <span className="text-ink-400">Total</span>
+              <span className="font-mono font-semibold text-ink-100">{h.total === null ? "—" : format(h.total)}</span>
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
