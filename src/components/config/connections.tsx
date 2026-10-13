@@ -328,20 +328,9 @@ export function MetaConnectDialog({
               Contas de anúncio › marque a conta (Ver desempenho já basta). Depois, feche e abra esta janela.
             </p>
           )}
-          <label className="block">
-            <span className="label">O que conta como lead</span>
-            <select name="lead_metric" className="field mt-1" defaultValue="both">
-              {(["both", "lead", "messaging"] as LeadMetric[]).map((m) => (
-                <option key={m} value={m}>
-                  {LEAD_METRIC_LABEL[m]}
-                </option>
-              ))}
-            </select>
-            <span className="mt-1 block text-[11px] text-ink-500">
-              Campanha de WhatsApp/Direct gera conversas, não leads de formulário.
-              {!leadSource && " A fonte dos leads (campanha, webhook ou os dois) é escolhida no painel do cliente."}
-            </span>
-          </label>
+          {/* Formulário + conversas para todos; quem precisar de outra regra
+              troca depois no menu da conta vinculada. */}
+          <input type="hidden" name="lead_metric" value="both" />
           {leadSource && <LeadSourceField initial={leadSource} />}
           <div className="modal-actions">
             <button type="button" className="btn" onClick={onClose}>
