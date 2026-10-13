@@ -1,4 +1,4 @@
-import { listMetaLinks, saveMetaDaily, saveMetaError, saveMetaWeeks, today } from "../repo";
+import { listMetaLinks, saveMetaDaily, saveMetaError, saveMetaUnread, saveMetaWeeks, today } from "../repo";
 import { dailySyncRange } from "../media-daily";
 import { ritualWeekEnd } from "../week";
 import { fetchDailySpend, fetchWeeklyInsights } from "./graph";
@@ -20,7 +20,7 @@ export type SyncResult = { accounts: number; ok: number; failed: { account: stri
  * Mudou a regra? Troque a string: o próximo sync diário relê 12 semanas de
  * todas as contas, porque o que já estava gravado seguia a regra antiga.
  */
-export const META_RULES = "2026-10-13.conversions";
+export const META_RULES = "2026-10-13.resultado-otimizado";
 
 /**
  * Puxa as últimas `weeks` semanas de cada conta ativa (ou só de `adAccountId`,
@@ -46,7 +46,8 @@ export async function syncMeta({ weeks = 3, adAccountId, clientId }: { weeks?: n
             fetchDailySpend(l.ad_account_id, days),
           ]);
           await saveMetaDaily(l.ad_account_id, daily);
-          await saveMetaWeeks(l.ad_account_id, weekly);
+          await saveMetaWeeks(l.ad_account_id, weekly.weeks);
+          await saveMetaUnread(l.ad_account_id, weekly.unread);
           result.ok++;
         } catch (e) {
           const error = e instanceof Error ? e.message : String(e);

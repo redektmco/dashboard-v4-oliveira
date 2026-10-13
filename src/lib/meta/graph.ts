@@ -3,7 +3,17 @@
  * de sistema da unidade — com acesso a todas as BMs — em META_ACCESS_TOKEN.
  * O token nunca vai para o banco nem para o navegador.
  */
-import { EMPTY_WEEK, EVENT_FIELDS, campaignTotals, parseInsight, weekRange, type CampaignRow, type InsightRow, type MetaWeek } from "./metrics";
+import {
+  EMPTY_WEEK,
+  EVENT_FIELDS,
+  campaignGoals,
+  campaignTotals,
+  parseInsight,
+  unreadEvents,
+  weekRange,
+  type AdSetGoal,
+  type CampaignGoals,
+  type UnreadEvent, type CampaignRow, type InsightRow, type MetaWeek } from "./metrics";
 import { fillDays } from "../media-daily";
 
 const VERSION = process.env.META_GRAPH_VERSION || "v23.0";
@@ -117,20 +127,53 @@ export async function listAdAccounts(): Promise<AdAccountList> {
  * Verba, alcance e cliques vêm da conta (alcance não soma entre campanhas);
  * leads, conversas e a verba que os gerou vêm campanha a campanha.
  */
-export async function fetchWeeklyInsights(adAccountId: string, refs: string[]): Promise<Map<string, MetaWeek>> {
+/**
+ * O que cada campanha otimiza, pelos conjuntos de anúncios (inclusive pausados,
+ * arquivados e excluídos: a verba do período pode ter vindo deles). Falhar
+ * aqui não derruba a leitura — sem isso, valem os eventos de lead conhecidos.
+ */
+export async function fetchCampaignGoals(adAccountId: string): Promise<CampaignGoals> {
+  try {
+    const adsets = await allPages<AdSetGoal>(`${adAccountId}/adsets`, {
+      fields: "campaign_id,optimization_goal,promoted_object",
+      effective_status: JSON.stringify(["ACTIVE", "PAUSED", "CAMPAIGN_PAUSED", "ARCHIVED", "DELETED", "IN_PROCESS", "WITH_ISSUES"]),
+    });
+    return campaignGoals(adsets);
+  } catch {
+    return new Map();
+  }
+}
+
+/** Junta os alertas de várias semanas por campanha (verba e eventos somados). */
+export function mergeUnread(list: UnreadEvent[]): UnreadEvent[] {
+  const by = new Map<string, UnreadEvent>();
+  for (const u of list) {
+    const cur = by.get(u.campaign) ?? { campaign: u.campaign, spend: 0, events: {} };
+    cur.spend = Math.round((cur.spend + u.spend) * 100) / 100;
+    for (const [k, v] of Object.entries(u.events)) cur.events[k] = (cur.events[k] ?? 0) + v;
+    by.set(u.campaign, cur);
+  }
+  return [...by.values()].sort((a, b) => b.spend - a.spend);
+}
+
+export async function fetchWeeklyInsights(
+  adAccountId: string,
+  refs: string[],
+): Promise<{ weeks: Map<string, MetaWeek>; unread: UnreadEvent[] }> {
   const time_ranges = JSON.stringify(refs.map(weekRange));
-  const [page, campaigns] = await Promise.all([
+  const [page, campaigns, goals] = await Promise.all([
     get<Page<InsightRow>>(`${adAccountId}/insights`, {
       level: "account",
       fields: `spend,reach,impressions,${EVENT_FIELDS}`,
       time_ranges,
       limit: "100",
     }),
-    allPages<CampaignRow>(`${adAccountId}/insights`, {
+    allPages<CampaignRow & { campaign_name?: string }>(`${adAccountId}/insights`, {
       level: "campaign",
-      fields: "campaign_id,spend,actions,conversions",
+      fields: "campaign_id,campaign_name,spend,actions,conversions",
       time_ranges,
     }),
+    fetchCampaignGoals(adAccountId),
   ]);
   const byUntil = new Map(page.data.map((r) => [r.date_stop, r]));
   const campaignsByUntil = new Map<string, CampaignRow[]>();
@@ -139,9 +182,9 @@ export async function fetchWeeklyInsights(adAccountId: string, refs: string[]): 
   for (const ref of refs) {
     const row = byUntil.get(ref);
     const camps = campaignsByUntil.get(ref);
-    out.set(ref, row ? { ...parseInsight(row), ...(camps ? campaignTotals(camps) : {}) } : { ...EMPTY_WEEK });
+    out.set(ref, row ? { ...parseInsight(row), ...(camps ? campaignTotals(camps, goals) : {}) } : { ...EMPTY_WEEK });
   }
-  return out;
+  return { weeks: out, unread: mergeUnread(unreadEvents(campaigns, goals)) };
 }
 
 /** Verba por dia de `since` a `until` (`time_increment=1`; zero no dia sem entrega). */

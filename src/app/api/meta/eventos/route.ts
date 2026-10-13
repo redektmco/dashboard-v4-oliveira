@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
-import { allPages, metaConfigured } from "@/lib/meta/graph";
-import { parseInsight, type InsightRow } from "@/lib/meta/metrics";
+import { allPages, fetchCampaignGoals, metaConfigured } from "@/lib/meta/graph";
+import { parseInsight, unreadEvents, type InsightRow } from "@/lib/meta/metrics";
 import { listMetaLinks, today } from "@/lib/repo";
 import { validPeriod } from "@/lib/reports/input";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-type Row = InsightRow & { campaign_name?: string };
+type Row = InsightRow & { campaign_name?: string; campaign_id?: string };
 
 /**
  * Diagnóstico: o que a Meta devolve, campanha a campanha, para as contas de
@@ -34,20 +34,25 @@ export async function GET(req: Request) {
   const contas = await Promise.all(
     links.map(async (l) => {
       try {
-        const rows = await allPages<Row>(`${l.ad_account_id}/insights`, {
-          level: "campaign",
-          fields: "campaign_name,spend,actions,conversions",
-          time_range,
-        });
+        const [rows, goals] = await Promise.all([
+          allPages<Row>(`${l.ad_account_id}/insights`, {
+            level: "campaign",
+            fields: "campaign_id,campaign_name,spend,actions,conversions",
+            time_range,
+          }),
+          fetchCampaignGoals(l.ad_account_id),
+        ]);
         return {
           conta: l.name || l.ad_account_id,
           id: l.ad_account_id,
           ativa: l.active === 1,
           lead_conta_como: l.lead_metric,
+          nao_contados: unreadEvents(rows, goals),
           campanhas: rows.map((r) => ({
             campanha: r.campaign_name,
             verba: Number(r.spend) || 0,
-            painel: { leads_site: parseInsight(r).leads, conversas: parseInsight(r).conversations },
+            otimiza: (r.campaign_id ? goals.get(r.campaign_id) : undefined)?.map((g) => g.key) ?? [],
+            painel: { leads: parseInsight(r, goals).leads, conversas: parseInsight(r, goals).conversations, compras: parseInsight(r, goals).purchases },
             actions: Object.fromEntries((r.actions ?? []).map((a) => [a.action_type, Number(a.value)])),
             conversions: Object.fromEntries((r.conversions ?? []).map((a) => [a.action_type, Number(a.value)])),
           })),

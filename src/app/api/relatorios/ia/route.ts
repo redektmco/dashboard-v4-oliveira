@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { getClient } from "@/lib/repo";
 import { AiError, writeBlockText } from "@/lib/reports/ai";
+import { clientContext } from "@/lib/reports/ai-client";
 import { getReport, reportData } from "@/lib/reports/db";
 import { validPeriod } from "@/lib/reports/input";
 
@@ -26,7 +27,10 @@ export async function POST(req: Request) {
 
   const str = (k: string, max: number) => (typeof body[k] === "string" ? (body[k] as string).slice(0, max) : "");
   try {
-    const data = await reportData(client ? { id: client.id, name: client.name, leadSource: client.lead_source } : null, period.start, period.end, report.live);
+    const [data, context] = await Promise.all([
+      reportData(client ? { id: client.id, name: client.name, leadSource: client.lead_source } : null, period.start, period.end, report.live),
+      client ? clientContext(client.id, period.start, period.end) : Promise.resolve(""),
+    ]);
     const text = await writeBlockText({
       data,
       kind: body.kind === "heading" ? "heading" : "text",
@@ -34,6 +38,7 @@ export async function POST(req: Request) {
       instruction: str("instruction", 1000),
       pageContext: str("pageContext", 4000),
       maxWords: Number(body.maxWords) || 120,
+      clientContext: context,
     });
     return NextResponse.json({ text });
   } catch (e) {

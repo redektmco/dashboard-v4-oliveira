@@ -110,12 +110,91 @@ const CONVERSATION_TYPES = [
 const PURCHASE_TYPES = ["purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase"];
 const CLICK_TYPES = ["link_click"];
 
-export function parseInsight(row: InsightRow): MetaWeek {
+/* --------------------- o que a campanha otimiza --------------------- */
+
+/**
+ * O evento que um conjunto de anúncios otimiza — é o que o Gerenciador chama
+ * de "Resultados". Contar por ele (e não só por uma lista fixa de nomes) é o
+ * que pega Contato, Agendamento, Inscrição e conversão personalizada sem
+ * depender de alguém lembrar de cadastrar cada nome de evento.
+ */
+export type AdSetGoal = {
+  campaign_id?: string;
+  optimization_goal?: string;
+  promoted_object?: {
+    custom_event_type?: string;
+    custom_conversion_id?: string;
+    custom_event_str?: string;
+  };
+};
+
+export type OptimizedEvent = { key: string; kind: "lead" | "conversation" | "purchase"; types: string[] };
+
+/** Eventos padrão do pixel que são lead para uma conta de geração de leads. */
+const LEAD_EVENTS = new Set([
+  "LEAD",
+  "CONTACT",
+  "SCHEDULE",
+  "SUBMIT_APPLICATION",
+  "COMPLETE_REGISTRATION",
+  "START_TRIAL",
+  "SUBSCRIBE",
+  "FIND_LOCATION",
+]);
+
+/** Os nomes que um evento padrão pode ter na resposta (em `actions` ou em `conversions`). */
+const eventTypes = (event: string): string[] => {
+  const e = event.toLowerCase();
+  return [`offsite_conversion.fb_pixel_${e}`, `${e}_total`, `${e}_website`, `onsite_web_${e}`, e];
+};
+
+export function optimizedEvent(a: AdSetGoal): OptimizedEvent | null {
+  const goal = a.optimization_goal ?? "";
+  const po = a.promoted_object ?? {};
+  if (goal === "LEAD_GENERATION" || goal === "QUALITY_LEAD")
+    return { key: "form", kind: "lead", types: ["onsite_conversion.lead_grouped", "lead", "leadgen_grouped"] };
+  if (goal === "CONVERSATIONS" || goal === "MESSAGING_PURCHASE_CONVERSION" || goal === "MESSAGING_APPOINTMENT_CONVERSION")
+    return { key: "conv", kind: "conversation", types: CONVERSATION_TYPES };
+  if (po.custom_conversion_id)
+    return { key: `custom:${po.custom_conversion_id}`, kind: "lead", types: [`offsite_conversion.custom.${po.custom_conversion_id}`] };
+  const ev = (po.custom_event_type ?? "").toUpperCase();
+  if (ev === "PURCHASE") return { key: "purchase", kind: "purchase", types: PURCHASE_TYPES };
+  if (LEAD_EVENTS.has(ev)) {
+    const types = ev === "LEAD" ? [...LEAD_TYPES, ...eventTypes(ev)] : ev === "CONTACT" ? [...CONTACT_TYPES, ...eventTypes(ev)] : eventTypes(ev);
+    return { key: ev, kind: "lead", types };
+  }
+  if (ev === "OTHER" && po.custom_event_str) return { key: `other:${po.custom_event_str}`, kind: "lead", types: ["offsite_conversion.fb_pixel_custom"] };
+  return null;
+}
+
+/** Eventos otimizados por campanha (vários conjuntos podem otimizar coisas diferentes). */
+export type CampaignGoals = Map<string, OptimizedEvent[]>;
+
+export function campaignGoals(adsets: AdSetGoal[]): CampaignGoals {
+  const out: CampaignGoals = new Map();
+  for (const a of adsets) {
+    const ev = optimizedEvent(a);
+    if (!ev || !a.campaign_id) continue;
+    const list = out.get(a.campaign_id) ?? [];
+    if (!list.some((x) => x.key === ev.key)) list.push(ev);
+    out.set(a.campaign_id, list);
+  }
+  return out;
+}
+
+/** Leads do que a campanha otimiza (o maior entre os eventos de lead, para não contar o mesmo envio duas vezes). */
+function optimizedLeads(list: Action[], goals: OptimizedEvent[] | undefined): number {
+  if (!goals) return 0;
+  return Math.max(0, ...goals.filter((g) => g.kind === "lead").map((g) => pick(list, g.types)));
+}
+
+export function parseInsight(row: InsightRow & { campaign_id?: string }, goals?: CampaignGoals): MetaWeek {
+  const ev = events(row);
   return {
     spend: num(row.spend),
-    leads: siteLeads(events(row)),
-    conversations: pick(events(row), CONVERSATION_TYPES),
-    purchases: pick(events(row), PURCHASE_TYPES),
+    leads: Math.max(siteLeads(ev), optimizedLeads(ev, row.campaign_id ? goals?.get(row.campaign_id) : undefined)),
+    conversations: pick(ev, CONVERSATION_TYPES),
+    purchases: pick(ev, PURCHASE_TYPES),
     revenue: pick(eventValues(row), PURCHASE_TYPES),
     reach: num(row.reach),
     impressions: num(row.impressions),
@@ -144,12 +223,13 @@ type CampaignTotals = Pick<MetaWeek, "leads" | "conversations" | "leadSpend" | "
  * que separa "Contatos no site" de "Visitas ao Instagram" numa mesma conta:
  * a conta inteira junta a verba das duas, e o CPL sairia errado.
  */
-export function campaignTotals(rows: CampaignRow[]): CampaignTotals {
+export function campaignTotals(rows: CampaignRow[], goals?: CampaignGoals): CampaignTotals {
   const out: CampaignTotals = { leads: 0, conversations: 0, leadSpend: 0, convSpend: 0, resultSpend: 0 };
   for (const r of rows) {
     const spend = num(r.spend);
-    const leads = siteLeads(events(r));
-    const conv = pick(events(r), CONVERSATION_TYPES);
+    const w = parseInsight({ ...r, date_start: r.date_start, date_stop: r.date_stop }, goals);
+    const leads = w.leads;
+    const conv = w.conversations;
     out.leads += leads;
     out.conversations += conv;
     if (leads > 0) out.leadSpend += spend;
@@ -157,6 +237,54 @@ export function campaignTotals(rows: CampaignRow[]): CampaignTotals {
     if (leads > 0 || conv > 0) out.resultSpend += spend;
   }
   return out;
+}
+
+/* ------------------------------ vigia ------------------------------ */
+
+/**
+ * Eventos que não são resultado (engajamento, navegação): nunca viram alerta.
+ * Todo o resto que aparece numa campanha com verba e resultado zero vira.
+ */
+const NOT_RESULTS = /^(link_click|landing_page_view|page_engagement|post_engagement|post_reaction|post|comment|like|video_view|photo_view|onsite_conversion\.post_save|post_interaction_gross|post_interaction_net|onsite_conversion\.flow_complete|view_content|offsite_conversion\.fb_pixel_view_content|.*view_content.*|omni_view_content|search|.*_search|add_to_wishlist.*|frequency_.*)$/;
+
+export type UnreadEvent = { campaign: string; spend: number; events: Record<string, number> };
+
+/**
+ * Campanhas com verba, sem nenhum lead, conversa ou compra contado, mas com
+ * eventos de conversão na resposta — o painel estaria mostrando zero onde o
+ * Gerenciador mostra resultado. É o que acende o alerta da conta.
+ */
+export function unreadEvents(
+  rows: (CampaignRow & { campaign_name?: string })[],
+  goals?: CampaignGoals,
+): UnreadEvent[] {
+  const out: UnreadEvent[] = [];
+  for (const r of rows) {
+    const spend = num(r.spend);
+    if (spend <= 0) continue;
+    const w = parseInsight({ ...r, date_start: r.date_start, date_stop: r.date_stop }, goals);
+    if (w.leads > 0 || w.conversations > 0 || w.purchases > 0) continue;
+    const found: Record<string, number> = {};
+    for (const a of events(r)) {
+      const v = num(a.value);
+      if (v > 0 && !NOT_RESULTS.test(a.action_type)) found[a.action_type] = Math.max(found[a.action_type] ?? 0, v);
+    }
+    if (Object.keys(found).length) out.push({ campaign: r.campaign_name || r.campaign_id || "campanha", spend, events: found });
+  }
+  return out;
+}
+
+/** Uma linha para o alerta: "Campanha X (R$ 120): 31 × schedule_total". */
+export function describeUnread(list: UnreadEvent[] | null | undefined): string | null {
+  if (!list?.length) return null;
+  const top = list[0];
+  const ev = Object.entries(top.events)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([k, v]) => `${v} × ${k}`)
+    .join(", ");
+  const more = list.length > 1 ? ` e mais ${list.length - 1} campanha(s)` : "";
+  return `Evento não contado como resultado — ${top.campaign}: ${ev}${more}`;
 }
 
 export function leadsOf(w: MetaWeek, metric: LeadMetric): number {

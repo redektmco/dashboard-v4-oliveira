@@ -92,6 +92,23 @@ Google do cliente — e o botão *Atualizar da Meta agora*, logo abaixo do selet
 qualquer momento. Quando o padrão deixou de ser webhook, uma migração única passou para campanha
 os clientes que estavam em webhook só por padrão — quem tinha escolhido webhook no seletor ficou.
 
+### O que a Meta conta como resultado
+
+Toda leitura da Meta (sync diário, aba Performance, Sincronizar do relatório e da ficha) segue a
+mesma regra, em `src/lib/meta/metrics.ts`:
+
+- Pede `actions` **e** `conversions` — eventos padrão do pixel como Contato e Agendar vêm só no
+  segundo (era por isso que "Contatos no site" aparecia como zero).
+- **Resultado = o evento que a campanha otimiza**, lido dos conjuntos de anúncios
+  (`optimization_goal` + `promoted_object`): formulário, Contato, Agendar, Inscrição, Cadastro,
+  conversão personalizada, conversa ou compra — o mesmo critério da coluna "Resultados" do
+  Gerenciador. Além disso, lead de site (formulário ou contato) conta mesmo sem ser o objetivo.
+- **Vigia:** a cada sync, campanha com verba, resultado zero e algum evento de conversão na resposta
+  fica registrada (`meta_ad_accounts.unread_events`) e aparece em amarelo na conta vinculada e como
+  alerta em Integrações da ficha, com o link *Ver eventos* (`/api/meta/eventos?cliente=<id>`, os
+  eventos crus de cada campanha). Nada vira zero calado.
+- Mudou a regra? Troque `META_RULES` em `src/lib/meta/sync.ts`: o próximo sync relê 12 semanas.
+
 ### Região das funções
 
 `vercel.json` fixa as funções em `gru1` (São Paulo), ao lado do Neon (`sa-east-1`). Cada query é
@@ -287,12 +304,15 @@ próprio painel, e entrega ao cliente por link, em tela cheia ou em PDF.
   Score (`score_snapshots`) e metas (`client_targets`, semanal × semanas do período) vêm do banco.
   Todo bloco de número tem o modo **Digitar** para o que o painel não tem (orgânico, balcão, outra
   ferramenta) — tabela e gráfico aceitam colar direto da planilha.
-- **Escrever com IA:** nos blocos de título e texto, o Gemini (`gemini-3.8-flash`, via
-  `@google/genai`) escreve a partir dos números do relatório, usando o que já está no bloco como
-  roteiro e um pedido opcional; em ⋯ › *Escrever textos com IA* preenche de uma vez todos os textos
-  com roteiro em aberto ("…"). Só no servidor (`src/lib/reports/ai.ts`, rota `/api/relatorios/ia`).
-  A chave do Gemini está na env **`ANTHROPIC_API_KEY`** da Vercel (nome herdado; `GEMINI_API_KEY`,
-  se criada, tem preferência). `GEMINI_MODEL` troca o modelo. Sem chave, o botão avisa.
+- **Escrever com IA:** nos blocos de título e texto, a IA escreve a partir dos números do relatório
+  e do contexto da conta (`src/lib/reports/ai-client.ts`: cadastro, metas combinadas, interações,
+  resumo dos últimos check-ins e planos de ação — o que é interno orienta o texto, mas não é citado
+  ao cliente), usando o que já está no bloco como roteiro e um pedido opcional; em ⋯ › *Escrever
+  textos com IA* preenche de uma vez os textos com roteiro em aberto ("…"). Só no servidor
+  (`src/lib/reports/ai.ts`, rota `/api/relatorios/ia`). O provedor sai da chave em
+  **`ANTHROPIC_API_KEY`**: `sk-ant-…` usa o **Claude Haiku 5.5** (`claude-haiku-5-5`, SDK
+  `@anthropic-ai/sdk`); chave do Google (`AIza…` ou `GEMINI_API_KEY`) usa o Gemini. `AI_MODEL` troca
+  o modelo. Sem chave, o botão avisa.
 - **Modelos:** dois prontos da V4 no código (`src/lib/reports/starters.ts`) e os da unidade
   (`rp_reports.kind = 'template'`), criados do zero ou por *Salvar como modelo*. Usar um modelo
   copia as páginas; os números trocam sozinhos pelo cliente escolhido.
@@ -308,7 +328,7 @@ próprio painel, e entrega ao cliente por link, em tela cheia ou em PDF.
 | Documento, grade e regras puras | `src/lib/reports/{types,layout,metrics}.ts` (testes em `npm test`) |
 | Banco e números do período | `src/lib/reports/db.ts` (`rp_reports`, `reportData`) |
 | Sincronizar com Meta e Google | `src/lib/reports/live.ts`, rota `/api/relatorios/[id]/sincronizar` |
-| Escrever com IA (Gemini) | `src/lib/reports/ai.ts`, rota `/api/relatorios/ia` (env `ANTHROPIC_API_KEY` com a chave do Gemini) |
+| Escrever com IA | `src/lib/reports/ai.ts`, `ai-client.ts`, rota `/api/relatorios/ia` (env `ANTHROPIC_API_KEY`) |
 | Desenho dos blocos (editor, link, slide e PDF iguais) | `src/components/reports/blocks.tsx` |
 | Editor | `src/components/reports/editor.tsx`, `editor-page.tsx`, `inspector.tsx` |
 | Link público, apresentação e impressão | `src/components/reports/viewer.tsx`, `src/app/r/[token]` |

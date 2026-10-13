@@ -3,8 +3,8 @@
  * anterior numa chamada só, via `time_ranges`), campanha a campanha, dia a
  * dia e o cadastro das campanhas (status, objetivo, orçamento).
  */
-import { allPages, get, type Page } from "../meta/graph";
-import { EVENT_FIELDS, leadsOf, parseInsight, type InsightRow, type LeadMetric } from "../meta/metrics";
+import { allPages, fetchCampaignGoals, get, type Page } from "../meta/graph";
+import { EVENT_FIELDS, leadsOf, parseInsight, type CampaignGoals, type InsightRow, type LeadMetric } from "../meta/metrics";
 import type { AccountType } from "../model/types";
 import {
   EMPTY_TOTALS,
@@ -40,8 +40,8 @@ const num = (v: unknown) => {
 };
 
 /** Uma linha de insights (conta, campanha ou dia) no formato da aba. */
-export function metaTotals(row: MetaRow, metric: LeadMetric, type: AccountType): Totals {
-  const w = parseInsight(row);
+export function metaTotals(row: MetaRow, metric: LeadMetric, type: AccountType, goals?: CampaignGoals): Totals {
+  const w = parseInsight(row, goals);
   const reach = row.reach === undefined ? null : num(row.reach);
   const results = resultOf(type, { leadResults: leadsOf(w, metric), purchases: w.purchases, reach });
   return {
@@ -94,6 +94,17 @@ const metaTotalsLoose = (row: MetaRow): Totals => ({
 
 const FIELDS = `spend,impressions,reach,clicks,inline_link_clicks,${EVENT_FIELDS}`;
 
+/** Linhas campanha × dia somadas por dia (verba e resultado). */
+export function dailyOf(rows: MetaRow[], metric: LeadMetric, type: AccountType, goals?: CampaignGoals): DayPoint[] {
+  const by = new Map<string, DayPoint>();
+  for (const r of rows) {
+    const t = metaTotals(r, metric, type, goals);
+    const cur = by.get(r.date_start) ?? { day: r.date_start, spend: 0, results: 0 };
+    by.set(r.date_start, { day: r.date_start, spend: cur.spend + t.spend, results: cur.results + (type === "branding" ? 0 : t.results) });
+  }
+  return [...by.values()].sort((a, b) => (a.day < b.day ? -1 : 1));
+}
+
 export async function metaPerformance(
   adAccountId: string,
   metric: LeadMetric,
@@ -102,16 +113,17 @@ export async function metaPerformance(
   prev: Range,
 ): Promise<{ totals: Totals; previous: Totals; daily: DayPoint[]; campaigns: Campaign[] }> {
   const time_ranges = JSON.stringify([cur, prev]);
-  const [account, byCampaign, days, registry] = await Promise.all([
+  const [account, byCampaign, days, registry, goals] = await Promise.all([
     get<Page<MetaRow>>(`${adAccountId}/insights`, { level: "account", fields: FIELDS, time_ranges }),
     allPages<MetaRow>(`${adAccountId}/insights`, {
       level: "campaign",
       fields: `campaign_id,campaign_name,objective,${FIELDS}`,
       time_ranges,
     }),
+    // Dia a dia por campanha: o resultado depende do que cada uma otimiza.
     allPages<MetaRow>(`${adAccountId}/insights`, {
-      level: "account",
-      fields: "spend,actions,conversions",
+      level: "campaign",
+      fields: "campaign_id,spend,actions,conversions",
       time_range: JSON.stringify(cur),
       time_increment: "1",
     }),
@@ -121,6 +133,7 @@ export async function metaPerformance(
       fields: "id,name,effective_status,objective,daily_budget",
       effective_status: JSON.stringify(["ACTIVE", "PAUSED", "IN_PROCESS", "WITH_ISSUES", "CAMPAIGN_PAUSED", "ADSET_PAUSED"]),
     }),
+    fetchCampaignGoals(adAccountId),
   ]);
 
   const isCur = (r: MetaRow) => r.date_start === cur.since;
@@ -131,7 +144,7 @@ export async function metaPerformance(
   const campaigns: Campaign[] = curRows.map((r) => {
     const c = r.campaign_id ? reg.get(r.campaign_id) : undefined;
     return {
-      ...metaTotals(r, metric, type),
+      ...metaTotals(r, metric, type, goals),
       id: `meta:${r.campaign_id}`,
       channel: "meta",
       name: r.campaign_name || c?.name || "Campanha sem nome",
@@ -157,12 +170,9 @@ export async function metaPerformance(
   const curAccount = account.data.find(isCur);
   const prevAccount = account.data.find((r) => !isCur(r));
   return {
-    totals: accountTotals(curAccount, curRows.map((r) => metaTotals(r, metric, type)), type),
-    previous: accountTotals(prevAccount, prevRows.map((r) => metaTotals(r, metric, type)), type),
-    daily: days.map((d) => {
-      const t = metaTotals(d, metric, type);
-      return { day: d.date_start, spend: t.spend, results: type === "branding" ? 0 : t.results };
-    }),
+    totals: accountTotals(curAccount, curRows.map((r) => metaTotals(r, metric, type, goals)), type),
+    previous: accountTotals(prevAccount, prevRows.map((r) => metaTotals(r, metric, type, goals)), type),
+    daily: dailyOf(days, metric, type, goals),
     campaigns,
   };
 }

@@ -21,6 +21,7 @@
     "importar:clientes": "dotenv -e .env.local -- tsx scripts/importar-clientes.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
     "@google/genai": "^2.29.1",
     "@neondatabase/serverless": "^1.1.0",
     "@vercel/blob": "^2.8.0",

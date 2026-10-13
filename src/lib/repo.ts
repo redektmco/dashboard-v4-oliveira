@@ -5,7 +5,7 @@ import { DIMENSIONS, fieldsFor } from "./model/catalog";
 import { computeScore, DEFAULT_CONFIG, type ScoreConfig, type WeightMap } from "./model/scoring";
 import { insertDemoData, wipe } from "./seed";
 import { syncFlags } from "./playbook/db";
-import { EMPTY_WEEK, leadSpendOf, leadsOf, metaFields, type LeadMetric, type MetaWeek } from "./meta/metrics";
+import { EMPTY_WEEK, leadSpendOf, leadsOf, metaFields, type LeadMetric, type MetaWeek, type UnreadEvent } from "./meta/metrics";
 import { clientKey, type SheetClient } from "./import/clients-sheet";
 import { monthLabel, monthSpend, monthTarget, type DailySpend } from "./media-daily";
 import type {
@@ -1004,12 +1004,15 @@ export type MetaLink = {
   active: number;
   last_sync_at: string | null;
   last_error: string | null;
+  /** Campanhas com verba e evento de conversão que o painel não contou (vigia do sync). */
+  unread_events: UnreadEvent[] | null;
 };
 
 export const listMetaLinks = () =>
   all<MetaLink>(
     `SELECT a.id, a.client_id, c.name AS client_name, c.account_type, a.ad_account_id, a.name,
-            a.currency, a.lead_metric, a.active, a.last_sync_at::text AS last_sync_at, a.last_error
+            a.currency, a.lead_metric, a.active, a.last_sync_at::text AS last_sync_at, a.last_error,
+            a.unread_events
      FROM meta_ad_accounts a JOIN clients c ON c.id = a.client_id
      WHERE c.active = 1
      ORDER BY c.name, a.name`,
@@ -1102,6 +1105,13 @@ export async function mediaDaily(clientId?: number): Promise<Map<number, DailySp
 }
 
 /** Grava as semanas puxadas da API (regrava: a Meta ajusta atribuição por dias). */
+/** Grava o alerta do vigia (vazio = nada fora do lugar). */
+export const saveMetaUnread = (adAccountId: string, unread: UnreadEvent[]) =>
+  run(`UPDATE meta_ad_accounts SET unread_events = ?::jsonb WHERE ad_account_id = ?`, [
+    unread.length ? JSON.stringify(unread.slice(0, 20)) : null,
+    adAccountId,
+  ]);
+
 export async function saveMetaWeeks(adAccountId: string, weeks: Map<string, MetaWeek>) {
   const entries = [...weeks];
   if (entries.length) {

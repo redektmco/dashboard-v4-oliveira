@@ -49,6 +49,7 @@ import {
 import { CheckinHeatmap } from "@/components/charts";
 import { ClientActions } from "@/components/client-actions";
 import { PageHead } from "@/components/page-head";
+import { describeUnread } from "@/lib/meta/metrics";
 import { SyncClientButton } from "@/components/cliente/sync-button";
 import { Icon, type IconName } from "@/components/icon";
 import { BAND_TEXT, Bar, BandPill, Card, ColLabel, DotLabel, Initials, KV, Pill, SectionHead, TONE, type Tone } from "@/components/kit";
@@ -203,16 +204,24 @@ export default async function ClientePage({
   const metaDoCliente = metaLinks.filter((l) => l.client_id === clientId);
   const googleDoCliente = googleLinks.filter((l) => l.client_id === clientId);
   const integracoes: IntegrationRow[] = [
-    ...metaDoCliente.map((l) => ({
-      id: `meta-${l.id}`,
-      name: "Meta Ads",
-      icon: "megaphone" as const,
-      detail: l.last_error
-        ? l.last_error
-        : `${l.ad_account_id} · sincronizado ${whenBR(l.last_sync_at).toLowerCase()}`,
-      state: (l.last_error ? "erro" : l.active ? "conectada" : "pendente") as IntegrationRow["state"],
-      action: l.last_error ? { label: "Reconectar", href: "/gt/integracoes" } : undefined,
-    })),
+    ...metaDoCliente.map((l) => {
+      // Vigia do sync: evento de conversão que o painel não contou vira alerta, não zero calado.
+      const unread = describeUnread(l.unread_events);
+      return {
+        id: `meta-${l.id}`,
+        name: "Meta Ads",
+        icon: "megaphone" as const,
+        detail: l.last_error
+          ? l.last_error
+          : unread ?? `${l.ad_account_id} · sincronizado ${whenBR(l.last_sync_at).toLowerCase()}`,
+        state: (l.last_error || unread ? "erro" : l.active ? "conectada" : "pendente") as IntegrationRow["state"],
+        action: l.last_error
+          ? { label: "Reconectar", href: "/gt/integracoes" }
+          : unread
+            ? { label: "Ver eventos", href: `/api/meta/eventos?cliente=${clientId}` }
+            : undefined,
+      };
+    }),
     ...googleDoCliente.map((l) => ({
       id: `google-${l.id}`,
       name: "Google Ads",

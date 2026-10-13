@@ -938,13 +938,18 @@ CREATE INDEX IF NOT EXISTS idx_rp_reports_client ON rp_reports (client_id);
 -- os numeros do periodo exato, lidos na hora das APIs. NULL = o relatorio
 -- usa as semanas-ritual do banco.
 ALTER TABLE rp_reports ADD COLUMN IF NOT EXISTS live JSONB;
+
+-- Vigia do sync da Meta: campanhas com verba e evento de conversao que o
+-- painel nao contou como resultado (NULL = tudo lido). Acende o alerta da
+-- conta em Integracoes e na ficha do cliente.
+ALTER TABLE meta_ad_accounts ADD COLUMN IF NOT EXISTS unread_events JSONB;
 `;
 
 /**
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-10-13.lead-source-campaign";
+export const SCHEMA_VERSION = "2026-10-13.meta-unread-events";
 
 let migrated = false;
 

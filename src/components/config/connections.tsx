@@ -365,6 +365,8 @@ export type MetaLinkView = {
   active: boolean;
   lastSync: string;
   error: string | null;
+  /** Alerta do vigia: evento de conversão que o painel não contou. */
+  unread?: string | null;
 };
 
 /** Uma conta vinculada, com o menu de métrica, pausar e desvincular. */
@@ -393,6 +395,11 @@ export function MetaLinkRow({ link }: { link: MetaLinkView }) {
           {link.adAccountId} · lead = {LEAD_METRIC_LABEL[link.leadMetric].toLowerCase()} · sync {link.lastSync}
         </div>
         {link.error && <div className="truncate text-[11px] text-vermelho-fg">{link.error}</div>}
+        {!link.error && link.unread && (
+          <div className="text-[11px] leading-snug text-amarelo-fg" title={link.unread}>
+            {link.unread}
+          </div>
+        )}
       </div>
       {!link.active && <Pill tone="neutro">Pausada</Pill>}
       <ActionMenu items={menu} label={`Ações de ${link.name}`} size="sm" />

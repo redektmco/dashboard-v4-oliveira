@@ -47,7 +47,9 @@ import {
   roas,
   sumTotals,
 } from "../src/lib/performance/model";
-import { accountTotals, metaTotals } from "../src/lib/performance/meta-live";
+import { accountTotals, dailyOf, metaTotals } from "../src/lib/performance/meta-live";
+import { campaignGoals, describeUnread, optimizedEvent, unreadEvents } from "../src/lib/meta/metrics";
+import { mergeUnread } from "../src/lib/meta/graph";
 import { googleTotals, sumDays } from "../src/lib/performance/google-live";
 import { EMPTY_WEEK, campaignTotals, leadSpendOf, leadsOf, metaFields, parseInsight, weekRange } from "../src/lib/meta/metrics";
 import { clientKey, firstPhone, parseBRL, parseClientsSheet, parseCsv } from "../src/lib/import/clients-sheet";
@@ -1635,4 +1637,64 @@ test("Meta: \"Contatos no site\" vem em conversions, não em actions — e conta
   assert.equal(t.leads, 31);
   assert.equal(t.leadSpend, 182.35, "campanha de visita ao perfil fica fora do CPL");
   assert.equal(Math.round((t.leadSpend / t.leads) * 100) / 100, 5.88);
+});
+
+/* ---------------- Meta: resultado = o que a campanha otimiza ---------------- */
+
+
+const camp = (id: string, spend: number, actions: { action_type: string; value: string }[] = [], conversions: { action_type: string; value: string }[] = []) => ({
+  date_start: "2026-10-01",
+  date_stop: "2026-10-07",
+  campaign_id: id,
+  campaign_name: `Campanha ${id}`,
+  spend: String(spend),
+  actions,
+  conversions,
+});
+
+test("Meta: evento otimizado vira resultado — agendamento, conversão personalizada, formulário", () => {
+  const goals = campaignGoals([
+    { campaign_id: "a", optimization_goal: "OFFSITE_CONVERSIONS", promoted_object: { custom_event_type: "SCHEDULE" } },
+    { campaign_id: "b", optimization_goal: "OFFSITE_CONVERSIONS", promoted_object: { custom_event_type: "OTHER", custom_conversion_id: "987" } },
+    { campaign_id: "c", optimization_goal: "LEAD_GENERATION" },
+    { campaign_id: "d", optimization_goal: "LINK_CLICKS" },
+  ]);
+  assert.equal(optimizedEvent({ optimization_goal: "REACH" }), null);
+  const rows = [
+    camp("a", 100, [], [{ action_type: "schedule_total", value: "12" }]),
+    camp("b", 80, [{ action_type: "offsite_conversion.custom.987", value: "9" }]),
+    camp("c", 50, [{ action_type: "onsite_conversion.lead_grouped", value: "5" }]),
+    camp("d", 70, [{ action_type: "link_click", value: "400" }]),
+  ];
+  const t = campaignTotals(rows, goals);
+  assert.equal(t.leads, 26);
+  assert.equal(t.leadSpend, 230, "campanha de tráfego fica fora do CPL");
+  // Sem saber o que a campanha otimiza, agendamento e conversão personalizada não contam…
+  assert.equal(campaignTotals(rows).leads, 5);
+  // …e o vigia acende para eles.
+  const unread = unreadEvents(rows);
+  assert.deepEqual(unread.map((u) => u.campaign).sort(), ["Campanha a", "Campanha b"]);
+  assert.match(describeUnread(mergeUnread(unread)) ?? "", /Evento não contado/);
+  assert.deepEqual(unreadEvents(rows, goals), [], "com o objetivo lido, nada fica de fora");
+});
+
+test("Meta: vigia ignora engajamento e campanha sem verba", () => {
+  const rows = [
+    camp("x", 90, [{ action_type: "link_click", value: "300" }, { action_type: "post_engagement", value: "50" }, { action_type: "landing_page_view", value: "120" }]),
+    camp("y", 0, [], [{ action_type: "schedule_total", value: "3" }]),
+  ];
+  assert.deepEqual(unreadEvents(rows), []);
+});
+
+test("Meta: sync semanal, aba Performance e relatório contam os mesmos leads", () => {
+  const goals = campaignGoals([{ campaign_id: "a", optimization_goal: "OFFSITE_CONVERSIONS", promoted_object: { custom_event_type: "CONTACT" } }]);
+  const rows = [camp("a", 182.35, [], [{ action_type: "contact_website", value: "31" }]), camp("z", 126.33, [{ action_type: "link_click", value: "600" }])];
+  const sync = campaignTotals(rows, goals);
+  const performance = rows.reduce((a, r) => a + metaTotals(r, "both", "lead_gen", goals).leads, 0);
+  const report = metaNums(undefined, rows, "both", goals);
+  assert.equal(sync.leads, 31);
+  assert.equal(performance, 31);
+  assert.equal(report.leads, 31);
+  assert.equal(report.leadSpend, 182.35);
+  assert.equal(dailyOf(rows, "both", "lead_gen", goals)[0].results, 31);
 });

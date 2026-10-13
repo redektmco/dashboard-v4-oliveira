@@ -11,8 +11,18 @@
  */
 import { all } from "../db";
 import { googleAdsConfigured, gaql } from "../google/ads";
-import { allPages, metaConfigured } from "../meta/graph";
-import { EVENT_FIELDS, campaignTotals, leadSpendOf, leadsOf, parseInsight, type CampaignRow, type InsightRow, type LeadMetric } from "../meta/metrics";
+import { allPages, fetchCampaignGoals, metaConfigured } from "../meta/graph";
+import {
+  EVENT_FIELDS,
+  campaignTotals,
+  leadSpendOf,
+  leadsOf,
+  parseInsight,
+  type CampaignGoals,
+  type CampaignRow,
+  type InsightRow,
+  type LeadMetric,
+} from "../meta/metrics";
 import { listGoogleLinks, listMetaLinks, today } from "../repo";
 import { EMPTY_NUMS, previousPeriod } from "./metrics";
 import type { ChannelNums, LiveSnapshot, WeekRow } from "./types";
@@ -55,10 +65,10 @@ type MetaRow = InsightRow & { inline_link_clicks?: string };
  * da conta (alcance não soma entre campanhas); leads, conversas e a verba que
  * os gerou campanha a campanha.
  */
-export function metaNums(account: MetaRow | undefined, campaigns: CampaignRow[], metric: LeadMetric): ChannelNums {
+export function metaNums(account: MetaRow | undefined, campaigns: CampaignRow[], metric: LeadMetric, goals?: CampaignGoals): ChannelNums {
   if (!account && !campaigns.length) return { ...EMPTY_NUMS };
   const w = account ? parseInsight(account) : parseInsight({ date_start: "", date_stop: "" });
-  const week = { ...w, ...campaignTotals(campaigns) };
+  const week = { ...w, ...campaignTotals(campaigns, goals) };
   return {
     spend: week.spend,
     impressions: week.impressions,
@@ -82,18 +92,19 @@ async function metaAccount(id: string, metric: LeadMetric, cur: Range, prev: Ran
       time_range: JSON.stringify(r),
       ...(step ? { time_increment: "7" } : {}),
     });
-  const [acc, camp, accPrev, campPrev] = await Promise.all([
+  const [acc, camp, accPrev, campPrev, goals] = await Promise.all([
     q("account", cur, true),
     q("campaign", cur, true),
     q("account", prev, false),
     q("campaign", prev, false),
+    fetchCampaignGoals(id),
   ]);
   const byStart = new Map(acc.map((r) => [r.date_start, r]));
   const campByStart = new Map<string, CampaignRow[]>();
   for (const c of camp) campByStart.set(c.date_start, [...(campByStart.get(c.date_start) ?? []), c]);
   return {
-    chunks: chunksOf(cur).map((c) => metaNums(byStart.get(c.since), campByStart.get(c.since) ?? [], metric)),
-    previous: metaNums(accPrev[0], campPrev, metric),
+    chunks: chunksOf(cur).map((c) => metaNums(byStart.get(c.since), campByStart.get(c.since) ?? [], metric, goals)),
+    previous: metaNums(accPrev[0], campPrev, metric, goals),
   };
 }
 
