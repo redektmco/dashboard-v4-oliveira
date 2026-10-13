@@ -28,6 +28,7 @@ import { Icon } from "../icon";
 import { brl, Empty } from "../ui";
 import { CrmBulkBar } from "./crm-bulk-bar";
 import { CrmFilters } from "./crm-filters";
+import { CrmKanban } from "./crm-kanban";
 import { CrmQuickPanel } from "./crm-quick-panel";
 import { CrmTable } from "./crm-table";
 
@@ -45,9 +46,16 @@ import { CrmTable } from "./crm-table";
  */
 
 const PAGE = 25;
+const LAYOUTS = [
+  { id: "lista", label: "Lista", icon: "layoutList" },
+  { id: "kanban", label: "Kanban", icon: "layers" },
+] as const;
 const STORE = "crm-clientes";
 
-type Stored = { view: View; filters: Filters; columns: ColumnId[]; sort: SortKey; dir: SortDir };
+/** Lista (tabela) ou kanban por etapa — os dois desenham a mesma triagem. */
+type Layout = "lista" | "kanban";
+
+type Stored = { view: View; filters: Filters; columns: ColumnId[]; sort: SortKey; dir: SortDir; layout: Layout };
 
 export function ClientsCrm({
   rows,
@@ -85,8 +93,9 @@ export function ClientsCrm({
     columns: CORE_COLUMNS,
     sort: "risco",
     dir: "desc",
+    layout: "lista",
   }));
-  const { view, filters, columns, sort, dir } = triage;
+  const { view, filters, columns, sort, dir, layout } = triage;
   const patch = (p: Partial<Stored>) => setTriage((t) => ({ ...t, ...p }));
 
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -131,11 +140,11 @@ export function ClientsCrm({
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(STORE, JSON.stringify({ view, filters, columns, sort, dir } satisfies Stored));
+      sessionStorage.setItem(STORE, JSON.stringify({ view, filters, columns, sort, dir, layout } satisfies Stored));
     } catch {
       /* idem */
     }
-  }, [view, filters, columns, sort, dir]);
+  }, [view, filters, columns, sort, dir, layout]);
 
   /* ---------------- listas derivadas (tudo em memória) --------------- */
   const counts = useMemo(() => countViews(rows), [rows]);
@@ -238,23 +247,45 @@ export function ClientsCrm({
 
       <Indicators summary={summary} />
 
-      {/* abas de visualização */}
-      <div className="subnav subnav--plain no-scrollbar -mx-4 overflow-x-auto px-4 lg:mx-0 lg:px-0">
-        {VIEWS.map((v) => (
-          <button
-            key={v.id}
-            type="button"
-            role="tab"
-            aria-selected={view === v.id}
-            onClick={() => {
-              retriage({ view: v.id });
-              setSelected(new Set());
-            }}
-          >
-            {v.label}
-            <span className="tnum ml-1.5 text-ink-500">{counts[v.id]}</span>
-          </button>
-        ))}
+      {/* abas de visualização + lista/kanban */}
+      <div className="flex items-center gap-3">
+        <div className="subnav subnav--plain no-scrollbar -ml-4 min-w-0 flex-1 overflow-x-auto pl-4 lg:ml-0 lg:pl-0">
+          {VIEWS.map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              role="tab"
+              aria-selected={view === v.id}
+              onClick={() => {
+                retriage({ view: v.id });
+                setSelected(new Set());
+              }}
+            >
+              {v.label}
+              <span className="tnum ml-1.5 text-ink-500">{counts[v.id]}</span>
+            </button>
+          ))}
+        </div>
+        <div className="seg seg--sm shrink-0" role="radiogroup" aria-label="Visualização">
+          {LAYOUTS.map((l) => (
+            <button
+              key={l.id}
+              type="button"
+              role="radio"
+              aria-checked={layout === l.id}
+              aria-label={l.label}
+              title={l.label}
+              className={layout === l.id ? "on" : ""}
+              onClick={() => {
+                patch({ layout: l.id });
+                setSelected(new Set());
+              }}
+            >
+              <Icon name={l.icon} size={14} />
+              <span className="hidden sm:inline">{l.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <CrmFilters
@@ -266,7 +297,7 @@ export function ClientsCrm({
         onColumns={(c) => patch({ columns: c })}
       />
 
-      {selectedRows.length > 0 && (
+      {layout === "lista" && selectedRows.length > 0 && (
         <CrmBulkBar
           rows={selectedRows}
           users={users}
@@ -276,55 +307,59 @@ export function ClientsCrm({
         />
       )}
 
-      <section className="panel">
-        {shown.length === 0 ? (
-          <div className="px-4 py-12">
-            <Empty
-              action={
-                <button type="button" className="btn btn-sm" onClick={() => retriage({ filters: { ...EMPTY_FILTERS } })}>
-                  Limpar filtros
-                </button>
-              }
-            >
-              {rows.length === 0
-                ? "Nenhum cliente cadastrado ainda."
-                : "Nenhum cliente com esses filtros. Os filtros continuam aplicados — limpe-os para ver a carteira inteira."}
-            </Empty>
-          </div>
-        ) : (
-          <CrmTable
-            rows={shown}
-            columns={cols}
-            wide={wide}
-            selected={selected}
-            onToggle={toggle}
-            onToggleAll={toggleAll}
-            onOpen={(id) => setOpenId((v) => (v === id ? null : id))}
-            openId={openId}
-            sort={sort}
-            dir={dir}
-            onSort={onSort}
-          />
-        )}
+      {layout === "kanban" && list.length > 0 ? (
+        <CrmKanban rows={list} openId={openId} onOpen={(id) => setOpenId((v) => (v === id ? null : id))} />
+      ) : (
+        <section className="panel">
+          {shown.length === 0 ? (
+            <div className="px-4 py-12">
+              <Empty
+                action={
+                  <button type="button" className="btn btn-sm" onClick={() => retriage({ filters: { ...EMPTY_FILTERS } })}>
+                    Limpar filtros
+                  </button>
+                }
+              >
+                {rows.length === 0
+                  ? "Nenhum cliente cadastrado ainda."
+                  : "Nenhum cliente com esses filtros. Os filtros continuam aplicados — limpe-os para ver a carteira inteira."}
+              </Empty>
+            </div>
+          ) : (
+            <CrmTable
+              rows={shown}
+              columns={cols}
+              wide={wide}
+              selected={selected}
+              onToggle={toggle}
+              onToggleAll={toggleAll}
+              onOpen={(id) => setOpenId((v) => (v === id ? null : id))}
+              openId={openId}
+              sort={sort}
+              dir={dir}
+              onSort={onSort}
+            />
+          )}
 
-        {list.length > 0 && (
-          <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-hair)] px-4 py-3 text-[13px] sm:px-5">
-            <span className="text-ink-500">
-              Mostrando {cur * PAGE + 1}–{cur * PAGE + shown.length} de {list.length}{" "}
-              {list.length === 1 ? "cliente" : "clientes"} · ordenado por {SORT_LABEL[sort]}
-            </span>
-            {pages > 1 && (
-              <span className="flex items-center gap-1">
-                <PageBtn icon="chevronLeft" label="Anterior" disabled={cur === 0} onClick={() => setPage(cur - 1)} />
-                <span className="tnum px-2 text-ink-400">
-                  {cur + 1} / {pages}
-                </span>
-                <PageBtn icon="chevronRight" label="Próxima" disabled={cur >= pages - 1} onClick={() => setPage(cur + 1)} />
+          {list.length > 0 && (
+            <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-hair)] px-4 py-3 text-[13px] sm:px-5">
+              <span className="text-ink-500">
+                Mostrando {cur * PAGE + 1}–{cur * PAGE + shown.length} de {list.length}{" "}
+                {list.length === 1 ? "cliente" : "clientes"} · ordenado por {SORT_LABEL[sort]}
               </span>
-            )}
-          </footer>
-        )}
-      </section>
+              {pages > 1 && (
+                <span className="flex items-center gap-1">
+                  <PageBtn icon="chevronLeft" label="Anterior" disabled={cur === 0} onClick={() => setPage(cur - 1)} />
+                  <span className="tnum px-2 text-ink-400">
+                    {cur + 1} / {pages}
+                  </span>
+                  <PageBtn icon="chevronRight" label="Próxima" disabled={cur >= pages - 1} onClick={() => setPage(cur + 1)} />
+                </span>
+              )}
+            </footer>
+          )}
+        </section>
+      )}
 
       <SidePanel open={Boolean(row)} onClose={close} label="Visualização rápida do cliente" width={440}>
         {row && (
