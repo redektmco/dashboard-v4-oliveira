@@ -23,7 +23,7 @@ import { listClientChanges } from "@/lib/audit";
 import { currentRitualDate } from "@/lib/week";
 import { mediaSplit } from "@/lib/crm/media-split";
 import { goalViews, leadsByOrigin, listGoals, listLeadSources, periodOf } from "@/lib/crm/goals";
-import { configSnapshot, whenBR } from "@/lib/config-status";
+import { configSnapshot, whenBR, type PendenciaId } from "@/lib/config-status";
 import { MediaChannels } from "@/components/cliente/media-channels";
 import { FichaPane, FichaTabs, type FichaTab } from "@/components/cliente/ficha-tabs";
 import { MetasIntegracoes, type IntegrationRow, type MetasData } from "@/components/cliente/metas-integracoes";
@@ -79,6 +79,14 @@ import { FLAG, howOf, stepTemplate } from "@/lib/playbook/templates";
 import { creativeAttention, crmAttention } from "@/lib/playbook/attention";
 import { PlaybookSection, type PlaybookData } from "@/components/cliente/playbook";
 
+
+const PENDENCIA_DA_CONTA: Record<PendenciaId, string> = {
+  sem_meta: "Sem forecast definido",
+  sem_fonte: "Sem fonte de leads conectada",
+  cobranca_sem_canal: "A cobrança não será enviada por nenhum canal",
+  verba_sem_leads: "Verba sem leads há 2 semanas",
+  meta_erro: "Conta de mídia com erro de sincronização",
+};
 export const dynamic = "force-dynamic";
 
 const fmt1 = (n: number) => n.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -223,7 +231,11 @@ export default async function ClientePage({
     },
   ];
 
-  const pendenciasDoCliente = cfg.pendencias.filter((pd) => pd.clients.some((c) => c.id === clientId));
+  // O título da pendência conta a carteira inteira ("2 clientes sem fonte");
+  // dentro da ficha ele fala só desta conta.
+  const pendenciasDoCliente = cfg.pendencias
+    .filter((pd) => pd.clients.some((c) => c.id === clientId))
+    .map((pd) => ({ ...pd, title: PENDENCIA_DA_CONTA[pd.id] }));
   const metasFora = metasView.filter((g) => g.status === "critico" || g.status === "atencao").length;
 
   const metas: MetasData = {
@@ -402,10 +414,6 @@ export default async function ClientePage({
               <Link href={`/account/${clientId}`} className="btn btn-light">
                 <Icon name="plus" size={16} />
                 Registrar check-in
-              </Link>
-              <Link href={`/gt?c=${clientId}`} className="btn">
-                <Icon name="target" size={16} stroke={1.75} />
-                Metas
               </Link>
               {(client.active || openChurn) && (
                 <Link href={openChurn ? `/churn/${openChurn.id}` : `/churn/nova?cliente=${clientId}`} className="btn btn-danger">

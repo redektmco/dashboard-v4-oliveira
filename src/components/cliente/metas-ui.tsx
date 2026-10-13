@@ -42,46 +42,44 @@ export function NewGoalButton({ clientId, clientName }: { clientId: number; clie
       >
         <ActionForm action={createGoal} onSuccess={() => setOpen(false)}>
           <input type="hidden" name="client_id" value={clientId} />
-          <label className="field">
-            <span className="field-label">Nome da meta *</span>
-            <input name="label" className="input" placeholder="Leads qualificados" required maxLength={80} />
+          <label className="block">
+            <span className="label">Nome da meta *</span>
+            <input name="label" className="field mt-1" placeholder="Leads qualificados" required maxLength={80} />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="field">
-              <span className="field-label">Valor *</span>
-              <input name="target" className="input" placeholder="200" inputMode="decimal" required />
+            <label className="block">
+              <span className="label">Valor *</span>
+              <input name="target" className="field mt-1" placeholder="200" inputMode="decimal" required />
             </label>
-            <label className="field">
-              <span className="field-label">Período</span>
-              <select name="period" className="input" defaultValue="mensal">
+            <label className="block">
+              <span className="label">Período</span>
+              <select name="period" className="field mt-1" defaultValue="mensal">
                 <option value="mensal">Mensal</option>
                 <option value="trimestral">Trimestral</option>
               </select>
             </label>
           </div>
-          <label className="field">
-            <span className="field-label">O número é</span>
-            <select name="direction" className="input" defaultValue="piso">
+          <label className="block">
+            <span className="label">O número é</span>
+            <select name="direction" className="field mt-1" defaultValue="piso">
               <option value="piso">Piso — quanto mais, melhor (leads, visitas, vendas)</option>
               <option value="teto">Teto — quanto menos, melhor (CPL, custo por venda)</option>
             </select>
-            <span className="field-hint">
-              Piso é julgado pelo ritmo do período. Teto é comparado direto com o limite.
-            </span>
+            <span className="mt-1 block text-[11px] leading-[16px] text-ink-500">Piso é julgado pelo ritmo do período. Teto é comparado direto com o limite.</span>
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="field">
-              <span className="field-label">Chave no formulário do GT</span>
-              <input name="metric" className="input" placeholder="leads" maxLength={40} />
-              <span className="field-hint">Liga a meta ao que o GT já preenche. Em branco, fica sem leitura.</span>
+            <label className="block">
+              <span className="label">Chave no formulário do GT</span>
+              <input name="metric" className="field mt-1" placeholder="leads" maxLength={40} />
+              <span className="mt-1 block text-[11px] leading-[16px] text-ink-500">Liga a meta ao que o GT já preenche. Em branco, fica sem leitura.</span>
             </label>
-            <label className="field">
-              <span className="field-label">Escopo</span>
-              <input name="scope" className="input" placeholder="todas as fontes" maxLength={60} />
+            <label className="block">
+              <span className="label">Escopo</span>
+              <input name="scope" className="field mt-1" placeholder="todas as fontes" maxLength={60} />
             </label>
           </div>
           <div className="modal-actions">
-            <button type="button" className="btn btn-light" onClick={() => setOpen(false)}>
+            <button type="button" className="btn" onClick={() => setOpen(false)}>
               Cancelar
             </button>
             <SubmitButton pendingLabel="Criando…">Criar meta</SubmitButton>
@@ -136,19 +134,19 @@ export function NewSourceButton({ clientId, clientName }: { clientId: number; cl
       >
         <ActionForm action={createLeadSource} onSuccess={() => setOpen(false)}>
           <input type="hidden" name="client_id" value={clientId} />
-          <label className="field">
-            <span className="field-label">Nome da fonte *</span>
-            <input name="name" className="input" placeholder="Portais imobiliários" required maxLength={60} />
-            <span className="field-hint">
+          <label className="block">
+            <span className="label">Nome da fonte *</span>
+            <input name="name" className="field mt-1" placeholder="Portais imobiliários" required maxLength={60} />
+            <span className="mt-1 block text-[11px] leading-[16px] text-ink-500">
               Use o mesmo texto que chega no campo de origem do lead — é por ele que a contagem casa.
             </span>
           </label>
-          <label className="field">
-            <span className="field-label">Observação</span>
-            <input name="note" className="input" placeholder="ZAP e VivaReal · importação manual" maxLength={120} />
+          <label className="block">
+            <span className="label">Observação</span>
+            <input name="note" className="field mt-1" placeholder="ZAP e VivaReal · importação manual" maxLength={120} />
           </label>
           <div className="modal-actions">
-            <button type="button" className="btn btn-light" onClick={() => setOpen(false)}>
+            <button type="button" className="btn" onClick={() => setOpen(false)}>
               Cancelar
             </button>
             <SubmitButton pendingLabel="Cadastrando…">Cadastrar fonte</SubmitButton>
