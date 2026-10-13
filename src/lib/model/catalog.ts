@@ -105,7 +105,7 @@ const GT_LEAD_GEN: FieldDef[] = [
     label: "Verba investida",
     period: "Total da semana",
     definition:
-      "Verba efetivamente gasta na semana vs verba contratada para a semana. Verba parada é risco silencioso.",
+      "Verba efetivamente gasta na semana vs verba contratada para a semana. Com mídia vinculada, vale o mês até hoje contra a verba contratada proporcional aos dias. Verba parada é risco silencioso.",
     dimension: "performance",
     source: "gt",
     weight: 30,
@@ -193,7 +193,8 @@ const GT_ECOMMERCE: FieldDef[] = [
     key: "budget",
     label: "Verba investida",
     period: "Total da semana",
-    definition: "Verba gasta na semana vs verba planejada para a semana.",
+    definition:
+      "Verba gasta na semana vs verba planejada para a semana. Com mídia vinculada, vale o mês até hoje contra a verba planejada proporcional aos dias.",
     dimension: "performance",
     source: "gt",
     weight: 15,
