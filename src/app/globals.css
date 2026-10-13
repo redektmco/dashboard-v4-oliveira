@@ -77,6 +77,20 @@
    (painel lateral aberto): sem isso a barra some e a página atrás desloca. */
 html {
   scrollbar-gutter: stable;
+  /* O app é só escuro: a lista nativa do <select>, o calendário do
+     input[type=date] e as barras de rolagem seguem o tema. */
+  color-scheme: dark;
+}
+
+/* Select com fundo transparente (os "inline" dos painéis) deixava a lista
+   aberta com fundo branco e o texto claro herdado — opções invisíveis. */
+option,
+optgroup {
+  background-color: var(--color-ink-850);
+  color: var(--color-ink-100);
+}
+option:disabled {
+  color: var(--color-ink-500);
 }
 
 html,
