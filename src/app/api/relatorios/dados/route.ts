@@ -17,6 +17,6 @@ export async function GET(req: Request) {
   const clientId = Number(url.searchParams.get("client")) || null;
   const client = clientId ? await getClient(clientId) : null;
   if (clientId && !client) return NextResponse.json({ error: "Cliente não encontrado." }, { status: 404 });
-  const data = await reportData(client ? { id: client.id, name: client.name } : null, period.start, period.end);
+  const data = await reportData(client ? { id: client.id, name: client.name, leadSource: client.lead_source } : null, period.start, period.end);
   return NextResponse.json({ data });
 }

@@ -82,6 +82,9 @@ import {
   totalsOf,
 } from "../src/lib/reports/metrics";
 import { STARTERS } from "../src/lib/reports/starters";
+import { chunksOf, googleBuckets, metaNums } from "../src/lib/reports/live";
+import { weekLeads } from "../src/lib/reports/metrics";
+import { dataContext } from "../src/lib/reports/ai";
 import type { ReportData, WeekRow } from "../src/lib/reports/types";
 
 const TODAY = "2026-06-15";
@@ -1304,7 +1307,7 @@ test("kanban: Account vira coluna mesmo sem cliente, e nome só do cliente tamb�
 /* ------------------------- construtor de relatórios ------------------------- */
 
 const nums = (o: Partial<WeekRow["meta"]> = {}) => ({
-  spend: 0, impressions: 0, reach: 0, clicks: 0, leads: 0, conversations: 0, purchases: 0, revenue: 0, ...o,
+  spend: 0, impressions: 0, reach: 0, clicks: 0, leads: 0, conversations: 0, purchases: 0, revenue: 0, leadSpend: 0, ...o,
 });
 
 test("Relatório: período anterior tem o mesmo tamanho, colado antes", () => {
@@ -1328,13 +1331,15 @@ test("Relatório: soma por canal e métricas derivadas", () => {
     period: { start: "2026-09-01", end: "2026-09-30" },
     previous: previousPeriod("2026-09-01", "2026-09-30"),
     weeks: [
-      { ref: "2026-09-05", meta: nums({ spend: 1000, leads: 40, clicks: 500, impressions: 50_000 }), google: nums({ spend: 500, leads: 10, clicks: 300, impressions: 10_000 }), crmLeads: 55 },
-      { ref: "2026-09-12", meta: nums({ spend: 1000, leads: 60, clicks: 500, impressions: 50_000 }), google: nums(), crmLeads: 70 },
+      { ref: "2026-09-05", start: "2026-08-30", meta: nums({ spend: 1000, leads: 40, clicks: 500, impressions: 50_000 }), google: nums({ spend: 500, leads: 10, clicks: 300, impressions: 10_000 }), crmLeads: 55 },
+      { ref: "2026-09-12", start: "2026-09-06", meta: nums({ spend: 1000, leads: 60, clicks: 500, impressions: 50_000 }), google: nums(), crmLeads: 70 },
     ],
-    prevWeeks: [{ ref: "2026-08-29", meta: nums({ spend: 2000, leads: 50 }), google: nums(), crmLeads: 0 }],
+    prevWeeks: [{ ref: "2026-08-29", start: "2026-08-23", meta: nums({ spend: 2000, leads: 50 }), google: nums(), crmLeads: 0 }],
     score: { value: 80, band: "verde", day: "2026-09-30" },
     targets: { leads_meta: 30, cpl_meta: 25 },
+    leadSource: "campaign",
     sample: false,
+    source: { kind: "db" },
   };
   assert.equal(totalsOf(data.weeks, "all").spend, 2500);
   assert.equal(metricValue(data, "leads", "meta"), 100);
@@ -1519,4 +1524,99 @@ test("performance: contas derivadas, status e soma de canais", () => {
   assert.equal(d.length, 3);
   assert.deepEqual(d[1], { day: "2026-10-02", meta: 10, google: 5, results: 3 });
   assert.deepEqual(d[0], { day: "2026-10-01", meta: 0, google: 0, results: 0 });
+});
+
+test("Relatório: CPL usa só a verba das campanhas de lead (sem ela, a verba toda)", () => {
+  const d = sampleData("2026-09-01", "2026-09-30");
+  const w = (meta: Partial<WeekRow["meta"]>) => ({ ref: "2026-09-07", start: "2026-09-01", meta: nums(meta), google: nums(), crmLeads: 0 });
+  // R$ 182,35 em campanhas de lead + R$ 300 em visita ao perfil, 31 leads → 5,88 (caso New Cabos).
+  d.weeks = [w({ spend: 482.35, leadSpend: 182.35, leads: 31 })];
+  assert.equal(Math.round(metricValue(d, "cpl", "meta")! * 100) / 100, 5.88);
+  d.weeks = [w({ spend: 300, leads: 10 })];
+  assert.equal(metricValue(d, "cpl", "meta"), 30);
+});
+
+test("Sincronizar: trechos de 7 dias a partir do início, o último menor", () => {
+  assert.deepEqual(chunksOf({ since: "2026-09-01", until: "2026-09-16" }), [
+    { since: "2026-09-01", until: "2026-09-07" },
+    { since: "2026-09-08", until: "2026-09-14" },
+    { since: "2026-09-15", until: "2026-09-16" },
+  ]);
+  assert.deepEqual(chunksOf({ since: "2026-09-05", until: "2026-09-05" }), [{ since: "2026-09-05", until: "2026-09-05" }]);
+});
+
+test("Sincronizar: Meta soma lead de site campanha a campanha, cliques no link da conta", () => {
+  const account = {
+    date_start: "2026-09-01",
+    date_stop: "2026-09-07",
+    spend: "482.35",
+    impressions: "50000",
+    reach: "20000",
+    inline_link_clicks: "900",
+    actions: [{ action_type: "lead", value: "99" }],
+  };
+  const campaigns = [
+    // Site que dispara Lead e Contato no mesmo envio: vale o maior, não a soma.
+    { date_start: "2026-09-01", date_stop: "2026-09-07", spend: "182.35", actions: [{ action_type: "lead", value: "20" }, { action_type: "contact_total", value: "31" }] },
+    { date_start: "2026-09-01", date_stop: "2026-09-07", spend: "300", actions: [{ action_type: "onsite_conversion.messaging_conversation_started_7d", value: "4" }] },
+  ];
+  const lead = metaNums(account, campaigns, "lead");
+  assert.equal(lead.leads, 31);
+  assert.equal(lead.leadSpend, 182.35);
+  assert.equal(lead.clicks, 900);
+  assert.equal(lead.spend, 482.35);
+  const both = metaNums(account, campaigns, "both");
+  assert.equal(both.leads, 35);
+  assert.equal(both.leadSpend, 482.35);
+  assert.deepEqual(metaNums(undefined, [], "both"), nums());
+});
+
+test("Sincronizar: Google por trecho, verba de campanha com conversão vira base do CPL", () => {
+  const row = (id: string, date: string, cost: number, conv: number) => ({
+    campaign: { id },
+    segments: { date },
+    metrics: { costMicros: cost * 1_000_000, impressions: 100, clicks: 10, conversions: conv, conversionsValue: 0 },
+  });
+  const buckets = [
+    { since: "2026-09-01", until: "2026-09-07" },
+    { since: "2026-09-08", until: "2026-09-14" },
+  ];
+  const out = googleBuckets(
+    [row("a", "2026-09-02", 100, 2.5), row("b", "2026-09-03", 50, 0), row("a", "2026-09-09", 80, 0), row("x", "2026-08-30", 999, 9)],
+    buckets,
+  );
+  assert.equal(out[0].spend, 150);
+  assert.equal(out[0].leads, 2.5);
+  assert.equal(out[0].leadSpend, 100, "campanha sem conversão fica fora do CPL");
+  assert.equal(out[1].spend, 80);
+  assert.equal(out[1].leadSpend, 0);
+  assert.equal(out[0].clicks + out[1].clicks, 30, "dia fora dos trechos não entra");
+});
+
+test("IA: contexto leva os números do período, a comparação e as metas — e avisa quando é exemplo", () => {
+  const d = sampleData("2026-09-01", "2026-09-30");
+  const ctx = dataContext(d);
+  assert.match(ctx, /Período: setembro de 2026/);
+  assert.match(ctx, /Investimento: R\$ /);
+  assert.match(ctx, /Custo por lead/);
+  assert.match(ctx, /Metas do período/);
+  assert.match(ctx, /números de exemplo/);
+  d.client = { id: 1, name: "New Cabos" };
+  d.sample = false;
+  assert.doesNotMatch(dataContext(d), /números de exemplo/);
+});
+
+test("Relatório: Leads no total seguem o \"Leads contam de\" do cliente (padrão campanha)", () => {
+  const w = (crm: number) => ({ ref: "2026-09-07", start: "2026-09-01", meta: nums({ leads: 40, spend: 400 }), google: nums({ leads: 10, spend: 100 }), crmLeads: crm });
+  assert.equal(weekLeads(w(70), "campaign"), 50);
+  assert.equal(weekLeads(w(70), "webhook"), 70);
+  assert.equal(weekLeads(w(0), "webhook"), 50, "semana sem lead no CRM usa a campanha");
+  assert.equal(weekLeads(w(70), "both"), 120);
+  const d = sampleData("2026-09-01", "2026-09-07");
+  d.weeks = [w(70)];
+  assert.equal(metricValue(d, "leads", "all"), 50, "padrão: conversão das campanhas");
+  d.leadSource = "webhook";
+  assert.equal(metricValue(d, "leads", "all"), 70);
+  assert.equal(metricValue(d, "cpl", "all"), 500 / 70);
+  assert.equal(metricValue(d, "leads", "meta"), 40, "num canal só, sempre a conversão do canal");
 });

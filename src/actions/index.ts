@@ -422,7 +422,7 @@ export async function connectMetaAccount(_prev: ActionResult, formData: FormData
     };
 
   await linkMetaAccount(clientId, { id: acc.id, name: acc.name, currency: acc.currency }, metric, me.id ?? null);
-  if (source) await updateClient(clientId, { lead_source: source });
+  if (source) await setLeadSource(me, clientId, source);
   const linked = await getClient(clientId);
   await logChange(me, "integracao", `Meta Ads vinculado: ${linked?.name ?? acc.name}`, { clientId });
   // Histórico de 12 semanas já no vínculo, para o score não esperar o cron.
@@ -476,14 +476,25 @@ function leadSourceOf(formData: FormData): LeadSource | null | false {
   return LEAD_SOURCES.includes(v as LeadSource) ? (v as LeadSource) : false;
 }
 
-/** Fonte dos leads do cliente: conversão de campanha, webhook do CRM ou a soma. */
+/**
+ * Grava a fonte dos leads só quando muda — e registra no histórico. O
+ * registro é o que separa "escolheu webhook" de "está no padrão" (a migração
+ * que passou o padrão para campanha poupou quem tinha esse registro).
+ */
+async function setLeadSource(me: { id?: number | null; name?: string | null }, clientId: number, source: LeadSource) {
+  const client = await getClient(clientId);
+  if (!client || client.lead_source === source) return client;
+  await updateClient(clientId, { lead_source: source });
+  await logChange(me, "integracao", `Fonte de leads = ${LEAD_SOURCE_LABEL[source].toLowerCase()}: ${client.name}`, { clientId });
+  return client;
+}
+
+/** Fonte dos leads do cliente: conversão de campanha (padrão), webhook do CRM ou a soma. */
 export async function changeClientLeadSource(clientId: number, source: LeadSource): Promise<ActionResult> {
   const me = await requireAdmin();
   if (!LEAD_SOURCES.includes(source)) return { error: "Fonte de leads inválida." };
-  const client = await getClient(clientId);
+  const client = await setLeadSource(me, clientId, source);
   if (!client) return { error: "Cliente não encontrado." };
-  await updateClient(clientId, { lead_source: source });
-  await logChange(me, "integracao", `Fonte de leads = ${LEAD_SOURCE_LABEL[source].toLowerCase()}: ${client.name}`, { clientId });
   after(() => recomputeRange(90));
   revalidateSettings();
   revalidatePath("/clientes");
@@ -534,7 +545,7 @@ export async function connectGoogleAccount(_prev: ActionResult, formData: FormDa
   if (acc.manager) return { error: "Esse ID é de uma MCC (conta gerente). Informe o ID da conta de anúncio do cliente." };
 
   await linkGoogleAccount(clientId, { id: customerId, name: acc.name, currency: acc.currency }, me.id ?? null);
-  if (source) await updateClient(clientId, { lead_source: source });
+  if (source) await setLeadSource(me, clientId, source);
   const linked = await getClient(clientId);
   await logChange(me, "integracao", `Google Ads vinculado: ${linked?.name ?? acc.name}`, { clientId });
   // Histórico de 12 semanas já no vínculo, para o score não esperar o cron.

@@ -320,7 +320,34 @@ function ImageField({ value, onChange }: { value: string; onChange: (url: string
   );
 }
 
-export function BlockInspector({ block: b, data, onChange }: { block: Block; data: ReportData; onChange: Change }) {
+/** Escrever com IA: pedido opcional + botão. O texto gerado substitui o do bloco (Ctrl+Z desfaz). */
+export type AiControl = { busy: boolean; run: (instruction: string) => Promise<boolean> };
+
+function AiSection({ ai, heading }: { ai: AiControl; heading: boolean }) {
+  const [instruction, setInstruction] = useState("");
+  return (
+    <Section title="Escrever com IA">
+      <Field
+        label="Pedido (opcional)"
+        hint="A IA usa os números deste relatório e o que já está escrito no bloco como roteiro. O texto novo substitui o atual — Ctrl+Z desfaz."
+      >
+        <textarea
+          className="field"
+          rows={2}
+          value={instruction}
+          onChange={(e) => setInstruction(e.target.value)}
+          placeholder={heading ? "Ex.: título que destaque a queda do CPL" : "Ex.: foque no CPL e no WhatsApp, tom mais direto"}
+        />
+      </Field>
+      <button type="button" className="btn btn-primary w-full justify-center" onClick={() => ai.run(instruction)} disabled={ai.busy} aria-busy={ai.busy}>
+        {ai.busy ? <span className="spinner" aria-hidden /> : <Icon name="sparkles" size={14} />}
+        {ai.busy ? "Escrevendo…" : heading ? "Sugerir título" : "Escrever com IA"}
+      </button>
+    </Section>
+  );
+}
+
+export function BlockInspector({ block: b, data, onChange, ai }: { block: Block; data: ReportData; onChange: Change; ai?: AiControl }) {
   const set = (patch: Record<string, unknown>) => onChange(patch);
   const typing = (k: string) => (v: unknown) => onChange({ [k]: v }, `${b.id}:${k}`);
 
@@ -329,6 +356,7 @@ export function BlockInspector({ block: b, data, onChange }: { block: Block; dat
     case "text":
       return (
         <>
+          {ai && <AiSection ai={ai} heading={b.type === "heading"} />}
           <Section title="Conteúdo">
             <Field label="Texto" hint={b.type === "text" ? "Use **asteriscos** para negrito. Dê dois cliques no bloco para escrever direto na página." : "Dê dois cliques no bloco para escrever direto na página."}>
               <TextArea value={b.text} onChange={typing("text")} rows={b.type === "text" ? 7 : 3} withVariables />

@@ -10,7 +10,7 @@ import { Icon } from "@/components/icon";
 import { ConfirmDialog, Modal } from "@/components/modal";
 import { toast } from "@/components/toast";
 import { deleteReportAction, duplicateReportAction, saveAsTemplateAction } from "@/actions/reports";
-import { BLOCKS, cellSize, clampBlock, cloneBlock, clonePage, freeSpot, newBlock, uid } from "@/lib/reports/layout";
+import { BLOCKS, blockRect, cellSize, clampBlock, cloneBlock, clonePage, freeSpot, newBlock, uid } from "@/lib/reports/layout";
 import { periodLabel, PRESET_LABEL, presetRange, type PeriodPreset } from "@/lib/reports/metrics";
 import {
   FORMAT_LABEL,
@@ -24,7 +24,7 @@ import {
   type ReportDoc,
   type Theme,
 } from "@/lib/reports/types";
-import type { RenderCtx } from "./blocks";
+import { HEADING_PX, TEXT_PX, type RenderCtx } from "./blocks";
 import { EditorPage, type Drag, type Ghost, type PageHandlers } from "./editor-page";
 import { BlockInspector, ColorField, Field, Section } from "./inspector";
 import { Presenter, PrintRoot, printReport, ScaledPage, useWidth } from "./viewer";
@@ -190,16 +190,79 @@ export function ReportEditor({
     }
   }, []);
 
+  /* ---------- sincronizar com Meta e Google ---------- */
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+
+  /**
+   * Lê Meta e Google ao vivo no período exato (rota `sincronizar`). Num
+   * relatório a leitura fica gravada — é ela que o link público mostra.
+   * Devolve false quando não deu (sem conta vinculada, API fora): aí quem
+   * chamou cai nas semanas do banco.
+   */
+  const sync = useCallback(
+    async (cid: number | null, start: string, end: string, { quiet = false } = {}) => {
+      if (!cid) return false;
+      setSyncing(true);
+      setSyncError(null);
+      try {
+        const res = await fetch(`/api/relatorios/${report.id}/sincronizar`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ clientId: cid, start, end }),
+        });
+        const j = (await res.json().catch(() => ({}))) as { data?: ReportData; error?: string };
+        if (!res.ok || !j.data) throw new Error(j.error || "Não foi possível sincronizar com a Meta e o Google.");
+        setData(j.data);
+        const errors = j.data.source.kind === "live" ? j.data.source.errors : [];
+        if (errors.length) toast(`Sincronizado, mas ficou de fora: ${errors.map((e) => `${e.account} (${e.error})`).join(" · ")}`, { tone: "error" });
+        else if (!quiet) toast("Números atualizados com a Meta e o Google.");
+        return true;
+      } catch (e) {
+        const msg = (e as Error).message;
+        setSyncError(msg);
+        if (!quiet) toast(msg, { tone: "error" });
+        return false;
+      } finally {
+        setSyncing(false);
+      }
+    },
+    [report.id],
+  );
+
+  // Ao abrir: sem leitura ao vivo, ou com mais de 1 hora, sincroniza sozinho.
+  const autoSynced = useRef(false);
+  useEffect(() => {
+    if (autoSynced.current || !clientId) return;
+    const src = initialData.source;
+    const stale = src.kind !== "live" || Date.now() - Date.parse(src.at) > 60 * 60 * 1000;
+    if (!stale) return;
+    // A trava vale só quando dispara: o efeito montado duas vezes (Strict
+    // Mode) cancela o primeiro agendamento e o segundo segue.
+    const t = setTimeout(() => {
+      autoSynced.current = true;
+      sync(clientId, period.start, period.end, { quiet: true });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [clientId, initialData.source, period.start, period.end, sync]);
+
+  /** Cliente ou período mudou: tenta a leitura ao vivo; sem ela, o banco. */
+  const refresh = (cid: number | null, start: string, end: string) => {
+    if (!cid) return reload(cid, start, end);
+    sync(cid, start, end, { quiet: true }).then((ok) => {
+      if (!ok) reload(cid, start, end);
+    });
+  };
   const changeClient = (cid: number | null) => {
     setClientId(cid);
     saveMeta({ clientId: cid });
-    reload(cid, period.start, period.end);
+    refresh(cid, period.start, period.end);
   };
   const changePeriod = (p: { start: string; end: string }) => {
     if (!p.start || !p.end || p.start > p.end) return;
     setPeriod(p);
     saveMeta({ periodStart: p.start, periodEnd: p.end });
-    reload(clientId, p.start, p.end);
+    refresh(clientId, p.start, p.end);
   };
 
   /* ---------- seleção e painéis ---------- */
@@ -498,6 +561,65 @@ export function ReportEditor({
     [],
   );
 
+  /* ---------- escrever com IA ---------- */
+  const [aiBusy, setAiBusy] = useState<string[]>([]);
+
+  /** Pede à IA o texto de um bloco de título ou texto e grava no bloco (Ctrl+Z desfaz). */
+  const writeAi = useCallback(
+    async (pageId: string, b: Extract<Block, { type: "heading" | "text" }>, instruction = "") => {
+      const page = live.current.doc.pages.find((p) => p.id === pageId);
+      const pageContext = (page?.blocks ?? [])
+        .filter((x): x is Extract<Block, { type: "heading" | "text" }> => x.id !== b.id && (x.type === "heading" || x.type === "text"))
+        .map((x) => x.text)
+        .join("\n")
+        .slice(0, 3000);
+      setAiBusy((l) => [...l, b.id]);
+      try {
+        const res = await fetch("/api/relatorios/ia", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            reportId: report.id,
+            clientId,
+            start: period.start,
+            end: period.end,
+            kind: b.type,
+            current: b.text,
+            instruction,
+            pageContext,
+            maxWords: wordsThatFit(format, b),
+          }),
+        });
+        const j = (await res.json().catch(() => ({}))) as { text?: string; error?: string };
+        if (!res.ok || !j.text) throw new Error(j.error || "Não foi possível gerar o texto.");
+        updateBlock(pageId, b.id, { text: j.text });
+        return true;
+      } catch (e) {
+        toast((e as Error).message, { tone: "error" });
+        return false;
+      } finally {
+        setAiBusy((l) => l.filter((x) => x !== b.id));
+      }
+    },
+    [report.id, clientId, period.start, period.end, format, updateBlock],
+  );
+
+  /** Preenche de uma vez os textos com roteiro em aberto ("…"), três por vez. */
+  const writeAllAi = async () => {
+    const targets = doc.pages.flatMap((p) =>
+      p.blocks
+        .filter((b): b is Extract<Block, { type: "text" }> => b.type === "text" && /…|\.\.\./.test(b.text))
+        .map((b) => ({ pageId: p.id, block: b })),
+    );
+    if (!targets.length)
+      return toast("Nenhum texto com roteiro em aberto (\"…\"). Para reescrever um texto, selecione o bloco e use Escrever com IA.", { tone: "info" });
+    toast(`Escrevendo ${targets.length} ${targets.length === 1 ? "texto" : "textos"} com IA…`, { tone: "info" });
+    let ok = 0;
+    for (let i = 0; i < targets.length; i += 3)
+      ok += (await Promise.all(targets.slice(i, i + 3).map((t) => writeAi(t.pageId, t.block)))).filter(Boolean).length;
+    if (ok) toast(`${ok} ${ok === 1 ? "texto escrito" : "textos escritos"} com IA. Revise antes de enviar — Ctrl+Z desfaz.`);
+  };
+
   /* ---------- teclado ---------- */
   const clipboard = useRef<Block | null>(null);
   useEffect(() => {
@@ -583,6 +705,7 @@ export function ReportEditor({
                 </button>
               )}
             </span>
+            <SourceLabel source={data.source} syncing={syncing} error={syncError} />
           </div>
 
           <div className="flex items-center gap-1">
@@ -602,6 +725,17 @@ export function ReportEditor({
             </select>
           </div>
           <span className="mx-1 h-6 w-px bg-[var(--border-hair)]" />
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => sync(clientId, period.start, period.end)}
+            disabled={syncing || !clientId}
+            aria-busy={syncing}
+            title={clientId ? "Ler agora a Meta e o Google no período exato do relatório" : "Escolha um cliente em Relatório para sincronizar"}
+          >
+            {syncing ? <span className="spinner" aria-hidden /> : <Icon name="refresh" size={14} />}
+            {syncing ? "Sincronizando…" : "Sincronizar"}
+          </button>
           <button type="button" className="btn btn-sm" onClick={() => setPresenting(Math.max(0, pageIds.indexOf(current)))}>
             <Icon name="play" size={14} />
             Apresentar
@@ -618,6 +752,7 @@ export function ReportEditor({
           )}
           <ActionMenu
             items={[
+              { label: "Escrever textos com IA", icon: "sparkles", onSelect: writeAllAi, hint: "Preenche os textos com roteiro em aberto (…)" },
               { label: "Salvar como modelo", icon: "layers", onSelect: () => setModal("template"), hint: "Reaproveitar em outros clientes" },
               { label: isTemplate ? "Duplicar modelo" : "Duplicar relatório", icon: "copy", onSelect: () => duplicateReportAction(report.id) },
               "separator",
@@ -649,6 +784,14 @@ export function ReportEditor({
                     block={selBlock}
                     data={data}
                     onChange={(patch, key) => updateBlock(selection.pageId, selection.blockId, patch, key)}
+                    ai={
+                      selBlock.type === "heading" || selBlock.type === "text"
+                        ? {
+                            busy: aiBusy.includes(selBlock.id),
+                            run: (instruction) => writeAi(selection.pageId, selBlock, instruction),
+                          }
+                        : undefined
+                    }
                   />
                   <PositionFields block={selBlock} onChange={(p) => updateBlock(selection.pageId, selection.blockId, clampBlock(format, { ...selBlock, ...p }))} />
                 </div>
@@ -992,7 +1135,7 @@ function SettingsPanel({
         <p className="text-[11.5px] leading-relaxed text-ink-500">
           {sample
             ? "Sem cliente: os blocos mostram números de exemplo."
-            : "Mídia vem por semana: o período soma as semanas que fecham dentro dele, e compara com o mesmo número de dias logo antes."}
+            : "Sincronizar lê a Meta e o Google no período exato e compara com o mesmo número de dias logo antes. Sem sincronizar, valem as semanas gravadas no banco."}
         </p>
       </Section>
       <Section title="Aparência">
@@ -1095,7 +1238,7 @@ function ShareModal({
   };
   const url = token && typeof window !== "undefined" ? `${window.location.origin}/r/${token}` : "";
   return (
-    <Modal open={open} onClose={onClose} title="Compartilhar com o cliente" description="O cliente abre sem login, vê as páginas, apresenta em tela cheia e baixa o PDF. Os números acompanham o painel.">
+    <Modal open={open} onClose={onClose} title="Compartilhar com o cliente" description="O cliente abre sem login, vê as páginas, apresenta em tela cheia e baixa o PDF. Os números são os da última sincronização com a Meta e o Google.">
       <div className="space-y-4">
         {token ? (
           <>
@@ -1201,4 +1344,46 @@ function SmallScreen({
       {presenting !== null && <Presenter pages={pages} ctx={ctx} start={presenting} onClose={onClosePresent} />}
     </div>
   );
+}
+
+/* ------------------------------ auxiliares ------------------------------ */
+
+/** De onde vêm os números agora, ao lado do status de salvamento. */
+function SourceLabel({ source, syncing, error }: { source: ReportData["source"]; syncing: boolean; error: string | null }) {
+  if (syncing) return null;
+  if (error)
+    return (
+      <span className="hidden shrink-0 items-center gap-1.5 text-[12px] text-amarelo-fg lg:flex" title={error}>
+        <Icon name="alert" size={13} />
+        Semanas do banco
+      </span>
+    );
+  if (source.kind === "sample") return null;
+  if (source.kind === "db")
+    return (
+      <span className="hidden shrink-0 text-[12px] text-ink-500 lg:inline" title="Semanas-ritual gravadas pelo sync diário. Use Sincronizar para ler o período exato.">
+        · Semanas do banco
+      </span>
+    );
+  const at = new Date(source.at);
+  const when = at.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return (
+    <span className="hidden shrink-0 text-[12px] text-ink-500 lg:inline" title="Lido ao vivo da Meta e do Google no período exato do relatório">
+      · Meta e Google em {when}
+    </span>
+  );
+}
+
+/**
+ * Quantas palavras cabem no bloco: área útil ÷ área de uma palavra média no
+ * tamanho de letra do bloco. É o limite que a IA recebe para o texto caber.
+ */
+function wordsThatFit(format: Report["format"], b: Extract<Block, { type: "heading" | "text" }>) {
+  const r = blockRect(format, b);
+  const pad = b.surface === "none" ? 0 : 32;
+  const px = b.type === "heading" ? HEADING_PX[b.size] : TEXT_PX[b.size];
+  const lineH = px * (b.type === "heading" ? 1.08 : 1.5);
+  const perLine = (r.width - pad) / (px * 0.52);
+  const lines = Math.floor((r.height - pad) / lineH);
+  return Math.max(3, Math.round((perLine * lines) / 6.5));
 }

@@ -43,8 +43,8 @@ const notify = (r: ActionResult) => {
 type Platform = "meta" | "google";
 
 const LEAD_SOURCE_HINT: Record<LeadSource, string> = {
+  campaign: "Padrão. Vale só a conversão das campanhas (Meta + Google). O webhook segue registrando, mas não entra no score.",
   webhook: "Vale o que chega pelo webhook do CRM; semana sem lead no webhook usa a conversão da campanha.",
-  campaign: "Vale só a conversão das campanhas (Meta + Google). O webhook segue registrando, mas não entra no score.",
   both: "Soma o webhook com a conversão das campanhas. Se o mesmo lead cai nos dois, conta duas vezes.",
 };
 

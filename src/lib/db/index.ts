@@ -897,6 +897,18 @@ ALTER TABLE clients DROP CONSTRAINT IF EXISTS clients_lead_source_check;
 ALTER TABLE clients ADD CONSTRAINT clients_lead_source_check
   CHECK (lead_source IN ('campaign','webhook','both'));
 
+-- "Leads contam de" nasce como conversao de campanha; so muda se alguem
+-- trocar. Migracao unica (marcada em settings): quem esta em 'webhook' so
+-- porque era o padrao antigo vira 'campaign'. Quem escolheu webhook no
+-- seletor (registro "Fonte de leads = webhook" no audit_log) fica como esta.
+ALTER TABLE clients ALTER COLUMN lead_source SET DEFAULT 'campaign';
+UPDATE clients c SET lead_source = 'campaign'
+WHERE c.lead_source = 'webhook'
+  AND NOT EXISTS (SELECT 1 FROM settings WHERE key = 'lead_source_default_campaign')
+  AND NOT EXISTS (SELECT 1 FROM audit_log a WHERE a.client_id = c.id AND a.text LIKE 'Fonte de leads = webhook%');
+INSERT INTO settings (key, value, updated_at) VALUES ('lead_source_default_campaign', 'true'::jsonb, now())
+  ON CONFLICT (key) DO NOTHING;
+
 -- =====================================================================
 -- Relatorios (construtor arrasta-e-solta). Um relatorio e um documento
 -- JSON (paginas > blocos numa grade de 12 colunas) ligado a um cliente e a
@@ -922,13 +934,17 @@ CREATE TABLE IF NOT EXISTS rp_reports (
 );
 CREATE INDEX IF NOT EXISTS idx_rp_reports_kind ON rp_reports (kind, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_rp_reports_client ON rp_reports (client_id);
+-- Ultima sincronizacao do relatorio com Meta e Google (botao Sincronizar):
+-- os numeros do periodo exato, lidos na hora das APIs. NULL = o relatorio
+-- usa as semanas-ritual do banco.
+ALTER TABLE rp_reports ADD COLUMN IF NOT EXISTS live JSONB;
 `;
 
 /**
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-10-13.meta-lead-spend";
+export const SCHEMA_VERSION = "2026-10-13.lead-source-campaign";
 
 let migrated = false;
 

@@ -20,7 +20,7 @@ export default async function ReportEditorPage({ params }: { params: Promise<{ i
   const start = report.periodStart ?? fallback.start;
   const end = report.periodEnd ?? fallback.end;
   const [client, clients] = await Promise.all([report.clientId ? getClient(report.clientId) : null, listClients()]);
-  const data = await reportData(client ? { id: client.id, name: client.name } : null, start, end);
+  const data = await reportData(client ? { id: client.id, name: client.name, leadSource: client.lead_source } : null, start, end, report.live);
 
   return (
     <ReportEditor

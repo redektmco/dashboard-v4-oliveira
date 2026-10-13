@@ -102,7 +102,7 @@ async function loadConfigSnapshot() {
         const m = weeks.get(ref);
         if (!m || m.week.spend <= 0) return null;
         const crm = crmBy.get(`${c.id}:${ref}`) ?? 0;
-        const source = crmOn.has(c.id) ? (c.lead_source ?? "webhook") : "campaign";
+        const source = crmOn.has(c.id) ? (c.lead_source ?? "campaign") : "campaign";
         const leads = source === "campaign" ? m.leads : source === "webhook" ? crm : crm + m.leads;
         if (leads > 0) return null;
         spend += m.week.spend;

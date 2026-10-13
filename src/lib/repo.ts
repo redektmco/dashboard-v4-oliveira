@@ -457,7 +457,7 @@ const blank = (v: unknown) => v === undefined || v === null || v === "";
  */
 function applyOverlay(client: ClientRow, perf: Snap[], at: string, ov: AutoOverlay, monthBudget = true): Snap[] {
   const type = client.account_type;
-  const source = client.lead_source ?? "webhook";
+  const source = client.lead_source ?? "campaign";
 
   const firstSpend = [...ov.metaByWeek]
     .filter(([, m]) => m.week.spend > 0)

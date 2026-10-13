@@ -80,6 +80,14 @@ token do **usuário de sistema da unidade** (acesso a todas as BMs). O token viv
   snapshot vira um registro "Meta Ads" com as metas vigentes. Número digitado pelo GT sempre
   vence; leads do CRM vencem os da Meta. O formulário do GT já abre com os números da Meta.
 
+### Leads contam de
+
+Cada cliente diz de onde vem o número de leads (`clients.lead_source`): **Conversão de campanha**
+(padrão — Meta + Google), **Webhook (CRM)** ou **Os dois (soma)**. Todo cliente nasce em campanha e
+só muda se alguém trocar no seletor (ficha do cliente, painel rápido ou vínculo de conta); cada troca
+fica no histórico. Quando o padrão deixou de ser webhook, uma migração única passou para campanha
+os clientes que estavam em webhook só por padrão — quem tinha escolhido webhook no seletor ficou.
+
 ### Região das funções
 
 `vercel.json` fixa as funções em `gru1` (São Paulo), ao lado do Neon (`sa-east-1`). Cada query é
@@ -262,12 +270,24 @@ próprio painel, e entrega ao cliente por link, em tela cheia ou em PDF.
   linha, rosca — por semana ou Meta x Google), Tabela, Funil, Meta x realizado, Health Score,
   Imagem (upload no Blob ou URL), Logo V4 e Forma. Textos aceitam `{cliente}`, `{periodo}`,
   `{periodo_anterior}` e `{data}` e `**negrito**`.
-- **Números:** saem do banco na hora de desenhar — Meta Ads, Google Ads (`meta_insights`,
-  `google_insights`), leads do CRM (`crm_leads`), Health Score (`score_snapshots`) e metas
-  (`client_targets`, semanal × semanas do período). Mídia é semanal: o período soma as semanas-ritual
-  que fecham dentro dele e compara com o mesmo número de dias logo antes. Todo bloco de número
-  tem o modo **Digitar** para o que o painel não tem (orgânico, balcão, outra ferramenta) —
-  tabela e gráfico aceitam colar direto da planilha.
+- **Números e Sincronizar:** o botão **Sincronizar** do editor lê a Meta Ads e o Google Ads ao vivo
+  no período exato do relatório (trechos de 7 dias a partir do início, mais o período anterior para
+  comparar), com os mesmos critérios do score e da aba Performance: lead de site = formulário ou
+  contato (o maior dos dois por campanha), conversa pela métrica da conta, e o CPL usa só a verba das
+  campanhas que geraram lead. A leitura fica gravada no relatório (`rp_reports.live`) e é ela que o
+  link público mostra. O editor sincroniza sozinho ao abrir quando a última leitura tem mais de 1 hora
+  e quando o cliente ou o período mudam. Sem sincronizar (ou sem conta vinculada), valem as
+  semanas-ritual do banco (`meta_insights`, `google_insights`). No total (Meta + Google), Lead segue
+  o **Leads contam de** do cliente, a mesma regra do score; num canal só, é a conversão do canal.
+  Leads do CRM (`crm_leads`), Health
+  Score (`score_snapshots`) e metas (`client_targets`, semanal × semanas do período) vêm do banco.
+  Todo bloco de número tem o modo **Digitar** para o que o painel não tem (orgânico, balcão, outra
+  ferramenta) — tabela e gráfico aceitam colar direto da planilha.
+- **Escrever com IA:** nos blocos de título e texto, o Claude (`claude-opus-5-5`, via
+  `@anthropic-ai/sdk`) escreve a partir dos números do relatório, usando o que já está no bloco como
+  roteiro e um pedido opcional; em ⋯ › *Escrever textos com IA* preenche de uma vez todos os textos
+  com roteiro em aberto ("…"). Só no servidor (`src/lib/reports/ai.ts`, rota `/api/relatorios/ia`);
+  a chave fica na env **`ANTHROPIC_API_KEY`** da Vercel. Sem ela, o botão avisa que falta configurar.
 - **Modelos:** dois prontos da V4 no código (`src/lib/reports/starters.ts`) e os da unidade
   (`rp_reports.kind = 'template'`), criados do zero ou por *Salvar como modelo*. Usar um modelo
   copia as páginas; os números trocam sozinhos pelo cliente escolhido.
@@ -282,6 +302,8 @@ próprio painel, e entrega ao cliente por link, em tela cheia ou em PDF.
 |---|---|
 | Documento, grade e regras puras | `src/lib/reports/{types,layout,metrics}.ts` (testes em `npm test`) |
 | Banco e números do período | `src/lib/reports/db.ts` (`rp_reports`, `reportData`) |
+| Sincronizar com Meta e Google | `src/lib/reports/live.ts`, rota `/api/relatorios/[id]/sincronizar` |
+| Escrever com IA | `src/lib/reports/ai.ts`, rota `/api/relatorios/ia` (env `ANTHROPIC_API_KEY`) |
 | Desenho dos blocos (editor, link, slide e PDF iguais) | `src/components/reports/blocks.tsx` |
 | Editor | `src/components/reports/editor.tsx`, `editor-page.tsx`, `inspector.tsx` |
 | Link público, apresentação e impressão | `src/components/reports/viewer.tsx`, `src/app/r/[token]` |

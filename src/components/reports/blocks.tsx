@@ -210,8 +210,8 @@ function metricLabel(metric: KpiBlock["metric"], source: KpiBlock["source"]) {
   return def.only || src === "all" ? def.label : `${def.label} · ${SOURCE_LABEL[src]}`;
 }
 
-function DeltaTag({ delta, lowerIsBetter }: { delta: number | null; lowerIsBetter?: boolean }) {
-  const tone = deltaTone(delta, lowerIsBetter);
+function DeltaTag({ delta, lowerIsBetter, neutral }: { delta: number | null; lowerIsBetter?: boolean; neutral?: boolean }) {
+  const tone = neutral ? "flat" : deltaTone(delta, lowerIsBetter);
   const color = tone === "up" ? "var(--rp-good)" : tone === "down" ? "var(--rp-bad)" : "var(--rp-muted)";
   const arrow = delta === null || Math.abs(delta) < 0.5 ? "" : delta > 0 ? "▲ " : "▼ ";
   return (
@@ -242,7 +242,7 @@ function Kpi({ b, ctx, rect }: { b: KpiBlock; ctx: RenderCtx; rect: { width: num
         </div>
         {b.showDelta ? (
           <div className="flex min-w-0 items-baseline gap-1.5 text-[12px]">
-            <DeltaTag delta={deltaPct(cur, prev)} lowerIsBetter={!manual && def.lowerIsBetter} />
+            <DeltaTag delta={deltaPct(cur, prev)} lowerIsBetter={!manual && def.lowerIsBetter} neutral={!manual && def.neutral} />
             <span className="truncate" style={{ color: "var(--rp-muted)" }}>
               vs {formatValue(prev, format, { compact: true })} antes
             </span>
@@ -307,13 +307,13 @@ function Table({ b, ctx, rect }: { b: TableBlock; ctx: RenderCtx; rect: { width:
     head = [b.rows === "channel" ? "Canal" : "Semana", ...metrics.map((m) => METRICS[m].label)];
     if (b.rows === "channel") {
       body = (["meta", "google"] as const).map((c) => [SOURCE_LABEL[c], ...metrics.map((m) => fmt(totalsOf(ctx.data.weeks, c), m))]);
-      foot = ["Total", ...metrics.map((m) => fmt(totalsOf(ctx.data.weeks, sourceFor(m, "all")), m))];
+      foot = ["Total", ...metrics.map((m) => fmt(totalsOf(ctx.data.weeks, sourceFor(m, "all"), ctx.data.leadSource), m))];
     } else {
       body = ctx.data.weeks.map((w) => [
-        `Sem. ${shortDay(w.ref)}`,
-        ...metrics.map((m) => fmt(totalsOf([w], sourceFor(m, b.source)), m)),
+        `Sem. ${shortDay(w.start)}`,
+        ...metrics.map((m) => fmt(totalsOf([w], sourceFor(m, b.source), ctx.data.leadSource), m)),
       ]);
-      foot = ["Total", ...metrics.map((m) => fmt(totalsOf(ctx.data.weeks, sourceFor(m, b.source)), m))];
+      foot = ["Total", ...metrics.map((m) => fmt(totalsOf(ctx.data.weeks, sourceFor(m, b.source), ctx.data.leadSource), m))];
     }
   }
 

@@ -289,7 +289,7 @@ export async function crmBoard({ baseUrl, at = today() }: { baseUrl: string; at?
 
       targets: { set: fields.filter((f) => targets[f.key] !== undefined).length, total: fields.length },
       leadSources: sourcesBy.get(client.id) ?? [],
-      leadSource: client.lead_source ?? "webhook",
+      leadSource: client.lead_source ?? "campaign",
       charge: charge
         ? { amount: charge.amount, dueDate: charge.dueDate, willSend: snap.naoEnviadas.every((n) => n.id !== charge.id) }
         : null,

@@ -5,6 +5,7 @@
  */
 import type {
   ChannelNums,
+  LeadRule,
   MetricKey,
   NumberFormat,
   ReportData,
@@ -17,6 +18,8 @@ export type MetricDef = {
   format: NumberFormat;
   /** Menor é melhor (CPL, CPC): a seta da variação inverte a cor. */
   lowerIsBetter?: boolean;
+  /** Nem melhor nem pior por si (investir mais ou menos): a variação fica neutra. */
+  neutral?: boolean;
   /** Só existe num canal — o seletor de fonte some. */
   only?: "meta" | "crm";
   /** Meta semanal do cliente que corresponde (`client_targets`). */
@@ -27,14 +30,14 @@ export type MetricDef = {
 };
 
 export const METRICS: Record<MetricKey, MetricDef> = {
-  spend: { label: "Investimento", format: "currency", targetKey: "budget_meta", targetSums: true },
-  impressions: { label: "Impressões", format: "int", targetKey: "reach_meta", targetSums: true },
-  reach: { label: "Alcance", format: "int", only: "meta", hint: "Soma do alcance semanal da Meta." },
+  spend: { label: "Investimento", format: "currency", neutral: true, targetKey: "budget_meta", targetSums: true },
+  impressions: { label: "Impressões", format: "int", neutral: true, targetKey: "reach_meta", targetSums: true },
+  reach: { label: "Alcance", format: "int", only: "meta", neutral: true, hint: "Soma do alcance semanal da Meta." },
   clicks: { label: "Cliques", format: "int" },
   ctr: { label: "CTR", format: "percent" },
   cpc: { label: "CPC", format: "currency", lowerIsBetter: true },
   cpm: { label: "CPM", format: "currency", lowerIsBetter: true },
-  leads: { label: "Leads", format: "int", targetKey: "leads_meta", targetSums: true, hint: "Meta: conforme o vínculo da conta. Google: conversões." },
+  leads: { label: "Leads", format: "int", targetKey: "leads_meta", targetSums: true, hint: "No total, segue o \"Leads contam de\" do cliente (padrão: conversão das campanhas). Num canal só: Meta = formulário/contato e conversas; Google = conversões." },
   cpl: { label: "Custo por lead", format: "currency", lowerIsBetter: true, targetKey: "cpl_meta" },
   conversations: { label: "Conversas iniciadas", format: "int", only: "meta" },
   purchases: { label: "Compras / conversões", format: "int" },
@@ -55,18 +58,34 @@ export const EMPTY_NUMS: ChannelNums = {
   conversations: 0,
   purchases: 0,
   revenue: 0,
+  leadSpend: 0,
 };
 
 export type Totals = ChannelNums & { crmLeads: number; weeks: number };
 
-/** Soma das semanas na fonte pedida. */
-export function totalsOf(weeks: WeekRow[], source: Source): Totals {
+/**
+ * Leads de uma semana no total (Meta + Google) pela regra do cliente: só a
+ * campanha, o CRM (semana sem lead no CRM usa a campanha) ou a soma.
+ */
+export function weekLeads(w: WeekRow, rule: LeadRule): number {
+  const media = w.meta.leads + w.google.leads;
+  if (rule === "webhook") return w.crmLeads > 0 ? w.crmLeads : media;
+  if (rule === "both") return media + w.crmLeads;
+  return media;
+}
+
+/**
+ * Soma das semanas na fonte pedida. No total (`all`), Lead segue o "Leads
+ * contam de" do cliente; num canal só, é sempre a conversão daquele canal.
+ */
+export function totalsOf(weeks: WeekRow[], source: Source, rule: LeadRule = "campaign"): Totals {
   const out: Totals = { ...EMPTY_NUMS, crmLeads: 0, weeks: weeks.length };
   for (const w of weeks) {
     for (const k of Object.keys(EMPTY_NUMS) as (keyof ChannelNums)[]) {
       if (source !== "google") out[k] += w.meta[k];
       if (source !== "meta") out[k] += w.google[k];
     }
+    if (source === "all") out.leads += weekLeads(w, rule) - (w.meta.leads + w.google.leads);
     out.crmLeads += w.crmLeads;
   }
   return out;
@@ -88,7 +107,8 @@ export function metricOf(t: Totals, metric: MetricKey): number | null {
       return r === null ? null : r * 1000;
     }
     case "cpl":
-      return div(t.spend, t.leads);
+      // Verba das campanhas de lead; sem ela (dado antigo, lead só do CRM), a verba toda.
+      return div(t.leadSpend > 0 ? t.leadSpend : t.spend, t.leads);
     case "roas":
       return div(t.revenue, t.spend);
     case "ticket":
@@ -112,7 +132,7 @@ export function metricValue(
 ): number | null {
   const weeks = which === "current" ? data.weeks : data.prevWeeks;
   if (!weeks.length) return null;
-  return metricOf(totalsOf(weeks, sourceFor(metric, source)), metric);
+  return metricOf(totalsOf(weeks, sourceFor(metric, source), data.leadSource), metric);
 }
 
 /** Variação percentual. Sem base (zero ou ausente) não há variação. */
@@ -131,7 +151,7 @@ export function deltaTone(delta: number | null, lowerIsBetter = false): "up" | "
 /** Uma série por semana do período, na fonte pedida. */
 export function weeklySeries(data: ReportData, metric: MetricKey, source: Source) {
   const src = sourceFor(metric, source);
-  return data.weeks.map((w) => ({ label: shortDay(w.ref), value: metricOf(totalsOf([w], src), metric) }));
+  return data.weeks.map((w) => ({ label: shortDay(w.start), value: metricOf(totalsOf([w], src, data.leadSource), metric) }));
 }
 
 /** Meta x Google lado a lado no período. */
@@ -325,7 +345,9 @@ export function blankData(client: { id: number; name: string } | null, start: st
     prevWeeks: [],
     score: { value: null, band: null, day: null },
     targets: {},
+    leadSource: "campaign",
     sample: false,
+    source: { kind: "db" },
   };
 }
 
@@ -351,6 +373,7 @@ export function sampleData(start: string, end: string): ReportData {
         conversations: Math.round(38 * k),
         purchases: Math.round(14 * k),
         revenue: Math.round(9800 * k),
+        leadSpend: Math.round(2100 * k),
       };
       const google: ChannelNums = {
         spend: Math.round(1300 * k),
@@ -361,8 +384,9 @@ export function sampleData(start: string, end: string): ReportData {
         conversations: 0,
         purchases: Math.round(41 * k),
         revenue: Math.round(5200 * k),
+        leadSpend: Math.round(1300 * k),
       };
-      out.push({ ref, meta, google, crmLeads: Math.round(120 * k) });
+      out.push({ ref, start: shift(ref, -6), meta, google, crmLeads: Math.round(120 * k) });
     }
     return out.reverse();
   };
@@ -374,6 +398,8 @@ export function sampleData(start: string, end: string): ReportData {
     prevWeeks: weeksIn(prev.start, prev.end, 4),
     score: { value: 78, band: "verde", day: end },
     targets: { leads_meta: 140, cpl_meta: 30, budget_meta: 3800, revenue_meta: 14000, roas_meta: 3 },
+    leadSource: "campaign",
     sample: true,
+    source: { kind: "sample" },
   };
 }

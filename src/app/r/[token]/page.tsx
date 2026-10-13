@@ -33,7 +33,7 @@ export default async function PublicReportPage({ params }: Props) {
   // Cliente excluído: sem ele, `reportData` cairia nos números de exemplo — o link não abre.
   const client = await getClient(report.clientId);
   if (!client) notFound();
-  const data = await reportData({ id: client.id, name: client.name }, report.periodStart, report.periodEnd);
+  const data = await reportData({ id: client.id, name: client.name, leadSource: client.lead_source }, report.periodStart, report.periodEnd, report.live);
 
   return <ReportViewer title={report.title} pages={report.doc.pages} ctx={{ data, format: report.format, today: today(), theme: report.doc.theme }} />;
 }

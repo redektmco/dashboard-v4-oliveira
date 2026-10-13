@@ -127,7 +127,7 @@ export type Client = {
 };
 
 export type LeadSource = "campaign" | "webhook" | "both";
-export const LEAD_SOURCES: LeadSource[] = ["webhook", "campaign", "both"];
+export const LEAD_SOURCES: LeadSource[] = ["campaign", "webhook", "both"];
 export const LEAD_SOURCE_LABEL: Record<LeadSource, string> = {
   campaign: "Conversão de campanha",
   webhook: "Webhook (CRM)",

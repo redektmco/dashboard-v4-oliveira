@@ -7,7 +7,7 @@ import { getTargets, googleWeeks, metaWeeks, type MetaAgg } from "../repo";
 import { newId, newToken } from "../social/id";
 import { sanitizeDoc } from "./layout";
 import { EMPTY_NUMS, previousPeriod, sampleData } from "./metrics";
-import type { Band, ChannelNums, Report, ReportData, ReportDoc, ReportFormat, WeekRow } from "./types";
+import type { Band, ChannelNums, LeadRule, LiveSnapshot, Report, ReportData, ReportDoc, ReportFormat, WeekRow } from "./types";
 
 type Row = {
   id: string;
@@ -20,6 +20,7 @@ type Row = {
   period_end: string | null;
   doc: unknown;
   share_token: string | null;
+  live: LiveSnapshot | null;
   created_by_name: string | null;
   created_at: string;
   updated_at: string;
@@ -28,7 +29,7 @@ type Row = {
 const SELECT = `
   SELECT r.id, r.kind, r.client_id, c.name AS client_name, r.title, r.format,
          r.period_start::text AS period_start, r.period_end::text AS period_end,
-         r.doc, r.share_token, u.name AS created_by_name,
+         r.doc, r.share_token, r.live, u.name AS created_by_name,
          r.created_at::text AS created_at, r.updated_at::text AS updated_at
   FROM rp_reports r
   LEFT JOIN clients c ON c.id = r.client_id
@@ -52,6 +53,7 @@ function toReport(r: Row): Report {
     periodEnd: r.period_end,
     doc: sanitizeDoc(r.doc, r.format),
     shareToken: r.share_token,
+    live: r.live && typeof r.live === "object" && Array.isArray(r.live.weeks) ? r.live : null,
     createdByName: r.created_by_name,
     createdAt: iso(r.created_at),
     updatedAt: iso(r.updated_at),
@@ -137,6 +139,10 @@ export async function setShare(id: string, on: boolean): Promise<string | null> 
   return token;
 }
 
+/** Grava a última sincronização com Meta e Google (o que o link público mostra). */
+export const saveLive = (id: string, snap: LiveSnapshot) =>
+  run(`UPDATE rp_reports SET live = ?::jsonb WHERE id = ?`, [JSON.stringify(snap), id]);
+
 export const deleteReport = (id: string) => run(`DELETE FROM rp_reports WHERE id = ?`, [id]);
 
 /* ------------------------------- números ------------------------------- */
@@ -154,28 +160,43 @@ const toNums = (a: MetaAgg | undefined): ChannelNums =>
         conversations: a.week.conversations,
         purchases: a.week.purchases,
         revenue: a.week.revenue,
+        leadSpend: a.leadSpend,
       }
     : { ...EMPTY_NUMS };
+
+const minus6 = (day: string) => {
+  const d = new Date(day + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() - 6);
+  return d.toISOString().slice(0, 10);
+};
+
+/** A sincronização vale para este cliente e este período? */
+export const liveMatches = (snap: LiveSnapshot | null | undefined, clientId: number, start: string, end: string): snap is LiveSnapshot =>
+  !!snap && snap.clientId === clientId && snap.start === start && snap.end === end;
 
 /**
  * Tudo que os blocos de um relatório leem, numa ida ao banco por fonte: as
  * semanas-ritual que fecham dentro do período (e do período anterior, para a
  * comparação), o Health Score no fim do período e as metas vigentes.
  *
- * O dado de mídia é semanal: o período soma as semanas cujo fechamento cai
- * dentro dele. Sem cliente (modelo), devolve números de exemplo.
+ * Com uma sincronização (`live`) do mesmo cliente e período, a mídia vem dela
+ * — o período exato, lido na hora da Meta e do Google. Sem ela, das semanas-
+ * ritual do banco: o período soma as semanas cujo fechamento cai dentro dele.
+ * Sem cliente (modelo), devolve números de exemplo.
  */
 export async function reportData(
-  client: { id: number; name: string } | null,
+  client: { id: number; name: string; leadSource?: LeadRule | null } | null,
   start: string,
   end: string,
+  live?: LiveSnapshot | null,
 ): Promise<ReportData> {
   if (!client) return sampleData(start, end);
   const prev = previousPeriod(start, end);
 
+  const snap = liveMatches(live, client.id, start, end) ? live : null;
   const [meta, google, crm, score, targets] = await Promise.all([
-    metaWeeks(client.id),
-    googleWeeks(client.id),
+    snap ? new Map<number, Map<string, MetaAgg>>() : metaWeeks(client.id),
+    snap ? new Map<number, Map<string, MetaAgg>>() : googleWeeks(client.id),
     all<{ ref: string; n: number }>(
       `SELECT ref_date::text AS ref, count(*)::int AS n FROM crm_leads
        WHERE client_id = ? AND ref_date BETWEEN ?::date AND ?::date GROUP BY ref_date`,
@@ -198,6 +219,7 @@ export async function reportData(
     for (const map of [m, g, c]) for (const ref of map.keys()) if (ref >= s && ref <= e) refs.add(ref);
     return [...refs].sort().map((ref) => ({
       ref,
+      start: minus6(ref),
       meta: toNums(m.get(ref)),
       google: toNums(g.get(ref)),
       crmLeads: c.get(ref) ?? 0,
@@ -205,17 +227,19 @@ export async function reportData(
   };
 
   return {
-    client,
+    client: { id: client.id, name: client.name },
     period: { start, end },
     previous: prev,
-    weeks: weeksIn(start, end),
-    prevWeeks: weeksIn(prev.start, prev.end),
+    weeks: snap ? snap.weeks : weeksIn(start, end),
+    prevWeeks: snap ? snap.prevWeeks : weeksIn(prev.start, prev.end),
     score: {
       value: score?.score === null || score?.score === undefined ? null : Number(score.score),
       band: score?.band ?? null,
       day: score?.day ?? null,
     },
     targets,
+    leadSource: client.leadSource ?? "campaign",
     sample: false,
+    source: snap ? { kind: "live", at: snap.at, errors: snap.errors } : { kind: "db" },
   };
 }

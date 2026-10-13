@@ -201,6 +201,8 @@ export type Report = {
   periodEnd: string | null;
   doc: ReportDoc;
   shareToken: string | null;
+  /** Última sincronização com Meta e Google (null = só o banco). */
+  live: LiveSnapshot | null;
   createdByName: string | null;
   updatedAt: string;
   createdAt: string;
@@ -218,11 +220,46 @@ export type ChannelNums = {
   conversations: number;
   purchases: number;
   revenue: number;
+  /**
+   * Verba só das campanhas que geraram lead (ou conversa, pela métrica da
+   * conta) — a base do CPL, como no score. Campanha de alcance ou de visita
+   * ao Instagram não entra.
+   */
+  leadSpend: number;
 };
 
-export type WeekRow = { ref: string; meta: ChannelNums; google: ChannelNums; crmLeads: number };
+/** Uma semana (ou trecho de 7 dias) do período: `start` a `ref`. */
+export type WeekRow = { ref: string; start: string; meta: ChannelNums; google: ChannelNums; crmLeads: number };
+
+/**
+ * De onde vieram os números: `live` = lidos na hora das APIs da Meta e do
+ * Google para o período exato (botão Sincronizar); `db` = semanas-ritual que o
+ * sync diário gravou no banco; `sample` = exemplo (modelo sem cliente).
+ */
+export type DataSource =
+  | { kind: "live"; at: string; errors: { account: string; error: string }[] }
+  | { kind: "db" }
+  | { kind: "sample" };
+
+/** O que o "Sincronizar" grava no relatório: os números do período exato. */
+export type LiveSnapshot = {
+  clientId: number;
+  start: string;
+  end: string;
+  at: string;
+  weeks: WeekRow[];
+  prevWeeks: WeekRow[];
+  errors: { account: string; error: string }[];
+};
 
 export type Band = "verde" | "amarelo" | "vermelho";
+
+/**
+ * "Leads contam de" do cliente — a mesma regra do score. `campaign` (padrão)
+ * = conversão das campanhas; `webhook` = leads do CRM (semana sem lead no
+ * CRM usa a campanha); `both` = a soma dos dois.
+ */
+export type LeadRule = "campaign" | "webhook" | "both";
 
 /** Tudo que os blocos leem, calculado uma vez por (cliente, período). */
 export type ReportData = {
@@ -234,6 +271,9 @@ export type ReportData = {
   score: { value: number | null; band: Band | null; day: string | null };
   /** Metas semanais vigentes no fim do período (`client_targets`). */
   targets: Record<string, number>;
+  /** "Leads contam de" do cliente: decide o que é Lead no total (Meta + Google). */
+  leadSource: LeadRule;
   /** Números de exemplo (modelo sem cliente): o editor avisa. */
   sample: boolean;
+  source: DataSource;
 };
