@@ -2,13 +2,10 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { registerInteraction } from "@/actions/crm";
 import { agoLabel, type CrmRow } from "@/lib/crm/board";
-import { INTERACTION_LABEL, type InteractionKind } from "@/lib/crm/interactions";
+import { INTERACTION_LABEL } from "@/lib/crm/interactions";
 import { STAGE_LABEL } from "@/lib/model/types";
 import { hasMediaService } from "@/lib/model/services";
-import { ActionForm, SubmitButton } from "../form-controls";
-import { Modal } from "../modal";
 import { Icon, type IconName } from "../icon";
 import { GoogleLinkRow, LeadSourcePicker, MetaConnectDialog, MetaLinkRow, WebhookBox } from "../config/connections";
 import { BAND_STYLE, brl, Sparkline } from "../ui";
@@ -45,7 +42,6 @@ export function CrmQuickPanel({
   googleReady: boolean;
   linkedGoogle: string[];
 }) {
-  const [logging, setLogging] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const band = row.band ? BAND_STYLE[row.band] : null;
 
@@ -211,23 +207,11 @@ export function CrmQuickPanel({
       </div>
 
       <footer className="flex flex-col gap-2 border-t border-[var(--border-hair)] px-4 py-3">
-        <div className="flex gap-2">
-          <button type="button" className="btn btn-sm flex-1" onClick={() => setLogging(true)}>
-            <Icon name="messageCircle" size={14} />
-            Registrar interação
-          </button>
-          <Link href={`/clientes/${row.id}?plano=novo`} className="btn btn-sm flex-1 justify-center">
-            <Icon name="listTodo" size={14} />
-            Criar tarefa
-          </Link>
-        </div>
         <Link href={`/clientes/${row.id}`} className="btn btn-light w-full justify-center">
           Abrir ficha completa
           <Icon name="arrowRight" size={15} />
         </Link>
       </footer>
-
-      <LogInteraction open={logging} onClose={() => setLogging(false)} row={row} />
     </>
   );
 }
@@ -280,48 +264,5 @@ function ModuleLink({ icon, label, href, tone }: { icon: IconName; label: string
       <span className="min-w-0 flex-1 truncate">{label}</span>
       <Icon name="arrowUpRight" size={13} className="shrink-0 text-ink-600" />
     </Link>
-  );
-}
-
-/* ------------------------ registrar interação ---------------------- */
-
-function LogInteraction({ open, onClose, row }: { open: boolean; onClose: () => void; row: CrmRow }) {
-  const kinds = Object.keys(INTERACTION_LABEL) as InteractionKind[];
-  return (
-    <Modal open={open} onClose={onClose} title="Registrar interação" description={row.name} size="sm">
-      <ActionForm action={registerInteraction} onSuccess={onClose}>
-        <input type="hidden" name="client_id" value={row.id} />
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="flex flex-col gap-1.5">
-            <span className="label">Tipo</span>
-            <select name="kind" defaultValue="reuniao" className="field" required>
-              {kinds.map((k) => (
-                <option key={k} value={k}>
-                  {INTERACTION_LABEL[k]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="label">Quando</span>
-            <input type="date" name="at" defaultValue={new Date().toISOString().slice(0, 10)} className="field" />
-          </label>
-        </div>
-        <label className="flex flex-col gap-1.5">
-          <span className="label">Resumo</span>
-          <input name="title" className="field" placeholder="Ex.: Reunião de alinhamento do mês" required autoFocus maxLength={160} />
-        </label>
-        <label className="flex flex-col gap-1.5">
-          <span className="label">Observações</span>
-          <textarea name="note" rows={3} className="field" placeholder="O que ficou combinado (opcional)" />
-        </label>
-        <div className="modal-actions">
-          <button type="button" className="btn" onClick={onClose}>
-            Cancelar
-          </button>
-          <SubmitButton pendingLabel="Registrando…">Registrar</SubmitButton>
-        </div>
-      </ActionForm>
-    </Modal>
   );
 }
