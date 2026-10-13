@@ -513,6 +513,11 @@ CREATE TABLE IF NOT EXISTS meta_insights (
   synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (ad_account_id, ref_date)
 );
+-- Verba so das campanhas que geraram lead/contato, conversa ou qualquer um
+-- dos dois: e a base do CPL (campanha de alcance ou de Instagram fica fora).
+ALTER TABLE meta_insights ADD COLUMN IF NOT EXISTS lead_spend DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE meta_insights ADD COLUMN IF NOT EXISTS conv_spend DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE meta_insights ADD COLUMN IF NOT EXISTS result_spend DOUBLE PRECISION NOT NULL DEFAULT 0;
 
 -- =====================================================================
 -- Google Ads — mesma ideia do Meta: verba, conversoes e receita por semana-
@@ -547,10 +552,9 @@ CREATE TABLE IF NOT EXISTS google_insights (
   PRIMARY KEY (customer_id, ref_date)
 );
 
--- Verba por dia de cada conta (Meta e Google), so dias ja fechados e com
--- zero gravado no dia sem entrega. E o que da a "Verba investida" dos
--- ultimos 7 dias (ate ontem), o mesmo recorte do "Ultimos 7 dias" do Google
--- Ads e do Gerenciador da Meta.
+-- Verba por dia de cada conta (Meta e Google), com zero gravado no dia sem
+-- entrega (hoje entra parcial e e regravado no proximo sync). E o que da a
+-- "Verba investida" do mes ate hoje, o mesmo recorte do relatorio mensal.
 CREATE TABLE IF NOT EXISTS meta_daily_spend (
   ad_account_id TEXT NOT NULL REFERENCES meta_ad_accounts(ad_account_id) ON DELETE CASCADE,
   day DATE NOT NULL,
@@ -924,7 +928,7 @@ CREATE INDEX IF NOT EXISTS idx_rp_reports_client ON rp_reports (client_id);
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-10-13.reports";
+export const SCHEMA_VERSION = "2026-10-13.meta-lead-spend";
 
 let migrated = false;
 

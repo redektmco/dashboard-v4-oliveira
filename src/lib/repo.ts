@@ -5,9 +5,9 @@ import { DIMENSIONS, fieldsFor } from "./model/catalog";
 import { computeScore, DEFAULT_CONFIG, type ScoreConfig, type WeightMap } from "./model/scoring";
 import { insertDemoData, wipe } from "./seed";
 import { syncFlags } from "./playbook/db";
-import { EMPTY_WEEK, leadsOf, metaFields, type LeadMetric, type MetaWeek } from "./meta/metrics";
+import { EMPTY_WEEK, leadSpendOf, leadsOf, metaFields, type LeadMetric, type MetaWeek } from "./meta/metrics";
 import { clientKey, type SheetClient } from "./import/clients-sheet";
-import { last7Label, rollingSpend, type DailySpend } from "./media-daily";
+import { monthLabel, monthSpend, monthTarget, type DailySpend } from "./media-daily";
 import type {
   AccountType,
   Band,
@@ -418,8 +418,11 @@ export async function saveSnapshot(
 
 /* ------------------------------ score ------------------------------ */
 
-/** Semana da Meta de um cliente: soma das contas + leads já pela métrica de cada conta. */
-export type MetaAgg = { week: MetaWeek; leads: number };
+/**
+ * Semana da Meta de um cliente: soma das contas + leads já pela métrica de
+ * cada conta, e a verba das campanhas que geraram esses leads (base do CPL).
+ */
+export type MetaAgg = { week: MetaWeek; leads: number; leadSpend: number };
 
 /**
  * Dados automáticos por semana-ritual (chave = `ref_date` da semana que fecha):
@@ -431,7 +434,7 @@ export type AutoOverlay = {
   leadsByWeek: Map<string, number>;
   metaByWeek: Map<string, MetaAgg>;
   targets: Record<string, number>;
-  /** Verba diária de Meta + Google — a "Verba investida" usa os últimos 7 dias. */
+  /** Verba diária de Meta + Google — a "Verba investida" usa o mês até hoje. */
   daily?: DailySpend;
 };
 
@@ -452,7 +455,7 @@ const blank = (v: unknown) => v === undefined || v === null || v === "";
  * Semanas da Meta anteriores à primeira com verba ficam de fora: conta
  * vinculada depois de meses parada não inventa "verba zero" retroativa.
  */
-function applyOverlay(client: ClientRow, perf: Snap[], at: string, ov: AutoOverlay): Snap[] {
+function applyOverlay(client: ClientRow, perf: Snap[], at: string, ov: AutoOverlay, monthBudget = true): Snap[] {
   const type = client.account_type;
   const source = client.lead_source ?? "webhook";
 
@@ -475,7 +478,7 @@ function applyOverlay(client: ClientRow, perf: Snap[], at: string, ov: AutoOverl
   const fromMeta = (ref: string) => {
     const m = ov.metaByWeek.get(ref);
     if (!m || !firstSpend || ref < firstSpend) return null;
-    return metaFields(type, m.week, crmLeads(ref) ?? m.leads);
+    return metaFields(type, m.week, crmLeads(ref) ?? m.leads, m.leadSpend);
   };
 
   const list = perf.map((s) => {
@@ -521,16 +524,24 @@ function applyOverlay(client: ClientRow, perf: Snap[], at: string, ov: AutoOverl
   }
   list.sort((a, b) => (a.ref_date < b.ref_date ? 1 : a.ref_date > b.ref_date ? -1 : b.id - a.id));
 
-  // 4. A "Verba investida" do snapshot vigente vira a soma dos últimos 7
-  //    dias até ontem — o mesmo recorte do Google Ads e da Meta — quando a
-  //    verba veio da mídia (não digitada pelo GT) e todos os dias estão
-  //    sincronizados. Os demais números seguem a semana do ritual.
+  // 4. (Só no score — a sugestão de metas compara semana com semana.)
+  //    A "Verba investida" do snapshot vigente vira a soma do mês até hoje
+  //    — o mesmo recorte do relatório mensal — quando a verba veio da mídia
+  //    (não digitada pelo GT) e todos os dias fechados estão sincronizados.
+  //    A verba contratada (semanal) vira a proporcional aos dias fechados do
+  //    mês, para comparar igual com igual. Os demais números seguem a semana
+  //    do ritual.
   const i = list.findIndex((s) => s.ref_date <= at);
-  const spend7 = i >= 0 && firstSpend ? rollingSpend(ov.daily, at) : null;
-  if (spend7 !== null) {
+  const spendMonth = monthBudget && i >= 0 && firstSpend ? monthSpend(ov.daily, at) : null;
+  if (spendMonth !== null) {
     const cur = list[i];
     const typed = cur.id ? perf.find((s) => s.id === cur.id)?.data.budget_real : undefined;
-    if (blank(typed)) list[i] = { ...cur, data: { ...cur.data, budget_real: spend7, budget_period: last7Label(at) } };
+    if (blank(typed)) {
+      const weekly = Number(cur.data.budget_meta);
+      const data: Record<string, unknown> = { ...cur.data, budget_real: spendMonth, budget_period: monthLabel(at) };
+      if (!blank(cur.data.budget_meta) && Number.isFinite(weekly)) data.budget_meta = monthTarget(weekly, at);
+      list[i] = { ...cur, data };
+    }
   }
   return list;
 }
@@ -616,7 +627,7 @@ export async function suggestTargets(clientId: number, at = today()): Promise<Ta
   ]);
   if (!client) return [];
   const since = addDaysIso(at, -90);
-  const snaps = (overlay ? applyOverlay(client, perf, at, overlay) : perf).filter(
+  const snaps = (overlay ? applyOverlay(client, perf, at, overlay, false) : perf).filter(
     (s) => s.ref_date >= since && s.ref_date <= at,
   );
   const n = (v: unknown) => (typeof v === "number" ? v : v == null || v === "" ? null : Number(v));
@@ -1056,8 +1067,8 @@ export const saveGoogleDaily = (customerId: string, days: Map<string, number>) =
 
 /**
  * Verba diária por cliente, somando as contas ativas de Meta e Google, com
- * quantas contas cobrem cada dia — é o que dá a "Verba investida" dos
- * últimos 7 dias (`rollingSpend`).
+ * quantas contas cobrem cada dia — é o que dá a "Verba investida" do mês
+ * até hoje (`monthSpend`).
  */
 export async function mediaDaily(clientId?: number): Promise<Map<number, DailySpend>> {
   const where = clientId ? "AND a.client_id = ?" : "";
@@ -1094,15 +1105,17 @@ export async function mediaDaily(clientId?: number): Promise<Map<number, DailySp
 export async function saveMetaWeeks(adAccountId: string, weeks: Map<string, MetaWeek>) {
   const entries = [...weeks];
   if (entries.length) {
-    const values = entries.map(() => `(?, ?::date, ?, ?, ?, ?, ?, ?, ?, ?, now())`).join(", ");
+    const values = entries.map(() => `(?, ?::date, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())`).join(", ");
     await run(
       `INSERT INTO meta_insights
-         (ad_account_id, ref_date, spend, leads, conversations, purchases, revenue, reach, impressions, clicks, synced_at)
+         (ad_account_id, ref_date, spend, leads, conversations, purchases, revenue, reach, impressions, clicks,
+          lead_spend, conv_spend, result_spend, synced_at)
        VALUES ${values}
        ON CONFLICT (ad_account_id, ref_date) DO UPDATE SET
          spend = excluded.spend, leads = excluded.leads, conversations = excluded.conversations,
          purchases = excluded.purchases, revenue = excluded.revenue, reach = excluded.reach,
-         impressions = excluded.impressions, clicks = excluded.clicks, synced_at = excluded.synced_at`,
+         impressions = excluded.impressions, clicks = excluded.clicks, lead_spend = excluded.lead_spend,
+         conv_spend = excluded.conv_spend, result_spend = excluded.result_spend, synced_at = excluded.synced_at`,
       entries.flatMap(([ref, w]) => [
         adAccountId,
         ref,
@@ -1114,6 +1127,9 @@ export async function saveMetaWeeks(adAccountId: string, weeks: Map<string, Meta
         w.reach,
         w.impressions,
         w.clicks,
+        w.leadSpend,
+        w.convSpend,
+        w.resultSpend,
       ]),
     );
   }
@@ -1128,7 +1144,9 @@ export const saveMetaError = (adAccountId: string, error: string) =>
     adAccountId,
   ]);
 
-const META_COLS = "i.spend, i.leads, i.conversations, i.purchases, i.revenue, i.reach, i.impressions, i.clicks";
+const META_COLS =
+  "i.spend, i.leads, i.conversations, i.purchases, i.revenue, i.reach, i.impressions, i.clicks, " +
+  'i.lead_spend AS "leadSpend", i.conv_spend AS "convSpend", i.result_spend AS "resultSpend"';
 
 // O driver devolve DOUBLE/INTEGER como número ou string conforme o backend.
 const weekOf = (r: MetaWeek): MetaWeek => ({
@@ -1140,6 +1158,9 @@ const weekOf = (r: MetaWeek): MetaWeek => ({
   reach: Number(r.reach),
   impressions: Number(r.impressions),
   clicks: Number(r.clicks),
+  leadSpend: Number(r.leadSpend),
+  convSpend: Number(r.convSpend),
+  resultSpend: Number(r.resultSpend),
 });
 
 /** Semanas da Meta por cliente, somando as contas ativas de cada um. */
@@ -1155,10 +1176,11 @@ export async function metaWeeks(clientId?: number): Promise<Map<number, Map<stri
   for (const r of rows) {
     const byWeek = out.get(r.client_id) ?? new Map<string, MetaAgg>();
     out.set(r.client_id, byWeek);
-    const cur = byWeek.get(r.ref_date) ?? { week: { ...EMPTY_WEEK }, leads: 0 };
+    const cur = byWeek.get(r.ref_date) ?? { week: { ...EMPTY_WEEK }, leads: 0, leadSpend: 0 };
     const w = weekOf(r);
     for (const k of Object.keys(w) as (keyof MetaWeek)[]) cur.week[k] += w[k];
     cur.leads += leadsOf(w, r.lead_metric);
+    cur.leadSpend += leadSpendOf(w, r.lead_metric);
     byWeek.set(r.ref_date, cur);
   }
   return out;
@@ -1177,7 +1199,7 @@ export async function metaWeeksByAccount(refs: string[]): Promise<Map<string, Ma
   for (const r of rows) {
     const w = weekOf(r);
     const m = out.get(r.ad_account_id) ?? new Map<string, MetaAgg>();
-    m.set(r.ref_date, { week: w, leads: leadsOf(w, r.lead_metric) });
+    m.set(r.ref_date, { week: w, leads: leadsOf(w, r.lead_metric), leadSpend: leadSpendOf(w, r.lead_metric) });
     out.set(r.ad_account_id, m);
   }
   return out;
@@ -1262,15 +1284,18 @@ export async function googleWeeks(clientId?: number): Promise<Map<number, Map<st
   for (const r of rows) {
     const byWeek = out.get(r.client_id) ?? new Map<string, MetaAgg>();
     out.set(r.client_id, byWeek);
-    const cur = byWeek.get(r.ref_date) ?? { week: { ...EMPTY_WEEK }, leads: 0 };
+    const cur = byWeek.get(r.ref_date) ?? { week: { ...EMPTY_WEEK }, leads: 0, leadSpend: 0 };
     const conv = Number(r.conversions);
-    cur.week.spend += Number(r.spend);
+    const spend = Number(r.spend);
+    cur.week.spend += spend;
     cur.week.leads += conv;
     cur.week.purchases += conv;
     cur.week.revenue += Number(r.revenue);
     cur.week.impressions += Number(r.impressions);
     cur.week.clicks += Number(r.clicks);
     cur.leads += conv;
+    // O Google só traz a conta inteira: a verba toda é a base do CPL.
+    if (conv > 0) cur.leadSpend += spend;
     byWeek.set(r.ref_date, cur);
   }
   return out;
@@ -1293,6 +1318,7 @@ export async function mediaWeeks(clientId?: number): Promise<Map<number, Map<str
       }
       for (const k of Object.keys(g.week) as (keyof MetaWeek)[]) cur.week[k] += g.week[k];
       cur.leads += g.leads;
+      cur.leadSpend += g.leadSpend;
     }
   }
   return meta;

@@ -3,7 +3,7 @@
  * de sistema da unidade — com acesso a todas as BMs — em META_ACCESS_TOKEN.
  * O token nunca vai para o banco nem para o navegador.
  */
-import { EMPTY_WEEK, parseInsight, weekRange, type InsightRow, type MetaWeek } from "./metrics";
+import { EMPTY_WEEK, campaignTotals, parseInsight, weekRange, type CampaignRow, type InsightRow, type MetaWeek } from "./metrics";
 import { fillDays } from "../media-daily";
 
 const VERSION = process.env.META_GRAPH_VERSION || "v23.0";
@@ -114,20 +114,32 @@ export async function listAdAccounts(): Promise<AdAccountList> {
  * Insights de uma conta por semana-ritual (chave = sexta que fecha a semana),
  * numa chamada só via `time_ranges`. Semana sem entrega não volta na resposta
  * da Meta — aqui ela vira zero de propósito: verba parada é sinal, não lacuna.
+ * Verba, alcance e cliques vêm da conta (alcance não soma entre campanhas);
+ * leads, conversas e a verba que os gerou vêm campanha a campanha.
  */
 export async function fetchWeeklyInsights(adAccountId: string, refs: string[]): Promise<Map<string, MetaWeek>> {
-  const ranges = refs.map(weekRange);
-  const page = await get<Page<InsightRow>>(`${adAccountId}/insights`, {
-    level: "account",
-    fields: "spend,reach,impressions,actions,action_values",
-    time_ranges: JSON.stringify(ranges),
-    limit: "100",
-  });
+  const time_ranges = JSON.stringify(refs.map(weekRange));
+  const [page, campaigns] = await Promise.all([
+    get<Page<InsightRow>>(`${adAccountId}/insights`, {
+      level: "account",
+      fields: "spend,reach,impressions,actions,action_values",
+      time_ranges,
+      limit: "100",
+    }),
+    allPages<CampaignRow>(`${adAccountId}/insights`, {
+      level: "campaign",
+      fields: "campaign_id,spend,actions",
+      time_ranges,
+    }),
+  ]);
   const byUntil = new Map(page.data.map((r) => [r.date_stop, r]));
+  const campaignsByUntil = new Map<string, CampaignRow[]>();
+  for (const c of campaigns) campaignsByUntil.set(c.date_stop, [...(campaignsByUntil.get(c.date_stop) ?? []), c]);
   const out = new Map<string, MetaWeek>();
   for (const ref of refs) {
     const row = byUntil.get(ref);
-    out.set(ref, row ? parseInsight(row) : { ...EMPTY_WEEK });
+    const camps = campaignsByUntil.get(ref);
+    out.set(ref, row ? { ...parseInsight(row), ...(camps ? campaignTotals(camps) : {}) } : { ...EMPTY_WEEK });
   }
   return out;
 }

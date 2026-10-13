@@ -22,13 +22,13 @@ import { navReducer, type Nav } from "../src/components/social/story-nav";
 import { createSign, generateKeyPairSync } from "node:crypto";
 import { bucketDaily, dailySpend, formatCustomerId, normalizeCustomerId, normalizePrivateKey, parseClientAccounts } from "../src/lib/google/metrics";
 import { explainError } from "../src/lib/google/ads";
-import { dailySyncRange, last7, last7Label, rollingSpend } from "../src/lib/media-daily";
+import { dailySyncRange, monthLabel, monthSpend, monthTarget, monthToDate } from "../src/lib/media-daily";
 import { goalStatus, periodOf, realizedIn, type Goal } from "../src/lib/crm/goals";
 import { topPriorities, type PriorityInput } from "../src/lib/priorities";
 import { STEPS, dueOf, ekyteText, howOf, stepTemplate } from "../src/lib/playbook/templates";
 import { creativeAttention, crmAttention } from "../src/lib/playbook/attention";
 import { DORES } from "../src/lib/playbook/dores";
-import { EMPTY_WEEK, leadsOf, metaFields, parseInsight, weekRange } from "../src/lib/meta/metrics";
+import { EMPTY_WEEK, campaignTotals, leadSpendOf, leadsOf, metaFields, parseInsight, weekRange } from "../src/lib/meta/metrics";
 import { clientKey, firstPhone, parseBRL, parseClientsSheet, parseCsv } from "../src/lib/import/clients-sheet";
 import {
   clientKeyOf,
@@ -633,6 +633,40 @@ test("meta: campos por tipo de conta, sem razão com denominador zero", () => {
   assert.deepEqual(metaFields("ecommerce", { ...EMPTY_WEEK }, 0), { budget_real: 0, revenue_real: 0 });
 });
 
+test("meta: contato no site conta como lead, sem somar com o Lead do mesmo envio", () => {
+  const w = parseInsight({
+    spend: "182.35",
+    actions: [{ action_type: "contact_total", value: "31" }, { action_type: "contact_website", value: "31" }],
+    date_start: "2026-10-03",
+    date_stop: "2026-10-09",
+  });
+  assert.equal(w.leads, 31);
+  const both = parseInsight({
+    actions: [{ action_type: "lead", value: "10" }, { action_type: "offsite_conversion.fb_pixel_contact", value: "12" }],
+    date_start: "2026-10-03",
+    date_stop: "2026-10-09",
+  });
+  assert.equal(both.leads, 12);
+});
+
+test("meta: CPL usa só a verba das campanhas que geraram lead (caso New Cabos)", () => {
+  const range = { date_start: "2026-10-01", date_stop: "2026-10-13" };
+  const t = campaignTotals([
+    { ...range, campaign_id: "1", spend: "182.35", actions: [{ action_type: "contact_total", value: "31" }] },
+    { ...range, campaign_id: "2", spend: "126.33", actions: [{ action_type: "link_click", value: "1016" }] },
+    { ...range, campaign_id: "3", spend: "50", actions: [{ action_type: "onsite_conversion.messaging_conversation_started_7d", value: "5" }] },
+  ]);
+  assert.deepEqual(t, { leads: 31, conversations: 5, leadSpend: 182.35, convSpend: 50, resultSpend: 232.35 });
+  const w = { ...EMPTY_WEEK, spend: 358.68, ...t };
+  assert.equal(leadSpendOf(w, "lead"), 182.35);
+  assert.equal(leadSpendOf(w, "messaging"), 50);
+  assert.equal(leadSpendOf(w, "both"), 232.35);
+  // Antes: 308,68 ÷ 31 = 9,96. Agora: 182,35 ÷ 31 = 5,88, como no Gerenciador.
+  assert.equal(metaFields("lead_gen", { ...EMPTY_WEEK, spend: 308.68 }, 31, 182.35).cpl_real, 5.88);
+  // Sem verba de campanha de lead (lead só do CRM), cai na verba total.
+  assert.equal(metaFields("lead_gen", { ...EMPTY_WEEK, spend: 300 }, 10, 0).cpl_real, 30);
+});
+
 test("meta: semana-ritual vai de sábado a sexta", () => {
   assert.deepEqual(weekRange("2026-09-18"), { since: "2026-09-12", until: "2026-09-18" });
   assert.deepEqual(weekRange("2026-10-02"), { since: "2026-09-26", until: "2026-10-02" });
@@ -761,33 +795,42 @@ test("google: agrupa os dias nas semanas-ritual e zera a semana sem entrega", ()
   assert.deepEqual({ spend: weeks.get("2026-06-19")!.spend, leads: weeks.get("2026-06-19")!.leads }, { spend: 0, leads: 0 });
 });
 
-test("verba: últimos 7 dias = os 7 dias fechados até ontem, como no Google Ads", () => {
-  // Sexta 09/10: o "Últimos 7 dias" do Google vai de qui 02/10 a qua 08/10.
-  assert.deepEqual(last7("2026-10-09"), { since: "2026-10-02", until: "2026-10-08" });
-  assert.equal(last7Label("2026-10-09"), "Últimos 7 dias · 02/10 – 08/10");
-  assert.deepEqual(dailySyncRange("2026-10-09"), { since: "2026-09-25", until: "2026-10-08" });
+test("verba: mês até hoje, como no relatório mensal", () => {
+  assert.deepEqual(monthToDate("2026-10-13"), { since: "2026-10-01", until: "2026-10-13", closedDays: 12, previous: false });
+  assert.equal(monthLabel("2026-10-13"), "Mês até hoje · 01/10 – 13/10");
+  // Dia 1 ainda não tem dia fechado: vale o mês anterior inteiro.
+  assert.deepEqual(monthToDate("2026-11-01"), { since: "2026-10-01", until: "2026-10-31", closedDays: 31, previous: true });
+  assert.equal(monthLabel("2026-11-01"), "Mês anterior · 01/10 – 31/10");
+  // O sync cobre o mês de ontem inteiro (ou 14 dias) até hoje.
+  assert.deepEqual(dailySyncRange("2026-10-09"), { since: "2026-09-25", until: "2026-10-09" });
+  assert.deepEqual(dailySyncRange("2026-10-28"), { since: "2026-10-01", until: "2026-10-28" });
+  assert.deepEqual(dailySyncRange("2026-11-01"), { since: "2026-10-01", until: "2026-11-01" });
 
   const days = dailySpend(
     [
       { segments: { date: "2026-10-02" }, metrics: { costMicros: "50000000" } },
       { segments: { date: "2026-10-02" }, metrics: { costMicros: "2500000" } },
       { segments: { date: "2026-10-08" }, metrics: { costMicros: "60000000" } },
-      { segments: { date: "2026-10-09" }, metrics: { costMicros: "99000000" } }, // hoje, fora do recorte
+      { segments: { date: "2026-10-09" }, metrics: { costMicros: "10000000" } }, // hoje, parcial
     ],
     "2026-10-01",
-    "2026-10-08",
+    "2026-10-09",
   );
-  assert.equal(days.size, 8);
+  assert.equal(days.size, 9);
   assert.equal(days.get("2026-10-02"), 52.5);
   assert.equal(days.get("2026-10-05"), 0); // dia sem entrega vira zero
-  assert.equal(days.has("2026-10-09"), false);
 
   const byDay = new Map([...days].map(([d, spend]) => [d, { spend, accounts: 1 }]));
-  assert.equal(rollingSpend({ accounts: 1, byDay }, "2026-10-09"), 112.5);
-  // Dia faltando (sync não rodou) ou conta sem o dia: volta para a semana do ritual.
-  assert.equal(rollingSpend({ accounts: 1, byDay }, "2026-10-10"), null);
-  assert.equal(rollingSpend({ accounts: 2, byDay }, "2026-10-09"), null);
-  assert.equal(rollingSpend(undefined, "2026-10-09"), null);
+  assert.equal(monthSpend({ accounts: 1, byDay }, "2026-10-09"), 122.5);
+  // Hoje ainda sem sync conta como zero; dia fechado faltando volta para a semana do ritual.
+  byDay.delete("2026-10-09");
+  assert.equal(monthSpend({ accounts: 1, byDay }, "2026-10-09"), 112.5);
+  assert.equal(monthSpend({ accounts: 1, byDay }, "2026-10-11"), null);
+  assert.equal(monthSpend({ accounts: 2, byDay }, "2026-10-09"), null);
+  assert.equal(monthSpend(undefined, "2026-10-09"), null);
+
+  // Verba contratada de R$ 700/semana = R$ 100/dia; 12 dias fechados em 13/10.
+  assert.equal(monthTarget(700, "2026-10-13"), 1200);
 });
 
 test("google: traduz os erros do Google Ads que a equipe precisa entender", () => {
@@ -1063,6 +1106,7 @@ test("serviços: canal contratado só é negado quando há serviço cadastrado",
 const agg = (spend: number, leads: number, revenue = 0) => ({
   week: { ...EMPTY_WEEK, spend, leads, revenue, impressions: spend * 10, clicks: spend },
   leads,
+  leadSpend: spend,
 });
 
 test("mídia: separa Meta de Google e calcula fatia, custo por resultado e ROAS", () => {
