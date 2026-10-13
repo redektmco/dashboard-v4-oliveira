@@ -1,0 +1,401 @@
+/* =============================================================
+   Construtor de relatórios — página, blocos, editor e impressão.
+   A página é desenhada em px fixos (A4 794×1123, slide 1280×720) e
+   escalada por fora com `transform`, então tudo aqui é em px da página.
+   ============================================================= */
+
+.rp-page {
+  position: relative;
+  overflow: hidden;
+  color: var(--rp-fg);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.4;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.rp-page *,
+.rp-page *::before,
+.rp-page *::after {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.rp-block {
+  position: absolute;
+}
+
+.rp-surface[data-surface="card"] {
+  background: var(--rp-card);
+  border: 1px solid var(--rp-line);
+  border-radius: 12px;
+}
+.rp-surface[data-surface="accent"] {
+  background: var(--rp-accent);
+  border-radius: 12px;
+  color: #fff;
+  --rp-fg: #fff;
+  --rp-muted: rgba(255, 255, 255, 0.82);
+  --rp-good: #fff;
+  --rp-bad: #fff;
+  --rp-warn: #fff;
+  --rp-line: rgba(255, 255, 255, 0.28);
+  --rp-grid: rgba(255, 255, 255, 0.18);
+  --rp-axis: rgba(255, 255, 255, 0.4);
+  --rp-surface: var(--rp-accent);
+}
+/* No cartão de destaque, a série some no próprio fundo: vira branco. */
+.rp-surface[data-surface="accent"] svg [fill="var(--rp-accent)"] {
+  fill: #fff;
+}
+.rp-surface[data-surface="accent"] svg [stroke="var(--rp-accent)"] {
+  stroke: #fff;
+}
+
+.rp-eyebrow {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rp-muted);
+}
+
+.rp-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.rp-table th,
+.rp-table td {
+  height: 27px;
+  padding: 0 8px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--rp-line);
+}
+.rp-table th:first-child,
+.rp-table td:first-child {
+  text-align: left;
+  padding-left: 0;
+}
+.rp-table th:last-child,
+.rp-table td:last-child {
+  padding-right: 0;
+}
+.rp-table th {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--rp-muted);
+}
+.rp-table tfoot td {
+  font-weight: 700;
+  border-bottom: 0;
+}
+
+.rp-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px dashed var(--rp-axis);
+  color: var(--rp-muted);
+  font-size: 13px;
+}
+
+/* ---------------- Página escalada (editor, link, apresentação) ---------------- */
+
+.rp-scaled {
+  position: relative;
+  flex-shrink: 0;
+}
+.rp-scaled > .rp-page {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+.rp-shadow {
+  outline: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* ---------------- Editor ---------------- */
+
+.rp-editor {
+  flex: 1 1 0%;
+  min-width: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-ink-950);
+}
+.rp-canvas {
+  background:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0) 0 0 / 22px 22px,
+    #111;
+}
+
+/* O editor desenha a página escalada; `--inv` (1/escala) mantém alças e
+   contornos no mesmo tamanho na tela em qualquer zoom. */
+.rp-edit-block {
+  position: absolute;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.rp-edit-block:active {
+  cursor: grabbing;
+}
+.rp-edit-block::after {
+  content: "";
+  position: absolute;
+  inset: calc(-3px * var(--inv, 1));
+  border: calc(1.5px * var(--inv, 1)) solid transparent;
+  border-radius: calc(6px * var(--inv, 1));
+  pointer-events: none;
+}
+.rp-edit-block:hover::after {
+  border-color: rgba(110, 155, 245, 0.7);
+}
+.rp-edit-block[data-selected]::after {
+  border-color: #6e9bf5;
+}
+.rp-edit-block[data-dragging] {
+  opacity: 0.85;
+  z-index: 50;
+}
+
+.rp-handle {
+  --hs: calc(12px * var(--inv, 1));
+  position: absolute;
+  width: var(--hs);
+  height: var(--hs);
+  background: #fff;
+  border: calc(2px * var(--inv, 1)) solid #6e9bf5;
+  border-radius: calc(3px * var(--inv, 1));
+  z-index: 5;
+  touch-action: none;
+}
+.rp-handle[data-dir="n"],
+.rp-handle[data-dir="s"] {
+  left: calc(50% - var(--hs) / 2);
+  cursor: ns-resize;
+}
+.rp-handle[data-dir="e"],
+.rp-handle[data-dir="w"] {
+  top: calc(50% - var(--hs) / 2);
+  cursor: ew-resize;
+}
+.rp-handle[data-dir="n"],
+.rp-handle[data-dir="ne"],
+.rp-handle[data-dir="nw"] {
+  top: calc(var(--hs) * -0.75);
+}
+.rp-handle[data-dir="s"],
+.rp-handle[data-dir="se"],
+.rp-handle[data-dir="sw"] {
+  bottom: calc(var(--hs) * -0.75);
+}
+.rp-handle[data-dir="e"],
+.rp-handle[data-dir="ne"],
+.rp-handle[data-dir="se"] {
+  right: calc(var(--hs) * -0.75);
+}
+.rp-handle[data-dir="w"],
+.rp-handle[data-dir="nw"],
+.rp-handle[data-dir="sw"] {
+  left: calc(var(--hs) * -0.75);
+}
+.rp-handle[data-dir="ne"],
+.rp-handle[data-dir="sw"] {
+  cursor: nesw-resize;
+}
+.rp-handle[data-dir="nw"],
+.rp-handle[data-dir="se"] {
+  cursor: nwse-resize;
+}
+
+.rp-block-bar {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: #6e9bf5;
+  box-shadow: var(--shadow-2);
+}
+.rp-block-bar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: #0b1530;
+}
+.rp-block-bar button:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+.rp-block-bar .rp-block-bar-label {
+  padding: 0 8px 0 6px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #0b1530;
+  cursor: grab;
+}
+
+/* Linhas da grade: só aparecem enquanto algo é arrastado. */
+.rp-grid-overlay {
+  position: absolute;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgba(110, 155, 245, 0.16) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(110, 155, 245, 0.12) 1px, transparent 1px);
+}
+.rp-ghost {
+  position: absolute;
+  border: 2px dashed #6e9bf5;
+  background: rgba(110, 155, 245, 0.14);
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+.rp-palette-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px 6px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-hair);
+  background: var(--color-ink-850);
+  color: var(--color-ink-200);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: grab;
+  transition: border-color var(--dur-fast), background var(--dur-fast);
+  user-select: none;
+}
+.rp-palette-item:hover {
+  border-color: rgba(229, 9, 20, 0.5);
+  background: var(--color-ink-800);
+  color: #fff;
+}
+.rp-palette-item svg {
+  color: var(--color-ink-400);
+}
+.rp-palette-item:hover svg {
+  color: var(--color-v4-red);
+}
+
+.rp-inline-edit {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  resize: none;
+  border: 0;
+  outline: 2px solid #6e9bf5;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  color: inherit;
+  padding: 0;
+  cursor: text;
+}
+
+.rp-thumb[data-current] {
+  outline: 2px solid var(--color-v4-red);
+  outline-offset: 2px;
+}
+
+/* ---------------- Apresentação ---------------- */
+
+.rp-present {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+.rp-present-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: rgba(20, 20, 20, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 13px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.rp-present:hover .rp-present-bar,
+.rp-present-bar:focus-within {
+  opacity: 1;
+}
+.rp-present-bar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  color: #fff;
+}
+.rp-present-bar button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.rp-present-progress {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 3px;
+  background: var(--color-v4-red);
+  transition: width 0.3s var(--ease-out);
+}
+
+/* ---------------- Impressão / PDF ----------------
+   O navegador gera o PDF: na impressão só a raiz do relatório aparece, uma
+   página por folha, no tamanho exato (o @page vem do componente). */
+
+.rp-print-root {
+  display: none;
+}
+@media print {
+  html.rp-printing body > *:not(.rp-print-root) {
+    display: none !important;
+  }
+  html.rp-printing,
+  html.rp-printing body {
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+    min-height: 0 !important;
+  }
+  html.rp-printing .rp-print-root {
+    display: block;
+  }
+  .rp-print-root .rp-page {
+    break-after: page;
+    page-break-after: always;
+  }
+  .rp-print-root .rp-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+}

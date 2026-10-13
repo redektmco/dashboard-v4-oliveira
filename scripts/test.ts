@@ -44,6 +44,24 @@ import { hasMediaService, splitServices } from "../src/lib/model/services";
 import { agoLabel, type CrmRow } from "../src/lib/crm/board";
 import { EMPTY_FILTERS, countViews, fromLegacyFilter, matchesFilters, sortRows } from "../src/lib/crm/views";
 import { NONE, laneOf, lanesFor } from "../src/lib/crm/kanban";
+import { clampBlock, freeSpot, newBlock, sanitizeDoc } from "../src/lib/reports/layout";
+import {
+  autoTarget,
+  deltaPct,
+  deltaTone,
+  fillVariables,
+  formatValue,
+  metricValue,
+  parseNumberBR,
+  parsePairs,
+  periodLabel,
+  presetRange,
+  previousPeriod,
+  sampleData,
+  totalsOf,
+} from "../src/lib/reports/metrics";
+import { STARTERS } from "../src/lib/reports/starters";
+import type { ReportData, WeekRow } from "../src/lib/reports/types";
 
 const TODAY = "2026-06-15";
 
@@ -1216,4 +1234,116 @@ test("kanban: Account vira coluna mesmo sem cliente, e nome só do cliente tamb�
   const lanes = lanesFor("account", rows, ["Ana", "Bruno"]).map((l) => l.key);
   assert.deepEqual(lanes, ["Ana", "Bruno", "Zé Antigo", NONE]);
   assert.equal(laneOf("account", rows[1]), NONE);
+});
+
+/* ------------------------- construtor de relatórios ------------------------- */
+
+const nums = (o: Partial<WeekRow["meta"]> = {}) => ({
+  spend: 0, impressions: 0, reach: 0, clicks: 0, leads: 0, conversations: 0, purchases: 0, revenue: 0, ...o,
+});
+
+test("Relatório: período anterior tem o mesmo tamanho, colado antes", () => {
+  assert.deepEqual(previousPeriod("2026-09-01", "2026-09-30"), { start: "2026-08-02", end: "2026-08-31" });
+  assert.deepEqual(previousPeriod("2026-10-05", "2026-10-11"), { start: "2026-09-28", end: "2026-10-04" });
+});
+
+test("Relatório: atalhos de período", () => {
+  assert.deepEqual(presetRange("last_month", "2026-10-13"), { start: "2026-09-01", end: "2026-09-30" });
+  assert.deepEqual(presetRange("last_month", "2026-01-10"), { start: "2025-12-01", end: "2025-12-31" });
+  assert.deepEqual(presetRange("last_quarter", "2026-10-13"), { start: "2026-07-01", end: "2026-09-30" });
+  assert.deepEqual(presetRange("this_month", "2026-10-01"), { start: "2026-10-01", end: "2026-10-01" });
+  assert.equal(periodLabel("2026-09-01", "2026-09-30"), "setembro de 2026");
+  assert.equal(periodLabel("2026-07-01", "2026-09-30"), "julho a setembro de 2026");
+  assert.equal(periodLabel("2026-09-03", "2026-09-30"), "03/09/2026 a 30/09/2026");
+});
+
+test("Relatório: soma por canal e métricas derivadas", () => {
+  const data: ReportData = {
+    client: { id: 1, name: "Padaria Estrela" },
+    period: { start: "2026-09-01", end: "2026-09-30" },
+    previous: previousPeriod("2026-09-01", "2026-09-30"),
+    weeks: [
+      { ref: "2026-09-05", meta: nums({ spend: 1000, leads: 40, clicks: 500, impressions: 50_000 }), google: nums({ spend: 500, leads: 10, clicks: 300, impressions: 10_000 }), crmLeads: 55 },
+      { ref: "2026-09-12", meta: nums({ spend: 1000, leads: 60, clicks: 500, impressions: 50_000 }), google: nums(), crmLeads: 70 },
+    ],
+    prevWeeks: [{ ref: "2026-08-29", meta: nums({ spend: 2000, leads: 50 }), google: nums(), crmLeads: 0 }],
+    score: { value: 80, band: "verde", day: "2026-09-30" },
+    targets: { leads_meta: 30, cpl_meta: 25 },
+    sample: false,
+  };
+  assert.equal(totalsOf(data.weeks, "all").spend, 2500);
+  assert.equal(metricValue(data, "leads", "meta"), 100);
+  assert.equal(metricValue(data, "cpl", "all"), 2500 / 110);
+  assert.equal(metricValue(data, "ctr", "google"), 3);
+  assert.equal(metricValue(data, "crm_leads", "google"), 125, "CRM ignora o canal");
+  // Conversas só existem na Meta: pedir Google não zera.
+  data.weeks[0].meta.conversations = 7;
+  assert.equal(metricValue(data, "conversations", "google"), 7);
+  // Meta semanal × semanas do período para o que soma; razão vale igual.
+  assert.equal(autoTarget(data, "leads"), 60);
+  assert.equal(autoTarget(data, "cpl"), 25);
+  assert.equal(autoTarget(data, "clicks"), null);
+  // Sem semanas no período anterior: sem comparação, não zero.
+  assert.equal(metricValue({ ...data, prevWeeks: [] }, "leads", "all", "previous"), null);
+});
+
+test("Relatório: variação e cor (menor é melhor inverte)", () => {
+  assert.equal(deltaPct(120, 100), 20);
+  assert.equal(deltaPct(5, 0), null);
+  assert.equal(deltaTone(20), "up");
+  assert.equal(deltaTone(20, true), "down");
+  assert.equal(deltaTone(-12, true), "up");
+  assert.equal(deltaTone(0.2), "flat");
+});
+
+test("Relatório: formatação e números digitados no padrão brasileiro", () => {
+  assert.equal(formatValue(12480.5, "currency"), "R$ 12.481");
+  assert.equal(formatValue(32.4, "currency"), "R$ 32,40");
+  assert.equal(formatValue(3.25, "x"), "3,25x");
+  assert.equal(formatValue(1.84, "percent"), "1,8%");
+  assert.equal(formatValue(125_000, "int", { compact: true }), "125 mil");
+  assert.equal(formatValue(null, "int"), "—");
+  assert.equal(parseNumberBR("12.480,50"), 12480.5);
+  assert.equal(parseNumberBR("R$ 1.200"), 1200);
+  assert.equal(parseNumberBR("3,2"), 3.2);
+  assert.equal(parseNumberBR("18%"), 18);
+  assert.equal(parseNumberBR(""), null);
+  assert.deepEqual(parsePairs("Instagram; 12.400\nTikTok\t3100\n\n"), [
+    { label: "Instagram", value: 12400 },
+    { label: "TikTok", value: 3100 },
+  ]);
+});
+
+test("Relatório: variáveis dos textos trocam pelo cliente e período", () => {
+  const d = sampleData("2026-09-01", "2026-09-30");
+  d.client = { id: 3, name: "JK Alianças" };
+  assert.equal(fillVariables("Resultados de {cliente} em {periodo}", d, "2026-10-13"), "Resultados de JK Alianças em setembro de 2026");
+  assert.equal(fillVariables("{data}", d, "2026-10-13"), "13/10/2026");
+});
+
+test("Relatório: grade mantém o bloco dentro da página e acha lugar livre", () => {
+  assert.deepEqual(clampBlock("slide", { x: 11, y: 15, w: 4, h: 3 }), { x: 8, y: 13, w: 4, h: 3 });
+  assert.deepEqual(clampBlock("a4", { x: -2, y: 0, w: 0, h: 40 }), { x: 0, y: 0, w: 1, h: 26 });
+  const a = newBlock("kpi", "slide", { x: 0, y: 0 });
+  const b = newBlock("kpi", "slide", { x: 3, y: 0 });
+  assert.deepEqual(freeSpot("slide", [a, b], 3, 3), { x: 6, y: 0 });
+  // Página cheia: vai para o fim em vez de sumir.
+  const full = newBlock("shape", "slide", { x: 0, y: 0 });
+  full.w = 12;
+  full.h = 16;
+  assert.deepEqual(freeSpot("slide", [full], 4, 3), { x: 0, y: 13 });
+});
+
+test("Relatório: documento do banco é saneado e os modelos da V4 são válidos", () => {
+  const doc = sanitizeDoc({ theme: { mode: "x", accent: "red" }, pages: [{ blocks: [{ type: "nada" }, { type: "heading", x: 20, y: 0, w: 3, h: 2 }] }] }, "a4");
+  assert.equal(doc.theme.mode, "dark");
+  assert.equal(doc.theme.accent, "#e50914");
+  assert.equal(doc.pages[0].blocks.length, 1);
+  assert.equal(doc.pages[0].blocks[0].x, 9);
+  assert.equal(sanitizeDoc(null, "slide").pages.length, 1);
+  for (const s of STARTERS) {
+    const built = s.build();
+    const clean = sanitizeDoc(JSON.parse(JSON.stringify(built)), s.format);
+    assert.deepEqual(clean.pages.map((p) => p.blocks.map((b) => [b.x, b.y, b.w, b.h])), built.pages.map((p) => p.blocks.map((b) => [b.x, b.y, b.w, b.h])), `${s.id}: todo bloco cabe na página`);
+  }
 });

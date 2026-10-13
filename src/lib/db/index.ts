@@ -892,13 +892,39 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS lead_source TEXT NOT NULL DEFAULT '
 ALTER TABLE clients DROP CONSTRAINT IF EXISTS clients_lead_source_check;
 ALTER TABLE clients ADD CONSTRAINT clients_lead_source_check
   CHECK (lead_source IN ('campaign','webhook','both'));
+
+-- =====================================================================
+-- Relatorios (construtor arrasta-e-solta). Um relatorio e um documento
+-- JSON (paginas > blocos numa grade de 12 colunas) ligado a um cliente e a
+-- um periodo; os numeros nao ficam no documento, saem do banco na hora de
+-- desenhar. kind='template' e modelo da unidade: sem periodo, client_id
+-- opcional (so para pre-visualizar). share_token preenchido = link publico
+-- /r/<token> ativo; NULL = desligado.
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS rp_reports (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL DEFAULT 'report' CHECK (kind IN ('report','template')),
+  client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  format TEXT NOT NULL DEFAULT 'a4' CHECK (format IN ('a4','slide')),
+  period_start DATE,
+  period_end DATE,
+  doc JSONB NOT NULL DEFAULT '{}'::jsonb,
+  share_token TEXT UNIQUE,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_rp_reports_kind ON rp_reports (kind, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_rp_reports_client ON rp_reports (client_id);
 `;
 
 /**
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-10-13.lead-source";
+export const SCHEMA_VERSION = "2026-10-13.reports";
 
 let migrated = false;
 

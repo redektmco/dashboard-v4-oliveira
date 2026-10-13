@@ -101,6 +101,8 @@ um round-trip HTTP; com a função no padrão `iad1` (EUA), cada uma cruzava o c
 | `/churn` → `/churn/[id]` | todos | por pedido | solicitações de cancelamento já feitas pelo cliente: abertura, tentativas de retenção (`/retencao`), conclusão (`/concluir`) |
 | `/churn/analise` | coordenação | mensal | por que os clientes saem, receita perdida/preservada e sucesso da retenção por estratégia |
 | `/social` | social + admin | por entrega | aprovação de criativos e calendário |
+| `/relatorios` → `/relatorios/[id]` | todos | mensal / por call | construtor arrasta-e-solta de relatórios (A4) e apresentações (16:9); modelos da unidade |
+| `/r/[token]` | cliente (sem login) | — | link público do relatório: páginas, modo apresentação e PDF |
 | `/config` | coordenação | — | Pendências: o que falta para o score refletir a carteira, o que está funcionando e as últimas alterações |
 | `/config/cobranca` | admin | mensal | cobranças por cliente (única, mensal, trimestral, anual) e histórico de disparos |
 | `/config/modelo` | coordenação | trimestral | pesos e regras com prévia do impacto; cada salvamento vira uma versão (dá para voltar) |
@@ -108,7 +110,7 @@ um round-trip HTTP; com a função no padrão `iad1` (EUA), cada uma cruzava o c
 | `/config/usuarios` | admin | — | quem entra no painel, senha, permissão, exclusão |
 
 O menu principal tem as jornadas e o cadastro (Carteira, Performance, Clientes, Check-in, Churn,
-Social media, Onboarding — no celular, as duas últimas ficam na gaveta do avatar); administração
+Relatórios, Social media, Onboarding — no celular, as três últimas ficam na gaveta do avatar); administração
 mora em Configurações. Integrações e canais de envio moram em Performance, junto das metas.
 Os endereços antigos (`/usuarios`, `/integracoes`, `/modelo`, `/config/calibracao`,
 `/config/integracoes`, `/config/canais`, `/config/clientes`, `/gt/[id]`) redirecionam.
@@ -245,6 +247,44 @@ amarelo = Yellow, vermelho = Red) com os overrides acima — ameaça de cancelam
   aberto abaixo de 70%) e CRM e processo comercial (diagnóstico de 4 perguntas, `crm_diagnostics`).
 - **Cadastro**: nicho (benchmark com a rede) e proximidade (perto = visita; longe = vídeo + gift card da Maxx).
 - Owners são texto livre ("Analista de CRM", "Farmer ou KAM"…): dá para trocar pelo nome da pessoa.
+
+---
+
+## Relatórios (construtor arrasta-e-solta)
+
+O "Reportei" da unidade: monta relatório ou apresentação arrastando blocos, com os números do
+próprio painel, e entrega ao cliente por link, em tela cheia ou em PDF.
+
+- **Formato por relatório:** *Relatório* (A4 em pé, 794×1123) ou *Apresentação* (slide 16:9,
+  1280×720). Cada página é uma grade de 12 colunas; os blocos encaixam nela ao arrastar e
+  redimensionar (alças nos cantos e lados), podem ir de uma página para outra e têm camadas.
+- **Blocos:** Título, Texto, Indicador (com variação contra o período anterior), Gráfico (barras,
+  linha, rosca — por semana ou Meta x Google), Tabela, Funil, Meta x realizado, Health Score,
+  Imagem (upload no Blob ou URL), Logo V4 e Forma. Textos aceitam `{cliente}`, `{periodo}`,
+  `{periodo_anterior}` e `{data}` e `**negrito**`.
+- **Números:** saem do banco na hora de desenhar — Meta Ads, Google Ads (`meta_insights`,
+  `google_insights`), leads do CRM (`crm_leads`), Health Score (`score_snapshots`) e metas
+  (`client_targets`, semanal × semanas do período). Mídia é semanal: o período soma as semanas-ritual
+  que fecham dentro dele e compara com o mesmo número de dias logo antes. Todo bloco de número
+  tem o modo **Digitar** para o que o painel não tem (orgânico, balcão, outra ferramenta) —
+  tabela e gráfico aceitam colar direto da planilha.
+- **Modelos:** dois prontos da V4 no código (`src/lib/reports/starters.ts`) e os da unidade
+  (`rp_reports.kind = 'template'`), criados do zero ou por *Salvar como modelo*. Usar um modelo
+  copia as páginas; os números trocam sozinhos pelo cliente escolhido.
+- **Entrega:** *Compartilhar* liga o link `/r/<token>` (fora do proxy, sem login, fora de
+  buscadores; desligar invalida o endereço). *Apresentar* abre tela cheia com setas do teclado.
+  *PDF* usa o "Salvar como PDF" do navegador com `@page` no tamanho exato — sem serviço pago.
+- **Editor:** salva sozinho (PATCH em `/api/relatorios/[id]`), desfaz/refaz (Ctrl+Z / Ctrl+Shift+Z),
+  Delete, Ctrl+D, Ctrl+C/V, setas movem e Shift+setas redimensionam; dois cliques escrevem direto
+  no título/texto. No celular abre só a prévia (apresentar e PDF funcionam).
+
+| Peça | Onde |
+|---|---|
+| Documento, grade e regras puras | `src/lib/reports/{types,layout,metrics}.ts` (testes em `npm test`) |
+| Banco e números do período | `src/lib/reports/db.ts` (`rp_reports`, `reportData`) |
+| Desenho dos blocos (editor, link, slide e PDF iguais) | `src/components/reports/blocks.tsx` |
+| Editor | `src/components/reports/editor.tsx`, `editor-page.tsx`, `inspector.tsx` |
+| Link público, apresentação e impressão | `src/components/reports/viewer.tsx`, `src/app/r/[token]` |
 
 ---
 
