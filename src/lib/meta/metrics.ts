@@ -55,9 +55,25 @@ export type InsightRow = {
   impressions?: string;
   actions?: Action[];
   action_values?: Action[];
+  /**
+   * Eventos padrão do pixel (Contato, Agendar, Enviar inscrição…) vêm aqui,
+   * não em `actions` — é onde mora o "Contatos no site" do Gerenciador.
+   */
+  conversions?: Action[];
+  conversion_values?: Action[];
   date_start: string;
   date_stop: string;
 };
+
+/** Campos de evento que toda leitura de insights pede. */
+export const EVENT_FIELDS = "actions,action_values,conversions,conversion_values";
+
+/** `actions` + `conversions`: o mesmo tipo pode vir nos dois, e `pick` fica com o primeiro. */
+const events = (r: Pick<InsightRow, "actions" | "conversions">) => [...(r.actions ?? []), ...(r.conversions ?? [])];
+const eventValues = (r: Pick<InsightRow, "action_values" | "conversion_values">) => [
+  ...(r.action_values ?? []),
+  ...(r.conversion_values ?? []),
+];
 
 const num = (v: unknown) => {
   const n = Number(v);
@@ -79,8 +95,14 @@ function pick(list: Action[] | undefined, types: string[]): number {
 }
 
 const LEAD_TYPES = ["lead", "onsite_conversion.lead_grouped", "offsite_conversion.fb_pixel_lead"];
-/** Evento "Contato" do pixel — o "Contatos no site" do Gerenciador. */
-const CONTACT_TYPES = ["contact_total", "contact_website", "offsite_conversion.fb_pixel_contact", "onsite_web_contact"];
+/** Evento "Contato" do pixel — o "Contatos no site" do Gerenciador (em `conversions` ou `actions`). */
+const CONTACT_TYPES = [
+  "contact_total",
+  "contact_website",
+  "offsite_conversion.fb_pixel_contact",
+  "onsite_web_contact",
+  "contact",
+];
 const CONVERSATION_TYPES = [
   "onsite_conversion.messaging_conversation_started_7d",
   "onsite_conversion.total_messaging_connection",
@@ -91,10 +113,10 @@ const CLICK_TYPES = ["link_click"];
 export function parseInsight(row: InsightRow): MetaWeek {
   return {
     spend: num(row.spend),
-    leads: siteLeads(row.actions),
-    conversations: pick(row.actions, CONVERSATION_TYPES),
-    purchases: pick(row.actions, PURCHASE_TYPES),
-    revenue: pick(row.action_values, PURCHASE_TYPES),
+    leads: siteLeads(events(row)),
+    conversations: pick(events(row), CONVERSATION_TYPES),
+    purchases: pick(events(row), PURCHASE_TYPES),
+    revenue: pick(eventValues(row), PURCHASE_TYPES),
     reach: num(row.reach),
     impressions: num(row.impressions),
     clicks: pick(row.actions, CLICK_TYPES),
@@ -104,7 +126,9 @@ export function parseInsight(row: InsightRow): MetaWeek {
   };
 }
 
-export type CampaignRow = Pick<InsightRow, "spend" | "actions" | "date_start" | "date_stop"> & { campaign_id?: string };
+export type CampaignRow = Pick<InsightRow, "spend" | "actions" | "conversions" | "date_start" | "date_stop"> & {
+  campaign_id?: string;
+};
 
 /** Leads de site de uma campanha: formulário/pixel ou contato. */
 export function siteLeads(actions: Action[] | undefined): number {
@@ -124,8 +148,8 @@ export function campaignTotals(rows: CampaignRow[]): CampaignTotals {
   const out: CampaignTotals = { leads: 0, conversations: 0, leadSpend: 0, convSpend: 0, resultSpend: 0 };
   for (const r of rows) {
     const spend = num(r.spend);
-    const leads = siteLeads(r.actions);
-    const conv = pick(r.actions, CONVERSATION_TYPES);
+    const leads = siteLeads(events(r));
+    const conv = pick(events(r), CONVERSATION_TYPES);
     out.leads += leads;
     out.conversations += conv;
     if (leads > 0) out.leadSpend += spend;

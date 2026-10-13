@@ -4,7 +4,7 @@
  * dia e o cadastro das campanhas (status, objetivo, orçamento).
  */
 import { allPages, get, type Page } from "../meta/graph";
-import { leadsOf, parseInsight, type InsightRow, type LeadMetric } from "../meta/metrics";
+import { EVENT_FIELDS, leadsOf, parseInsight, type InsightRow, type LeadMetric } from "../meta/metrics";
 import type { AccountType } from "../model/types";
 import {
   EMPTY_TOTALS,
@@ -92,7 +92,7 @@ const metaTotalsLoose = (row: MetaRow): Totals => ({
   linkClicks: row.inline_link_clicks === undefined ? null : num(row.inline_link_clicks),
 });
 
-const FIELDS = "spend,impressions,reach,clicks,inline_link_clicks,actions,action_values";
+const FIELDS = `spend,impressions,reach,clicks,inline_link_clicks,${EVENT_FIELDS}`;
 
 export async function metaPerformance(
   adAccountId: string,
@@ -111,7 +111,7 @@ export async function metaPerformance(
     }),
     allPages<MetaRow>(`${adAccountId}/insights`, {
       level: "account",
-      fields: "spend,actions",
+      fields: "spend,actions,conversions",
       time_range: JSON.stringify(cur),
       time_increment: "1",
     }),

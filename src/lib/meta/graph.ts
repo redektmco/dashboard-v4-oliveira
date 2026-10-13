@@ -3,7 +3,7 @@
  * de sistema da unidade — com acesso a todas as BMs — em META_ACCESS_TOKEN.
  * O token nunca vai para o banco nem para o navegador.
  */
-import { EMPTY_WEEK, campaignTotals, parseInsight, weekRange, type CampaignRow, type InsightRow, type MetaWeek } from "./metrics";
+import { EMPTY_WEEK, EVENT_FIELDS, campaignTotals, parseInsight, weekRange, type CampaignRow, type InsightRow, type MetaWeek } from "./metrics";
 import { fillDays } from "../media-daily";
 
 const VERSION = process.env.META_GRAPH_VERSION || "v23.0";
@@ -122,13 +122,13 @@ export async function fetchWeeklyInsights(adAccountId: string, refs: string[]): 
   const [page, campaigns] = await Promise.all([
     get<Page<InsightRow>>(`${adAccountId}/insights`, {
       level: "account",
-      fields: "spend,reach,impressions,actions,action_values",
+      fields: `spend,reach,impressions,${EVENT_FIELDS}`,
       time_ranges,
       limit: "100",
     }),
     allPages<CampaignRow>(`${adAccountId}/insights`, {
       level: "campaign",
-      fields: "campaign_id,spend,actions",
+      fields: "campaign_id,spend,actions,conversions",
       time_ranges,
     }),
   ]);

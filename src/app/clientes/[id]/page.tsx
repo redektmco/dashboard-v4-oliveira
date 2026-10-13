@@ -49,6 +49,7 @@ import {
 import { CheckinHeatmap } from "@/components/charts";
 import { ClientActions } from "@/components/client-actions";
 import { PageHead } from "@/components/page-head";
+import { SyncClientButton } from "@/components/cliente/sync-button";
 import { Icon, type IconName } from "@/components/icon";
 import { BAND_TEXT, Bar, BandPill, Card, ColLabel, DotLabel, Initials, KV, Pill, SectionHead, TONE, type Tone } from "@/components/kit";
 import {
@@ -428,6 +429,7 @@ export default async function ClientePage({
           description={<MetaLine parts={metaParts} />}
           actions={
             <>
+              <SyncClientButton clientId={clientId} />
               <Link href={`/account/${clientId}`} className="btn btn-light">
                 <Icon name="plus" size={16} />
                 Registrar check-in

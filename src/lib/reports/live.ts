@@ -12,7 +12,7 @@
 import { all } from "../db";
 import { googleAdsConfigured, gaql } from "../google/ads";
 import { allPages, metaConfigured } from "../meta/graph";
-import { campaignTotals, leadSpendOf, leadsOf, parseInsight, type CampaignRow, type InsightRow, type LeadMetric } from "../meta/metrics";
+import { EVENT_FIELDS, campaignTotals, leadSpendOf, leadsOf, parseInsight, type CampaignRow, type InsightRow, type LeadMetric } from "../meta/metrics";
 import { listGoogleLinks, listMetaLinks, today } from "../repo";
 import { EMPTY_NUMS, previousPeriod } from "./metrics";
 import type { ChannelNums, LiveSnapshot, WeekRow } from "./types";
@@ -72,13 +72,13 @@ export function metaNums(account: MetaRow | undefined, campaigns: CampaignRow[],
   };
 }
 
-const META_FIELDS = "spend,impressions,reach,inline_link_clicks,actions,action_values";
+const META_FIELDS = `spend,impressions,reach,inline_link_clicks,${EVENT_FIELDS}`;
 
 async function metaAccount(id: string, metric: LeadMetric, cur: Range, prev: Range) {
   const q = (level: "account" | "campaign", r: Range, step: boolean) =>
     allPages<MetaRow & CampaignRow>(`${id}/insights`, {
       level,
-      fields: level === "account" ? META_FIELDS : "campaign_id,spend,actions",
+      fields: level === "account" ? META_FIELDS : "campaign_id,spend,actions,conversions",
       time_range: JSON.stringify(r),
       ...(step ? { time_increment: "7" } : {}),
     });

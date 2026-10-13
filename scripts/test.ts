@@ -1620,3 +1620,19 @@ test("Relatório: Leads no total seguem o \"Leads contam de\" do cliente (padrã
   assert.equal(metricValue(d, "cpl", "all"), 500 / 70);
   assert.equal(metricValue(d, "leads", "meta"), 40, "num canal só, sempre a conversão do canal");
 });
+
+test("Meta: \"Contatos no site\" vem em conversions, não em actions — e conta como lead", () => {
+  // Formato da New Cabos (01/10 a 13/10): 31 contatos, R$ 182,35 na campanha de contato.
+  const row = {
+    date_start: "2026-10-01",
+    date_stop: "2026-10-13",
+    spend: "182.35",
+    actions: [{ action_type: "link_click", value: "640" }],
+    conversions: [{ action_type: "contact_website", value: "31" }],
+  };
+  assert.equal(parseInsight(row).leads, 31);
+  const t = campaignTotals([row, { date_start: "2026-10-01", date_stop: "2026-10-13", spend: "126.33", actions: [{ action_type: "link_click", value: "600" }] }]);
+  assert.equal(t.leads, 31);
+  assert.equal(t.leadSpend, 182.35, "campanha de visita ao perfil fica fora do CPL");
+  assert.equal(Math.round((t.leadSpend / t.leads) * 100) / 100, 5.88);
+});

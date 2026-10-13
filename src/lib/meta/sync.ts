@@ -20,7 +20,7 @@ export type SyncResult = { accounts: number; ok: number; failed: { account: stri
  * Mudou a regra? Troque a string: o próximo sync diário relê 12 semanas de
  * todas as contas, porque o que já estava gravado seguia a regra antiga.
  */
-export const META_RULES = "2026-10-13.contato-no-site";
+export const META_RULES = "2026-10-13.conversions";
 
 /**
  * Puxa as últimas `weeks` semanas de cada conta ativa (ou só de `adAccountId`,
