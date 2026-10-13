@@ -1227,12 +1227,14 @@ export type GoogleLink = {
   active: number;
   last_sync_at: string | null;
   last_error: string | null;
+  /** Campanhas com verba e "Todas as conversões" sem "Conversões" (vigia do sync). */
+  unread_events: UnreadEvent[] | null;
 };
 
 export const listGoogleLinks = () =>
   all<GoogleLink>(
     `SELECT a.id, a.client_id, c.name AS client_name, a.customer_id, a.name, a.currency, a.active,
-            a.last_sync_at::text AS last_sync_at, a.last_error
+            a.last_sync_at::text AS last_sync_at, a.last_error, a.unread_events
      FROM google_ad_accounts a JOIN clients c ON c.id = a.client_id
      WHERE c.active = 1
      ORDER BY c.name, a.name`,
@@ -1265,26 +1267,34 @@ export const setGoogleAccountActive = (customerId: string, active: boolean) =>
 export async function saveGoogleWeeks(customerId: string, weeks: Map<string, MetaWeek>) {
   const entries = [...weeks];
   if (entries.length) {
-    const values = entries.map(() => `(?, ?::date, ?, ?, ?, ?, ?, now())`).join(", ");
+    const values = entries.map(() => `(?, ?::date, ?, ?, ?, ?, ?, ?, now())`).join(", ");
     await run(
-      `INSERT INTO google_insights (customer_id, ref_date, spend, conversions, revenue, impressions, clicks, synced_at)
+      `INSERT INTO google_insights (customer_id, ref_date, spend, conversions, revenue, impressions, clicks, lead_spend, synced_at)
        VALUES ${values}
        ON CONFLICT (customer_id, ref_date) DO UPDATE SET
          spend = excluded.spend, conversions = excluded.conversions, revenue = excluded.revenue,
-         impressions = excluded.impressions, clicks = excluded.clicks, synced_at = excluded.synced_at`,
-      entries.flatMap(([ref, w]) => [customerId, ref, w.spend, w.leads, w.revenue, w.impressions, w.clicks]),
+         impressions = excluded.impressions, clicks = excluded.clicks, lead_spend = excluded.lead_spend,
+         synced_at = excluded.synced_at`,
+      entries.flatMap(([ref, w]) => [customerId, ref, w.spend, w.leads, w.revenue, w.impressions, w.clicks, w.leadSpend]),
     );
   }
   await run(`UPDATE google_ad_accounts SET last_sync_at = now(), last_error = NULL WHERE customer_id = ?`, [customerId]);
 }
+
+/** Grava o alerta do vigia do Google (vazio = nada fora do lugar). */
+export const saveGoogleUnread = (customerId: string, unread: UnreadEvent[]) =>
+  run(`UPDATE google_ad_accounts SET unread_events = ?::jsonb WHERE customer_id = ?`, [
+    unread.length ? JSON.stringify(unread.slice(0, 20)) : null,
+    customerId,
+  ]);
 
 export const saveGoogleError = (customerId: string, error: string) =>
   run(`UPDATE google_ad_accounts SET last_sync_at = now(), last_error = ? WHERE customer_id = ?`, [error.slice(0, 500), customerId]);
 
 /** Semanas do Google Ads por cliente, somando as contas ativas de cada um. */
 export async function googleWeeks(clientId?: number): Promise<Map<number, Map<string, MetaAgg>>> {
-  const rows = await all<{ client_id: number; ref_date: string; spend: number; conversions: number; revenue: number; impressions: number; clicks: number }>(
-    `SELECT a.client_id, i.ref_date::text AS ref_date, i.spend, i.conversions, i.revenue, i.impressions, i.clicks
+  const rows = await all<{ client_id: number; ref_date: string; spend: number; conversions: number; revenue: number; impressions: number; clicks: number; lead_spend: number }>(
+    `SELECT a.client_id, i.ref_date::text AS ref_date, i.spend, i.conversions, i.revenue, i.impressions, i.clicks, i.lead_spend
      FROM google_insights i
      JOIN google_ad_accounts a ON a.customer_id = i.customer_id AND a.active = 1
      ${clientId ? "WHERE a.client_id = ?" : ""}`,
@@ -1304,8 +1314,9 @@ export async function googleWeeks(clientId?: number): Promise<Map<number, Map<st
     cur.week.impressions += Number(r.impressions);
     cur.week.clicks += Number(r.clicks);
     cur.leads += conv;
-    // O Google só traz a conta inteira: a verba toda é a base do CPL.
-    if (conv > 0) cur.leadSpend += spend;
+    // Verba das campanhas que converteram (sync por campanha). Semana gravada
+    // antes disso não tem a coluna: aí a verba toda da semana é a base.
+    if (conv > 0) cur.leadSpend += Number(r.lead_spend) > 0 ? Number(r.lead_spend) : spend;
     byWeek.set(r.ref_date, cur);
   }
   return out;

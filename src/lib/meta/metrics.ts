@@ -274,8 +274,11 @@ export function unreadEvents(
   return out;
 }
 
+/** Rótulo do alerta do Google: a ação que converteu não entra na coluna "Conversões". */
+export const GOOGLE_UNREAD = 'Conversão fora de "Conversões" (ação secundária no Google Ads)';
+
 /** Uma linha para o alerta: "Campanha X (R$ 120): 31 × schedule_total". */
-export function describeUnread(list: UnreadEvent[] | null | undefined): string | null {
+export function describeUnread(list: UnreadEvent[] | null | undefined, lead = "Evento não contado como resultado"): string | null {
   if (!list?.length) return null;
   const top = list[0];
   const ev = Object.entries(top.events)
@@ -284,7 +287,7 @@ export function describeUnread(list: UnreadEvent[] | null | undefined): string |
     .map(([k, v]) => `${v} × ${k}`)
     .join(", ");
   const more = list.length > 1 ? ` e mais ${list.length - 1} campanha(s)` : "";
-  return `Evento não contado como resultado — ${top.campaign}: ${ev}${more}`;
+  return `${lead} — ${top.campaign}: ${ev}${more}`;
 }
 
 export function leadsOf(w: MetaWeek, metric: LeadMetric): number {

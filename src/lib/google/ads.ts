@@ -13,7 +13,17 @@
  */
 import { createSign } from "node:crypto";
 import { weekRange } from "../meta/metrics";
-import { bucketDaily, dailySpend, normalizePrivateKey, parseClientAccounts, type DailyRow, type GoogleAccount } from "./metrics";
+import {
+  bucketDaily,
+  dailySpend,
+  googleUnread,
+  normalizePrivateKey,
+  parseClientAccounts,
+  type ActionRow,
+  type DailyRow,
+  type GoogleAccount,
+} from "./metrics";
+import type { UnreadEvent } from "../meta/metrics";
 import type { MetaWeek } from "../meta/metrics";
 
 const VERSION = process.env.GOOGLE_ADS_API_VERSION || "v23";
@@ -183,21 +193,28 @@ export async function fetchInsights(
   customerId: string,
   refs: string[],
   days: { since: string; until: string },
-): Promise<{ weeks: Map<string, MetaWeek>; days: Map<string, number> }> {
+): Promise<{ weeks: Map<string, MetaWeek>; days: Map<string, number>; unread: UnreadEvent[] }> {
   const since = [days.since, ...refs.map((r) => weekRange(r).since)].sort()[0];
   const until = [days.until, ...refs].sort().pop()!;
-  const query =
-    "SELECT segments.date, metrics.cost_micros, metrics.conversions, metrics.conversions_value, metrics.clicks, metrics.impressions " +
-    `FROM customer WHERE segments.date BETWEEN '${since}' AND '${until}'`;
-  const rows: DailyRow[] = [];
-  let pageToken: string | undefined;
-  for (let guard = 0; guard < 20; guard++) {
-    const page = await search<DailyRow>(customerId, query, pageToken);
-    rows.push(...(page.results ?? []));
-    pageToken = page.nextPageToken;
-    if (!pageToken) break;
-  }
-  return { weeks: bucketDaily(rows, refs), days: dailySpend(rows, days.since, days.until) };
+  const between = `segments.date BETWEEN '${since}' AND '${until}'`;
+  // Por campanha: a verba das campanhas sem conversão fica fora do CPL.
+  const [rows, actions] = await Promise.all([
+    gaql<DailyRow>(
+      customerId,
+      "SELECT campaign.id, campaign.name, segments.date, metrics.cost_micros, metrics.conversions, metrics.conversions_value, " +
+        `metrics.all_conversions, metrics.clicks, metrics.impressions FROM campaign WHERE ${between}`,
+    ),
+    // Quebra por ação, só onde houve conversão: é o que o vigia lista.
+    gaql<ActionRow>(
+      customerId,
+      "SELECT campaign.id, segments.conversion_action_name, metrics.all_conversions, metrics.conversions " +
+        `FROM campaign WHERE ${between} AND metrics.all_conversions > 0`,
+    ).catch(() => [] as ActionRow[]),
+  ]);
+  // O vigia olha as semanas pedidas (não o mês inteiro da verba diária).
+  const firstWeek = refs.map((r) => weekRange(r).since).sort()[0];
+  const recent = rows.filter((r) => (r.segments?.date ?? "") >= firstWeek);
+  return { weeks: bucketDaily(rows, refs), days: dailySpend(rows, days.since, days.until), unread: googleUnread(recent, actions) };
 }
 
 /**

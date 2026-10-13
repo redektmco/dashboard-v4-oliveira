@@ -22,7 +22,7 @@ import { stageOf } from "./stage";
 import { lastInteractionByClient, type Interaction, type InteractionKind } from "./interactions";
 import { whenBR } from "../config-status";
 import type { GoogleLinkRowView, MetaLinkView, WebhookView } from "../../components/config/connections";
-import { describeUnread } from "../meta/metrics";
+import { describeUnread, GOOGLE_UNREAD } from "../meta/metrics";
 
 /**
  * O agregado da tela de Clientes (CRM).
@@ -197,6 +197,7 @@ export async function crmBoard({ baseUrl, at = today() }: { baseUrl: string; at?
       active: Boolean(l.active),
       lastSync: whenBR(l.last_sync_at),
       error: l.last_error,
+      unread: describeUnread(l.unread_events, GOOGLE_UNREAD),
     };
     googleBy.set(l.client_id, [...(googleBy.get(l.client_id) ?? []), view]);
   }

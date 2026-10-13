@@ -77,8 +77,9 @@ export async function googlePerformance(
   prev: Range,
 ): Promise<{ totals: Totals; previous: Totals; daily: DayPoint[]; campaigns: Campaign[] }> {
   const between = (r: Range) => `segments.date BETWEEN '${r.since}' AND '${r.until}'`;
-  const [rows, enabled, days] = await Promise.all([
+  const [rows, prevRows, enabled, days] = await Promise.all([
     gaql<GoogleCampaignRow>(customerId, `SELECT ${CAMPAIGN}, ${METRICS} FROM campaign WHERE ${between(cur)}`),
+    gaql<GoogleCampaignRow>(customerId, `SELECT campaign.id, ${METRICS} FROM campaign WHERE ${between(prev)}`),
     gaql<GoogleCampaignRow>(customerId, `SELECT ${CAMPAIGN} FROM campaign WHERE campaign.status = 'ENABLED'`),
     gaql<GoogleDayRow>(customerId, `SELECT segments.date, ${METRICS} FROM customer WHERE ${between({ since: prev.since, until: cur.until })}`),
   ]);
@@ -96,9 +97,12 @@ export async function googlePerformance(
   const seen = new Set(rows.map((r) => r.campaign?.id));
   for (const r of enabled) if (!seen.has(r.campaign?.id)) campaigns.push(toCampaign({ ...r, metrics: {} }));
 
+  // Base do custo por resultado = verba das campanhas que converteram (como no
+  // Meta e no sync semanal); a conta inteira juntaria display de marca.
+  const resultSpend = (list: GoogleCampaignRow[]) => list.reduce((a, r) => a + googleTotals(r.metrics, type).resultSpend, 0);
   return {
-    totals: sumDays(days, cur, type),
-    previous: sumDays(days, prev, type),
+    totals: { ...sumDays(days, cur, type), resultSpend: resultSpend(rows) },
+    previous: { ...sumDays(days, prev, type), resultSpend: resultSpend(prevRows) },
     daily: days
       .filter((d) => d.segments?.date && d.segments.date >= cur.since)
       .map((d) => {

@@ -49,7 +49,7 @@ import {
 import { CheckinHeatmap } from "@/components/charts";
 import { ClientActions } from "@/components/client-actions";
 import { PageHead } from "@/components/page-head";
-import { describeUnread } from "@/lib/meta/metrics";
+import { describeUnread, GOOGLE_UNREAD } from "@/lib/meta/metrics";
 import { SyncClientButton } from "@/components/cliente/sync-button";
 import { Icon, type IconName } from "@/components/icon";
 import { BAND_TEXT, Bar, BandPill, Card, ColLabel, DotLabel, Initials, KV, Pill, SectionHead, TONE, type Tone } from "@/components/kit";
@@ -222,16 +222,23 @@ export default async function ClientePage({
             : undefined,
       };
     }),
-    ...googleDoCliente.map((l) => ({
-      id: `google-${l.id}`,
-      name: "Google Ads",
-      icon: "chart" as const,
-      detail: l.last_error
-        ? l.last_error
-        : `${l.customer_id} · sincronizado ${whenBR(l.last_sync_at).toLowerCase()}`,
-      state: (l.last_error ? "erro" : l.active ? "conectada" : "pendente") as IntegrationRow["state"],
-      action: l.last_error ? { label: "Reconectar", href: "/gt/integracoes" } : undefined,
-    })),
+    ...googleDoCliente.map((l) => {
+      const unread = describeUnread(l.unread_events, GOOGLE_UNREAD);
+      return {
+        id: `google-${l.id}`,
+        name: "Google Ads",
+        icon: "chart" as const,
+        detail: l.last_error
+          ? l.last_error
+          : unread ?? `${l.customer_id} · sincronizado ${whenBR(l.last_sync_at).toLowerCase()}`,
+        state: (l.last_error || unread ? "erro" : l.active ? "conectada" : "pendente") as IntegrationRow["state"],
+        action: l.last_error
+          ? { label: "Reconectar", href: "/gt/integracoes" }
+          : unread
+            ? { label: "Ver conversões", href: `/api/google/eventos?cliente=${clientId}` }
+            : undefined,
+      };
+    }),
     {
       id: "crm",
       name: webhook?.crm_name ? `CRM · ${webhook.crm_name}` : "CRM do cliente",

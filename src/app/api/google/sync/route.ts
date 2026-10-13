@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { recomputeRange } from "@/lib/repo";
+import { getSetting, recomputeRange, setSetting } from "@/lib/repo";
 import { googleAdsConfigured } from "@/lib/google/ads";
-import { syncGoogle } from "@/lib/google/sync";
+import { GOOGLE_RULES, syncGoogle } from "@/lib/google/sync";
 
 export const maxDuration = 300;
 
@@ -22,8 +22,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, skipped: "Google Ads não configurado (GOOGLE_ADS_DEVELOPER_TOKEN / GOOGLE_SA_*)" });
   }
 
-  const weeks = Number(new URL(req.url).searchParams.get("weeks") ?? 3) || 3;
+  let weeks = Number(new URL(req.url).searchParams.get("weeks") ?? 3) || 3;
+  // Regra de leitura nova: relê 12 semanas uma vez (o histórico seguia a regra antiga).
+  const rulesChanged = (await getSetting<string | null>("google_rules", null)) !== GOOGLE_RULES;
+  if (rulesChanged) weeks = Math.max(weeks, 12);
   const result = await syncGoogle({ weeks });
+  if (rulesChanged && result.failed.length === 0) await setSetting("google_rules", GOOGLE_RULES);
   const recompute = await recomputeRange(Math.min(weeks * 7 + 7, 120));
   return NextResponse.json({ ...result, synced: result.ok, ok: result.failed.length === 0, recompute });
 }

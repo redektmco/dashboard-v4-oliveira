@@ -1,7 +1,13 @@
-import { listGoogleLinks, saveGoogleDaily, saveGoogleError, saveGoogleWeeks, today } from "../repo";
+import { listGoogleLinks, saveGoogleDaily, saveGoogleError, saveGoogleUnread, saveGoogleWeeks, today } from "../repo";
 import { dailySyncRange } from "../media-daily";
 import { recentWeeks } from "../meta/sync";
 import { fetchInsights } from "./ads";
+
+/**
+ * Versão das regras de leitura do Google. Mudou? Troque a string: o próximo
+ * sync (cron ou "Sincronizar agora") relê 12 semanas de todas as contas.
+ */
+export const GOOGLE_RULES = "2026-10-13.por-campanha";
 
 export type GoogleSyncResult = { accounts: number; ok: number; failed: { account: string; error: string }[] };
 
@@ -25,6 +31,7 @@ export async function syncGoogle({ weeks = 3, customerId, clientId }: { weeks?: 
           const r = await fetchInsights(l.customer_id, refs, days);
           await saveGoogleDaily(l.customer_id, r.days);
           await saveGoogleWeeks(l.customer_id, r.weeks);
+          await saveGoogleUnread(l.customer_id, r.unread);
           result.ok++;
         } catch (e) {
           const error = e instanceof Error ? e.message : String(e);

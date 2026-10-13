@@ -425,6 +425,8 @@ export type GoogleLinkRowView = {
   active: boolean;
   lastSync: string;
   error: string | null;
+  /** Alerta do vigia: ação de conversão fora de "Conversões". */
+  unread?: string | null;
 };
 
 /**
@@ -455,6 +457,11 @@ export function GoogleLinkRow({ link }: { link: GoogleLinkRowView }) {
           {formatCustomerId(link.customerId)} · sync {link.lastSync}
         </div>
         {link.error && <div className="truncate text-[11px] text-vermelho-fg">{link.error}</div>}
+        {!link.error && link.unread && (
+          <div className="text-[11px] leading-snug text-amarelo-fg" title={link.unread}>
+            {link.unread}
+          </div>
+        )}
       </div>
       {!link.active && <Pill tone="neutro">Pausada</Pill>}
       <ActionMenu items={menu} label={`Ações de ${link.name}`} size="sm" />

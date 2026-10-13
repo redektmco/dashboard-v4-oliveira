@@ -20,7 +20,7 @@ import { matchCaptionsToFiles, parseBatchCaptions } from "../src/lib/social/batc
 import { isOwnBlobUrl } from "../src/lib/social/storage";
 import { navReducer, type Nav } from "../src/components/social/story-nav";
 import { createSign, generateKeyPairSync } from "node:crypto";
-import { bucketDaily, dailySpend, formatCustomerId, normalizeCustomerId, normalizePrivateKey, parseClientAccounts } from "../src/lib/google/metrics";
+import { bucketDaily, dailySpend, formatCustomerId, googleUnread, normalizeCustomerId, normalizePrivateKey, parseClientAccounts } from "../src/lib/google/metrics";
 import { explainError } from "../src/lib/google/ads";
 import { dailySyncRange, monthLabel, monthSpend, monthTarget, monthToDate } from "../src/lib/media-daily";
 import { goalStatus, periodOf, realizedIn, type Goal } from "../src/lib/crm/goals";
@@ -813,8 +813,8 @@ test("google: agrupa os dias nas semanas-ritual e zera a semana sem entrega", ()
   );
   const w = weeks.get("2026-06-12")!;
   assert.equal(w.spend, 15);
-  assert.equal(w.leads, 3); // 2,8 arredondado só no fim da semana
-  assert.equal(w.purchases, 3);
+  assert.equal(w.leads, 2.8); // atribuição por dados: 1 casa, como na aba Performance e no relatório
+  assert.equal(w.purchases, 2.8);
   assert.equal(w.revenue, 150.5);
   assert.equal(w.clicks, 15);
   assert.equal(w.impressions, 1500);
@@ -1697,4 +1697,29 @@ test("Meta: sync semanal, aba Performance e relatório contam os mesmos leads", 
   assert.equal(report.leads, 31);
   assert.equal(report.leadSpend, 182.35);
   assert.equal(dailyOf(rows, "both", "lead_gen", goals)[0].results, 31);
+});
+
+test("google: CPL da semana só com a verba das campanhas que converteram", () => {
+  const row = (id: string, date: string, cost: number, conversions: number) => ({
+    campaign: { id, name: `C${id}` },
+    segments: { date },
+    metrics: { costMicros: cost * 1_000_000, conversions, clicks: 1, impressions: 10 },
+  });
+  const w = bucketDaily([row("1", "2026-06-08", 300, 6), row("2", "2026-06-09", 200, 0)], ["2026-06-12"]).get("2026-06-12")!;
+  assert.equal(w.spend, 500);
+  assert.equal(w.leads, 6);
+  assert.equal(w.leadSpend, 300, "campanha de marca sem conversão fica fora do CPL");
+});
+
+test("google: vigia acende quando a ação de lead está fora de \"Conversões\"", () => {
+  const rows = [
+    { campaign: { id: "1", name: "Pesquisa" }, metrics: { costMicros: 400_000_000, conversions: 0, allConversions: 14 } },
+    { campaign: { id: "2", name: "PMax" }, metrics: { costMicros: 300_000_000, conversions: 9, allConversions: 20 } },
+    { campaign: { id: "3", name: "Parada" }, metrics: { costMicros: 0, conversions: 0, allConversions: 2 } },
+  ];
+  const actions = [{ campaign: { id: "1" }, segments: { conversionActionName: "Formulário site" }, metrics: { allConversions: 14 } }];
+  const u = googleUnread(rows, actions);
+  assert.equal(u.length, 1);
+  assert.equal(u[0].campaign, "Pesquisa");
+  assert.deepEqual(u[0].events, { "Formulário site": 14 });
 });

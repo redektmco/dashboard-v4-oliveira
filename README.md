@@ -109,6 +109,20 @@ mesma regra, em `src/lib/meta/metrics.ts`:
   eventos crus de cada campanha). Nada vira zero calado.
 - Mudou a regra? Troque `META_RULES` em `src/lib/meta/sync.ts`: o próximo sync relê 12 semanas.
 
+### O que o Google conta como resultado
+
+- **Conversões** = a coluna "Conversões" do Google Ads (ações de conversão *principais*); vira lead
+  na geração de leads e compra no e-commerce. Fracionária (atribuição por dados) com 1 casa, igual
+  em toda leitura.
+- Toda leitura é **por campanha**: a base do CPL é só a verba das campanhas que converteram
+  (`google_insights.lead_spend`) — display de marca sem conversão fica fora, como no Meta.
+- **Vigia:** campanha com verba, "Conversões" zero e "Todas as conversões" acima de zero (ação de lead
+  marcada como *secundária* no Google Ads) fica em `google_ad_accounts.unread_events` e aparece como
+  alerta na conta e na ficha, com *Ver conversões* (`/api/google/eventos?cliente=<id>`: por campanha,
+  verba, "Conversões", "Todas as conversões" e a quebra por ação). A correção é no Google Ads: marcar
+  a ação de lead como principal.
+- Mudou a regra? Troque `GOOGLE_RULES` em `src/lib/google/sync.ts`: o próximo sync relê 12 semanas.
+
 ### Região das funções
 
 `vercel.json` fixa as funções em `gru1` (São Paulo), ao lado do Neon (`sa-east-1`). Cada query é

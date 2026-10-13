@@ -4,7 +4,7 @@
  * tratar as duas mídias do mesmo jeito). Sem rede nem banco — é o que os
  * testes cobrem.
  */
-import { EMPTY_WEEK, weekRange, type MetaWeek } from "../meta/metrics";
+import { EMPTY_WEEK, weekRange, type MetaWeek, type UnreadEvent } from "../meta/metrics";
 import { fillDays } from "../media-daily";
 
 /** "124-444-3600" → "1244443600". Devolve null se não tiver 10 dígitos. */
@@ -16,17 +16,27 @@ export function normalizeCustomerId(raw: string): string | null {
 /** "1244443600" → "124-444-3600" (como o Google Ads mostra). */
 export const formatCustomerId = (id: string) => id.replace(/^(\d{3})(\d{3})(\d{4})$/, "$1-$2-$3");
 
-/** Linha diária da `googleAds:search` (REST: camelCase, int64 como texto). */
+/**
+ * Linha diária da `googleAds:search` (REST: camelCase, int64 como texto) —
+ * por campanha (`FROM campaign`), para a base do CPL sair só das campanhas
+ * que converteram.
+ */
 export type DailyRow = {
+  campaign?: { id?: string; name?: string };
   segments?: { date?: string };
   metrics?: {
     costMicros?: string | number;
     conversions?: string | number;
     conversionsValue?: string | number;
+    /** "Todas as conversões": inclui as ações secundárias (fora de "Conversões"). */
+    allConversions?: string | number;
     clicks?: string | number;
     impressions?: string | number;
   };
 };
+
+/** Conversão fracionária (atribuição por dados) com 1 casa — o mesmo em toda leitura. */
+export const conv1 = (n: number) => Math.round(n * 10) / 10;
 
 const num = (v: unknown) => {
   const n = Number(v);
@@ -38,14 +48,16 @@ const num = (v: unknown) => {
  * ref-6 a ref). Semana sem linha vira zero de propósito: verba parada é
  * sinal, não lacuna — igual ao Meta.
  *
- * `conversions` do Google já é o total das ações de conversão da conta: vira
+ * `conversions` do Google é a coluna "Conversões" (ações principais): vira
  * `leads` (conta de geração de lead) e `purchases` (e-commerce), e
- * `conversionsValue` vira receita. Fracionário (atribuição por dados) é
- * arredondado no fim da semana, não dia a dia.
+ * `conversionsValue` vira receita. Fracionário (atribuição por dados) fica
+ * com 1 casa no fim da semana. A verba das campanhas com conversão na semana
+ * é a base do CPL (`leadSpend`) — display de marca sem conversão fica fora.
  */
 export function bucketDaily(rows: DailyRow[], refs: string[]): Map<string, MetaWeek> {
   const ranges = refs.map((ref) => ({ ref, ...weekRange(ref) }));
   const acc = new Map<string, { w: MetaWeek; conv: number }>(refs.map((r) => [r, { w: { ...EMPTY_WEEK }, conv: 0 }]));
+  const perCampaign = new Map<string, { spend: number; conv: number }>();
   for (const row of rows) {
     const day = row.segments?.date;
     if (!day) continue;
@@ -58,13 +70,52 @@ export function bucketDaily(rows: DailyRow[], refs: string[]): Map<string, MetaW
     a.w.clicks += num(m.clicks);
     a.w.impressions += num(m.impressions);
     a.conv += num(m.conversions);
+    const key = `${hit.ref}|${row.campaign?.id ?? ""}`;
+    const c = perCampaign.get(key) ?? { spend: 0, conv: 0 };
+    perCampaign.set(key, { spend: c.spend + num(m.costMicros) / 1_000_000, conv: c.conv + num(m.conversions) });
   }
+  for (const [key, c] of perCampaign) if (c.conv > 0) acc.get(key.split("|")[0])!.w.leadSpend += c.spend;
   const out = new Map<string, MetaWeek>();
+  const r2 = (n: number) => Math.round(n * 100) / 100;
   for (const [ref, { w, conv }] of acc) {
-    const n = Math.round(conv);
-    out.set(ref, { ...w, spend: Math.round(w.spend * 100) / 100, revenue: Math.round(w.revenue * 100) / 100, leads: n, purchases: n });
+    const n = conv1(conv);
+    out.set(ref, { ...w, spend: r2(w.spend), revenue: r2(w.revenue), leadSpend: r2(w.leadSpend), leads: n, purchases: n });
   }
   return out;
+}
+
+/** Linha da quebra por ação de conversão (`segments.conversion_action_name`). */
+export type ActionRow = {
+  campaign?: { id?: string; name?: string };
+  segments?: { conversionActionName?: string };
+  metrics?: { allConversions?: string | number; conversions?: string | number };
+};
+
+/**
+ * Vigia do Google: campanha com verba e "Conversões" zero, mas com "Todas as
+ * conversões" — a ação de lead do cliente provavelmente está como secundária
+ * no Google Ads e o painel mostraria zero. Lista as ações que converteram.
+ */
+export function googleUnread(rows: DailyRow[], actions: ActionRow[]): UnreadEvent[] {
+  const by = new Map<string, { name: string; spend: number; conv: number; all: number }>();
+  for (const r of rows) {
+    const id = r.campaign?.id ?? "";
+    const c = by.get(id) ?? { name: r.campaign?.name || id || "campanha", spend: 0, conv: 0, all: 0 };
+    c.spend += num(r.metrics?.costMicros) / 1_000_000;
+    c.conv += num(r.metrics?.conversions);
+    c.all += num(r.metrics?.allConversions);
+    by.set(id, c);
+  }
+  const out: UnreadEvent[] = [];
+  for (const [id, c] of by) {
+    if (c.spend <= 0 || c.conv > 0 || c.all <= 0) continue;
+    const events: Record<string, number> = {};
+    for (const a of actions)
+      if ((a.campaign?.id ?? "") === id && a.segments?.conversionActionName)
+        events[a.segments.conversionActionName] = conv1((events[a.segments.conversionActionName] ?? 0) + num(a.metrics?.allConversions));
+    out.push({ campaign: c.name, spend: Math.round(c.spend * 100) / 100, events: Object.keys(events).length ? events : { "Todas as conversões": conv1(c.all) } });
+  }
+  return out.sort((a, b) => b.spend - a.spend);
 }
 
 /** Verba por dia de `since` a `until` (zero no dia sem linha). */

@@ -943,13 +943,21 @@ ALTER TABLE rp_reports ADD COLUMN IF NOT EXISTS live JSONB;
 -- painel nao contou como resultado (NULL = tudo lido). Acende o alerta da
 -- conta em Integracoes e na ficha do cliente.
 ALTER TABLE meta_ad_accounts ADD COLUMN IF NOT EXISTS unread_events JSONB;
+
+-- Google: semana lida por campanha. lead_spend = verba so das campanhas com
+-- conversao (base do CPL, como no Meta); conversao fracionaria (atribuicao
+-- por dados) guardada com casa decimal; e o vigia das acoes de conversao
+-- secundarias ("Todas as conversoes" sem "Conversoes").
+ALTER TABLE google_insights ADD COLUMN IF NOT EXISTS lead_spend DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE google_insights ALTER COLUMN conversions TYPE DOUBLE PRECISION;
+ALTER TABLE google_ad_accounts ADD COLUMN IF NOT EXISTS unread_events JSONB;
 `;
 
 /**
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-10-13.meta-unread-events";
+export const SCHEMA_VERSION = "2026-10-13.google-por-campanha";
 
 let migrated = false;
 

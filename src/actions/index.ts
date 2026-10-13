@@ -68,7 +68,7 @@ import { META_RULES, syncMeta } from "@/lib/meta/sync";
 import { getCustomer, googleAdsConfigured, listClientAccounts } from "@/lib/google/ads";
 import type { GoogleAccount } from "@/lib/google/metrics";
 import { formatCustomerId, normalizeCustomerId } from "@/lib/google/metrics";
-import { syncGoogle } from "@/lib/google/sync";
+import { GOOGLE_RULES, syncGoogle } from "@/lib/google/sync";
 import { parseClientsSheet } from "@/lib/import/clients-sheet";
 
 const str = (f: FormData, k: string) => (f.get(k) as string | null)?.trim() ?? "";
@@ -595,8 +595,10 @@ export async function connectGoogleAccount(_prev: ActionResult, formData: FormDa
 export async function syncGoogleNow(): Promise<ActionResult> {
   await requireAdmin();
   if (!googleAdsConfigured()) return { error: "Configure GOOGLE_ADS_DEVELOPER_TOKEN e a credencial do Google (GOOGLE_SA_*) no ambiente." };
-  const r = await syncGoogle({ weeks: 3 });
-  await recomputeRange(28);
+  const rulesChanged = (await getSetting<string | null>("google_rules", null)) !== GOOGLE_RULES;
+  const r = await syncGoogle({ weeks: rulesChanged ? 12 : 3 });
+  if (rulesChanged && r.failed.length === 0) await setSetting("google_rules", GOOGLE_RULES);
+  await recomputeRange(rulesChanged ? 90 : 28);
   revalidateSettings();
   revalidatePath("/");
   if (r.failed.length) {
