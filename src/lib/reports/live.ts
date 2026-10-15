@@ -4,7 +4,8 @@
  * de 7 dias a partir do início, mais o período anterior inteiro para a
  * comparação. Mesmos critérios da aba Performance e do score: lead de site
  * conta formulário ou contato (o maior dos dois por campanha), conversa pela
- * métrica da conta, e a verba das campanhas que geraram lead é a base do CPL.
+ * métrica da conta; a base do CPL é a verba das campanhas que geraram lead na
+ * Meta e a verba toda no Google (como o "Custo por lead bruto" do Google Ads).
  *
  * Uma conta com erro (token sem acesso, conta desativada) não derruba as
  * demais — vai para `errors`, e o editor diz qual ficou de fora.
@@ -118,12 +119,11 @@ type GoogleRow = {
 
 /**
  * Linhas campanha × dia somadas por trecho. Conversão vira lead e compra (como
- * no sync semanal); a verba de cada campanha com conversão no trecho entra na
- * base do CPL.
+ * no sync semanal); a base do CPL é a verba toda do trecho, como o "Custo por
+ * lead bruto" do Google Ads.
  */
 export function googleBuckets(rows: GoogleRow[], buckets: Range[]): ChannelNums[] {
   const out = buckets.map(() => ({ ...EMPTY_NUMS }));
-  const perCampaign = new Map<string, { spend: number; conv: number }>();
   for (const r of rows) {
     const d = r.segments?.date;
     if (!d) continue;
@@ -133,16 +133,13 @@ export function googleBuckets(rows: GoogleRow[], buckets: Range[]): ChannelNums[
     const conv = num(r.metrics?.conversions);
     const t = out[i];
     t.spend += spend;
+    t.leadSpend += spend;
     t.impressions += num(r.metrics?.impressions);
     t.clicks += num(r.metrics?.clicks);
     t.leads += conv;
     t.purchases += conv;
     t.revenue += num(r.metrics?.conversionsValue);
-    const key = `${i}:${r.campaign?.id ?? ""}`;
-    const c = perCampaign.get(key) ?? { spend: 0, conv: 0 };
-    perCampaign.set(key, { spend: c.spend + spend, conv: c.conv + conv });
   }
-  for (const [key, c] of perCampaign) if (c.conv > 0) out[Number(key.split(":")[0])].leadSpend += c.spend;
   // Atribuição por dados deixa conversão fracionária: 1 casa, como na aba Performance.
   for (const t of out) {
     t.leads = Math.round(t.leads * 10) / 10;

@@ -197,7 +197,7 @@ export async function fetchInsights(
   const since = [days.since, ...refs.map((r) => weekRange(r).since)].sort()[0];
   const until = [days.until, ...refs].sort().pop()!;
   const between = `segments.date BETWEEN '${since}' AND '${until}'`;
-  // Por campanha: a verba das campanhas sem conversão fica fora do CPL.
+  // Por campanha: é o que o vigia de ação secundária precisa.
   const [rows, actions] = await Promise.all([
     gaql<DailyRow>(
       customerId,

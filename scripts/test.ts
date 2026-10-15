@@ -1499,6 +1499,11 @@ test("performance: Google soma o período e o anterior a partir dos dias", () =>
   assert.equal(prev.spend, 50);
   assert.equal(delta(cpr(cur), cpr(prev)), -20);
   assert.equal(googleTotals({ costMicros: "1000000", conversions: "2" }, "ecommerce").purchases, 2);
+  // Caso do print (01–15/10): R$ 2.239,95, 2 conversões → CPL sobre a verba toda, não só a da campanha que converteu.
+  const conta = googleTotals({ costMicros: "2239950000", clicks: "320", conversions: "2" }, "lead_gen");
+  assert.equal(conta.resultSpend, 2239.95);
+  assert.equal(cpr(conta), 1119.975);
+  assert.equal(googleTotals({ costMicros: "500000000", conversions: "0" }, "lead_gen").resultSpend, 500, "verba sem conversão entra no CPL do canal somado");
 });
 
 test("performance: contas derivadas, status e soma de canais", () => {
@@ -1575,7 +1580,7 @@ test("Sincronizar: Meta soma lead de site campanha a campanha, cliques no link d
   assert.deepEqual(metaNums(undefined, [], "both"), nums());
 });
 
-test("Sincronizar: Google por trecho, verba de campanha com conversão vira base do CPL", () => {
+test("Sincronizar: Google por trecho, verba toda vira base do CPL", () => {
   const row = (id: string, date: string, cost: number, conv: number) => ({
     campaign: { id },
     segments: { date },
@@ -1591,9 +1596,9 @@ test("Sincronizar: Google por trecho, verba de campanha com conversão vira base
   );
   assert.equal(out[0].spend, 150);
   assert.equal(out[0].leads, 2.5);
-  assert.equal(out[0].leadSpend, 100, "campanha sem conversão fica fora do CPL");
+  assert.equal(out[0].leadSpend, 150, "CPL do Google sobre a verba toda, como no Google Ads");
   assert.equal(out[1].spend, 80);
-  assert.equal(out[1].leadSpend, 0);
+  assert.equal(out[1].leadSpend, 80);
   assert.equal(out[0].clicks + out[1].clicks, 30, "dia fora dos trechos não entra");
 });
 
@@ -1701,7 +1706,7 @@ test("Meta: sync semanal, aba Performance e relatório contam os mesmos leads", 
   assert.equal(dailyOf(rows, "both", "lead_gen", goals)[0].results, 31);
 });
 
-test("google: CPL da semana só com a verba das campanhas que converteram", () => {
+test("google: CPL da semana sobre a verba toda, como o Custo por lead bruto do Google Ads", () => {
   const row = (id: string, date: string, cost: number, conversions: number) => ({
     campaign: { id, name: `C${id}` },
     segments: { date },
@@ -1710,7 +1715,7 @@ test("google: CPL da semana só com a verba das campanhas que converteram", () =
   const w = bucketDaily([row("1", "2026-06-08", 300, 6), row("2", "2026-06-09", 200, 0)], ["2026-06-12"]).get("2026-06-12")!;
   assert.equal(w.spend, 500);
   assert.equal(w.leads, 6);
-  assert.equal(w.leadSpend, 300, "campanha de marca sem conversão fica fora do CPL");
+  assert.equal(w.leadSpend, 500, "campanha sem conversão também pesa no CPL");
 });
 
 test("google: vigia acende quando a ação de lead está fora de \"Conversões\"", () => {

@@ -18,8 +18,7 @@ export const formatCustomerId = (id: string) => id.replace(/^(\d{3})(\d{3})(\d{4
 
 /**
  * Linha diária da `googleAds:search` (REST: camelCase, int64 como texto) —
- * por campanha (`FROM campaign`), para a base do CPL sair só das campanhas
- * que converteram.
+ * por campanha (`FROM campaign`), que é o que o vigia de ação secundária lê.
  */
 export type DailyRow = {
   campaign?: { id?: string; name?: string };
@@ -51,13 +50,12 @@ const num = (v: unknown) => {
  * `conversions` do Google é a coluna "Conversões" (ações principais): vira
  * `leads` (conta de geração de lead) e `purchases` (e-commerce), e
  * `conversionsValue` vira receita. Fracionário (atribuição por dados) fica
- * com 1 casa no fim da semana. A verba das campanhas com conversão na semana
- * é a base do CPL (`leadSpend`) — display de marca sem conversão fica fora.
+ * com 1 casa no fim da semana. A base do CPL (`leadSpend`) é a verba toda da
+ * semana, como o "Custo por lead bruto" do Google Ads.
  */
 export function bucketDaily(rows: DailyRow[], refs: string[]): Map<string, MetaWeek> {
   const ranges = refs.map((ref) => ({ ref, ...weekRange(ref) }));
   const acc = new Map<string, { w: MetaWeek; conv: number }>(refs.map((r) => [r, { w: { ...EMPTY_WEEK }, conv: 0 }]));
-  const perCampaign = new Map<string, { spend: number; conv: number }>();
   for (const row of rows) {
     const day = row.segments?.date;
     if (!day) continue;
@@ -70,16 +68,12 @@ export function bucketDaily(rows: DailyRow[], refs: string[]): Map<string, MetaW
     a.w.clicks += num(m.clicks);
     a.w.impressions += num(m.impressions);
     a.conv += num(m.conversions);
-    const key = `${hit.ref}|${row.campaign?.id ?? ""}`;
-    const c = perCampaign.get(key) ?? { spend: 0, conv: 0 };
-    perCampaign.set(key, { spend: c.spend + num(m.costMicros) / 1_000_000, conv: c.conv + num(m.conversions) });
   }
-  for (const [key, c] of perCampaign) if (c.conv > 0) acc.get(key.split("|")[0])!.w.leadSpend += c.spend;
   const out = new Map<string, MetaWeek>();
   const r2 = (n: number) => Math.round(n * 100) / 100;
   for (const [ref, { w, conv }] of acc) {
     const n = conv1(conv);
-    out.set(ref, { ...w, spend: r2(w.spend), revenue: r2(w.revenue), leadSpend: r2(w.leadSpend), leads: n, purchases: n });
+    out.set(ref, { ...w, spend: r2(w.spend), revenue: r2(w.revenue), leadSpend: r2(w.spend), leads: n, purchases: n });
   }
   return out;
 }

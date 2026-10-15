@@ -28,7 +28,7 @@ export type Totals = {
   revenue: number;
   /** O resultado que vale para o tipo de conta (lead, compra ou alcance). */
   results: number;
-  /** Verba das campanhas que geraram resultado — base do custo por resultado. */
+  /** Base do custo por resultado: na Meta, a verba das campanhas que geraram resultado; no Google, a verba toda. */
   resultSpend: number;
 };
 
@@ -178,9 +178,10 @@ export const frequency = (t: Pick<Totals, "impressions" | "reach">) => (t.reach 
 export const convRate = (t: Pick<Totals, "results" | "clicks">) => ratio(t.results * 100, t.clicks);
 
 /**
- * Custo por resultado. Usa a verba só das campanhas que geraram resultado:
- * campanha de alcance ou de visita ao perfil somada inflaria o CPL. Sem essa
- * verba (resultado vindo de campanha sem cadastro), cai na verba total.
+ * Custo por resultado sobre `resultSpend`: na Meta, a verba só das campanhas
+ * que geraram resultado (alcance ou visita ao perfil inflaria o CPL); no
+ * Google, a verba toda, como no Google Ads. Sem essa verba (resultado vindo
+ * de campanha sem cadastro), cai na verba total.
  */
 export function cpr(t: Pick<Totals, "spend" | "results" | "resultSpend">): number | null {
   if (t.results <= 0) return null;

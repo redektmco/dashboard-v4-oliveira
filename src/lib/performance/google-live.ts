@@ -34,6 +34,8 @@ const num = (v: unknown) => {
  * Métricas do Google no formato da aba. `conversions` é o total das ações de
  * conversão da conta: vira lead (geração de lead) e compra (e-commerce),
  * como no sync semanal. Fracionário (atribuição por dados) fica com 1 casa.
+ * A base do custo por resultado é a verba toda, como o "Custo por lead bruto"
+ * do Google Ads: campanha que gastou sem converter também pesa no CPL.
  */
 export function googleTotals(m: Metrics | undefined, type: AccountType): Totals {
   const spend = num(m?.costMicros) / 1_000_000;
@@ -48,7 +50,7 @@ export function googleTotals(m: Metrics | undefined, type: AccountType): Totals 
     purchases: conv,
     revenue: num(m?.conversionsValue),
     results,
-    resultSpend: results > 0 ? spend : 0,
+    resultSpend: spend,
   };
 }
 
@@ -77,9 +79,8 @@ export async function googlePerformance(
   prev: Range,
 ): Promise<{ totals: Totals; previous: Totals; daily: DayPoint[]; campaigns: Campaign[] }> {
   const between = (r: Range) => `segments.date BETWEEN '${r.since}' AND '${r.until}'`;
-  const [rows, prevRows, enabled, days] = await Promise.all([
+  const [rows, enabled, days] = await Promise.all([
     gaql<GoogleCampaignRow>(customerId, `SELECT ${CAMPAIGN}, ${METRICS} FROM campaign WHERE ${between(cur)}`),
-    gaql<GoogleCampaignRow>(customerId, `SELECT campaign.id, ${METRICS} FROM campaign WHERE ${between(prev)}`),
     gaql<GoogleCampaignRow>(customerId, `SELECT ${CAMPAIGN} FROM campaign WHERE campaign.status = 'ENABLED'`),
     gaql<GoogleDayRow>(customerId, `SELECT segments.date, ${METRICS} FROM customer WHERE ${between({ since: prev.since, until: cur.until })}`),
   ]);
@@ -97,12 +98,9 @@ export async function googlePerformance(
   const seen = new Set(rows.map((r) => r.campaign?.id));
   for (const r of enabled) if (!seen.has(r.campaign?.id)) campaigns.push(toCampaign({ ...r, metrics: {} }));
 
-  // Base do custo por resultado = verba das campanhas que converteram (como no
-  // Meta e no sync semanal); a conta inteira juntaria display de marca.
-  const resultSpend = (list: GoogleCampaignRow[]) => list.reduce((a, r) => a + googleTotals(r.metrics, type).resultSpend, 0);
   return {
-    totals: { ...sumDays(days, cur, type), resultSpend: resultSpend(rows) },
-    previous: { ...sumDays(days, prev, type), resultSpend: resultSpend(prevRows) },
+    totals: sumDays(days, cur, type),
+    previous: sumDays(days, prev, type),
     daily: days
       .filter((d) => d.segments?.date && d.segments.date >= cur.since)
       .map((d) => {
@@ -111,7 +109,7 @@ export async function googlePerformance(
           day: d.segments!.date!,
           spend: t.spend,
           results: t.results,
-          resultSpend: t.results > 0 ? t.spend : 0,
+          resultSpend: t.resultSpend,
           impressions: t.impressions,
           clicks: t.clicks,
           revenue: t.revenue,
