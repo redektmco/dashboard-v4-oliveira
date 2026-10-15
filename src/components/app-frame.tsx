@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { MobileNav, Sidebar } from "./nav";
 import type { Aviso } from "@/lib/repo";
 import type { JobRole } from "@/lib/roles";
+import type { SavedWorkspaces } from "@/lib/workspace/saved";
 import { WorkspaceProvider } from "./workspace/workspace-provider";
 
 type Perfil = { id: number; name: string; isAdmin: boolean; role: string; roles?: string[]; roleCatalog?: JobRole[] };
@@ -23,19 +24,26 @@ export function AppFrame({
   user,
   avisos,
   jobRoles,
+  savedLayouts,
   children,
 }: {
   user: Perfil;
   avisos: Aviso[];
   jobRoles: JobRole[];
+  /** Telas organizadas pela pessoa, lidas no servidor; null quando a leitura falhou. */
+  savedLayouts: SavedWorkspaces | null;
   children: React.ReactNode;
 }) {
   const path = usePathname();
-  if (path.startsWith("/a/") || path.startsWith("/r/")) return <>{children}</>;
-  // O construtor de relatórios ocupa a tela inteira, como o Elementor.
-  if (/^\/relatorios\/[^/]+$/.test(path)) return <>{children}</>;
+  // O provedor fica montado em toda rota (mesma chave nos dois ramos): o layout
+  // raiz não renderiza de novo na navegação, então as telas salvas nesta
+  // visita só vivem no estado dele. Outra pessoa logada = provedor novo.
+  const bare = path.startsWith("/a/") || path.startsWith("/r/")
+    // O construtor de relatórios ocupa a tela inteira, como o Elementor.
+    || /^\/relatorios\/[^/]+$/.test(path);
+  if (bare) return <WorkspaceProvider key={user.id} user={user} jobRoles={jobRoles} savedLayouts={savedLayouts}>{children}</WorkspaceProvider>;
   return (
-    <WorkspaceProvider user={user} jobRoles={jobRoles}>
+    <WorkspaceProvider key={user.id} user={user} jobRoles={jobRoles} savedLayouts={savedLayouts}>
       <Sidebar user={{ ...user, roleCatalog: jobRoles }} avisos={avisos} />
       <div className="flex min-w-0 flex-1 flex-col">
         <MobileNav user={{ ...user, roleCatalog: jobRoles }} />

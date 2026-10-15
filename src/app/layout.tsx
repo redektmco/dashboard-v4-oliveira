@@ -6,6 +6,7 @@ import { AppFrame } from "@/components/app-frame";
 import { FlashFromUrl, Toaster } from "@/components/toast";
 import { getSessionUser, listJobRoles } from "@/lib/auth";
 import { avisos } from "@/lib/repo";
+import { loadSavedWorkspaces } from "@/lib/workspace/saved";
 
 /* Montserrat = tipo oficial da marca (display).
    Inter = substituição livre para Proxima Nova no corpo/UI.
@@ -52,8 +53,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const user = await getSessionUser();
   const perfil = user ? { id: user.id, name: user.name, isAdmin: Boolean(user.is_admin), role: user.role, roles: user.roles } : null;
   // Os avisos do rail nunca podem derrubar a página: banco fora do ar vira
-  // sino vazio, não erro de layout.
-  const jobRoles = user ? await listJobRoles().catch(() => []) : [];
+  // sino vazio, não erro de layout. As telas salvas também: sem elas (null)
+  // cada tela busca a própria organização ao abrir.
+  const [jobRoles, savedLayouts] = user
+    ? await Promise.all([listJobRoles().catch(() => []), loadSavedWorkspaces(user.id).catch(() => null)])
+    : [[], null];
   const pendencias = user ? await avisos().catch(() => []) : [];
 
   return (
@@ -63,7 +67,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     >
       <body className="flex min-h-screen">
         {user && perfil ? (
-          <AppFrame user={perfil} avisos={pendencias} jobRoles={jobRoles}>
+          <AppFrame user={perfil} avisos={pendencias} jobRoles={jobRoles} savedLayouts={savedLayouts}>
             {children}
           </AppFrame>
         ) : (

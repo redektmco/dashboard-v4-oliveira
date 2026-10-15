@@ -1,7 +1,6 @@
-
-import { ModularScreen } from "@/components/workspace/modular-screen";
 import "@/components/reports/reports.css";
 import Link from "next/link";
+import { ModularScreen } from "@/components/workspace/modular-screen";
 import { requireUser } from "@/lib/auth";
 import { listClients, today } from "@/lib/repo";
 import { listReports } from "@/lib/reports/db";
@@ -51,8 +50,9 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         }
       />
 
+      {/* As abas andam com a lista que trocam. */}
       <ModularScreen screen="relatorios" modules={[
-{ id: "filters", label: "Relatórios e modelos", kind: "filters", defaultWidth: 'full' as const, content: <><nav className="flex gap-1 border-b border-[var(--border-hair)]" aria-label="Seções de Relatórios">
+{ id: "filters", label: "Relatórios e modelos", kind: "filters", group: "documentos", defaultWidth: 'full' as const, content: <><nav className="flex gap-1 border-b border-[var(--border-hair)]" aria-label="Seções de Relatórios">
         {(
           [
             ["relatorios", "Relatórios", reports.length],
@@ -70,7 +70,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           </Link>
         ))}
       </nav></> },
-{ id: "reports", label: "Documentos", kind: "list", defaultWidth: 'full' as const, content: <>{tab === "relatorios" ? (
+{ id: "reports", label: "Documentos", kind: "list", group: "documentos", defaultWidth: 'full' as const, content: <>{tab === "relatorios" ? (
         reports.length === 0 ? (
           <div className="rounded-xl border border-dashed border-[var(--border-strong)] px-6 py-14 text-center">
             <Icon name="fileText" size={30} className="mx-auto text-ink-500" stroke={1.4} />

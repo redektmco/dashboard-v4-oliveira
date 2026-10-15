@@ -1,10 +1,9 @@
 "use client";
 
-import { ModularScreen } from "@/components/workspace/modular-screen";
-
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ModularScreen } from "@/components/workspace/modular-screen";
 import { pauseCharge, saveCharge, testDispatchNow } from "@/actions/billing";
 import { RECURRENCE_LABEL, RECURRENCE_MONTHS, type BillingChargeRow, type BillingRecurrence, type DispatchLogEntry } from "@/lib/billing/types";
 import { ActionForm, SubmitButton } from "../form-controls";
@@ -187,8 +186,9 @@ export function BillingBoard({
           }
         />
 
+        {/* O alerta só ocupa espaço quando há pendência; Próximos/Histórico anda com a lista que troca. */}
         <ModularScreen screen="cobranca" modules={[
-{ id: "pending", label: "Pendências de envio", kind: "priorities", defaultWidth: 'full' as const, content: <>{(noChannel || noContact > 0) && (
+{ id: "pending", label: "Pendências de envio", kind: "priorities", defaultWidth: 'full' as const, empty: !(noChannel || noContact > 0), content: <>{(noChannel || noContact > 0) && (
           <div className="flex flex-wrap items-center gap-3 rounded-[10px] border border-amarelo/25 bg-amarelo-dim px-4 py-3">
             <Icon name="alert" size={16} className="shrink-0 text-amarelo-fg" />
             <div className="flex min-w-[220px] flex-1 flex-col gap-0.5">
@@ -226,7 +226,7 @@ export function BillingBoard({
             </div>
           ))}
         </div></> },
-{ id: "filters", label: "Visualização das cobranças", kind: "filters", defaultWidth: 'full' as const, content: <><div className="flex items-center justify-between pt-2">
+{ id: "filters", label: "Visualização das cobranças", kind: "filters", group: "cobrancas", defaultWidth: 'full' as const, content: <><div className="flex items-center justify-between pt-2">
           <h2 className="font-display text-[15px] font-semibold text-ink-100">{view === "proximos" ? "Próximos disparos" : "Histórico de disparos"}</h2>
           <Segmented
             size="sm"
@@ -238,7 +238,7 @@ export function BillingBoard({
             ]}
           />
         </div></> },
-{ id: "charges", label: "Cobranças e histórico", kind: "list", defaultWidth: 'full' as const, content: <>{view === "proximos" ? (
+{ id: "charges", label: "Cobranças e histórico", kind: "list", group: "cobrancas", defaultWidth: 'full' as const, content: <>{view === "proximos" ? (
           <div className="overflow-hidden rounded-xl border border-[var(--border-hair)] bg-ink-900">
             {groups.map(([month, rows]) => (
               <div key={month}>

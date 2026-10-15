@@ -3,36 +3,46 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { loadWorkspace, resetWorkspace, saveWorkspace } from "@/actions/workspace";
 import { BUILTIN_ROLES } from "@/lib/roles";
-import { isWorkspaceKey, MAX_PANELS, movePanel, normalizeLayout, presetLayout, type PanelDefinition, type WorkspaceLayout } from "@/lib/workspace/layout";
+import {
+  CUSTOM_PRESET, defaultLayout, displayWidths, isWorkspaceKey, isWorkspaceScreen, MAX_PANELS, movePanel, normalizeLayout, PAGE_PRESET,
+  presetLayout, updatePanel, type PanelDefinition, type WorkspaceLayout, type WorkspaceScreen,
+} from "@/lib/workspace/layout";
 import { useWorkspace } from "./workspace-provider";
 
-export type ScreenModule = PanelDefinition & { content: ReactNode };
+/** `empty`: nothing to show right now (e.g. a conditional alert); hidden outside edit mode so it takes no grid cell. */
+export type ScreenModule = PanelDefinition & { content: ReactNode; empty?: boolean };
 export type WorkspaceModule = ScreenModule;
 export type ModularScreenProps = { screen: string; title?: string; modules: ScreenModule[] };
 const buttonClass = "rounded-md border border-ink-700 px-3 py-2 text-xs font-medium text-ink-200 hover:bg-ink-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-v4-red disabled:cursor-not-allowed disabled:opacity-40";
+const INVALID_SAVED = "A configuração salva é inválida. Restaure o padrão para recuperá-la.";
+const LOAD_ERROR = "Não foi possível carregar sua tela. Tente novamente.";
 
 /** Server-rendered content is passed as slots; this component imports no screen data. */
 export function ModularScreen(props: ModularScreenProps) {
   const workspace = useWorkspace();
-  const valid = isWorkspaceKey(props.screen) && props.modules.length <= MAX_PANELS &&
+  const valid = isWorkspaceScreen(props.screen) && props.modules.length <= MAX_PANELS &&
     props.modules.every((definition) => isWorkspaceKey(definition.id)) && new Set(props.modules.map((definition) => definition.id)).size === props.modules.length;
-  if (!workspace || !valid) return <div className="space-y-5">{props.modules.map((definition, index) => <div key={`${definition.id}-${index}`}>{definition.content}</div>)}</div>;
-  return <ScreenEditor key={`${workspace.user.id}:${props.screen}`} {...props} workspace={workspace} />;
+  if (!workspace || !valid) return <div className="space-y-5">{props.modules.map((definition, index) => <div key={`${definition.id}-${index}`} hidden={definition.empty}>{definition.content}</div>)}</div>;
+  return <ScreenEditor key={`${workspace.user.id}:${props.screen}`} {...props} screen={props.screen as WorkspaceScreen} workspace={workspace} />;
 }
 
-function ScreenEditor({ screen, title, modules, workspace }: ModularScreenProps & { workspace: NonNullable<ReturnType<typeof useWorkspace>> }) {
+function ScreenEditor({ screen, title, modules, workspace }: ModularScreenProps & { screen: WorkspaceScreen; workspace: NonNullable<ReturnType<typeof useWorkspace>> }) {
   const choices = [...workspace.jobRoles, ...BUILTIN_ROLES].filter((role, index, all) =>
     all.findIndex((candidate) => candidate.id === role.id) === index &&
     (BUILTIN_ROLES.some((builtin) => builtin.id === role.id) || role.id === workspace.user.role || workspace.user.roles?.includes(role.id)));
-  const primary = choices.find((role) => role.id === workspace.user.role);
-  const [initial] = useState(() => ({ screen, defaults: presetLayout(modules, primary?.id ?? "coord", primary?.preset ?? "coord") }));
-  const [draft, setDraft] = useState<WorkspaceLayout>(initial.defaults);
-  const [baseline, setBaseline] = useState<WorkspaceLayout>(initial.defaults);
+  // Preloaded by the root layout: the first paint already uses the saved layout (no action on mount).
+  const [initial] = useState(() => {
+    const preloaded = workspace.saved !== null;
+    const stored = workspace.saved?.[screen];
+    return { screen, preloaded, invalid: stored === null, defaults: defaultLayout(modules), stored: stored ?? null };
+  });
+  const [draft, setDraft] = useState<WorkspaceLayout>(initial.stored ?? initial.defaults);
+  const [baseline, setBaseline] = useState<WorkspaceLayout>(initial.stored ?? initial.defaults);
   const [editing, setEditing] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initial.preloaded);
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [error, setError] = useState(initial.invalid ? INVALID_SAVED : "");
+  const [loadFailed, setLoadFailed] = useState(initial.invalid);
   const [message, setMessage] = useState("");
   const [dragged, setDragged] = useState<string | null>(null);
   const request = useRef(0);
@@ -45,9 +55,13 @@ function ScreenEditor({ screen, title, modules, workspace }: ModularScreenProps 
   const dirty = JSON.stringify(layout) !== JSON.stringify(normalizedBaseline);
   const disabled = loading || pending;
   const byId = new Map(modules.map((definition) => [definition.id, definition]));
+  const widths = displayWidths(layout.panels, (panel) => editing || (!panel.hidden && !byId.get(panel.id)?.empty));
+  const presetValue = layout.preset === PAGE_PRESET || choices.some((role) => role.id === layout.preset) ? layout.preset : CUSTOM_PRESET;
 
   useEffect(() => {
     mounted.current = true;
+    // Only when the preload failed: fall back to asking the server for this screen.
+    if (initial.preloaded) return () => { mounted.current = false; };
     const current = ++request.current;
     loadWorkspace(initial.screen).then((result) => {
       if (!mounted.current || current !== request.current) return;
@@ -58,7 +72,7 @@ function ScreenEditor({ screen, title, modules, workspace }: ModularScreenProps 
       setLoading(false);
     }).catch(() => {
       if (!mounted.current || current !== request.current) return;
-      setError("Não foi possível carregar sua tela. Tente novamente.");
+      setError(LOAD_ERROR);
       setLoadFailed(true);
       setLoading(false);
     });
@@ -76,17 +90,19 @@ function ScreenEditor({ screen, title, modules, workspace }: ModularScreenProps 
         setDraft(result.value ?? initial.defaults);
         setBaseline(result.value ?? initial.defaults);
         setLoadFailed(false);
+        workspace.remember(screen, result.value ?? undefined);
         setMessage("Configuração carregada.");
       } else setError(result.error);
     } catch {
-      if (mounted.current && current === request.current) setError("Não foi possível carregar sua tela. Tente novamente.");
+      if (mounted.current && current === request.current) setError(LOAD_ERROR);
     } finally { if (mounted.current && current === request.current) setLoading(false); }
   }
 
   function update(next: WorkspaceLayout, announcement: string) {
     if (disabled) return;
     setDraft(next);
-    setError("");
+    // While the saved layout could not be read, keep the warning and the retry button in view.
+    if (!loadFailed) setError("");
     setMessage(announcement);
   }
   function move(id: string, target: number) {
@@ -96,7 +112,7 @@ function ScreenEditor({ screen, title, modules, workspace }: ModularScreenProps 
     requestAnimationFrame(() => handles.current.get(id)?.focus());
   }
   async function persist(reset = false) {
-    if (disabled) return;
+    if (disabled || (!reset && loadFailed)) return;
     const current = ++request.current;
     const snapshot = layout;
     setPending(true);
@@ -110,6 +126,7 @@ function ScreenEditor({ screen, title, modules, workspace }: ModularScreenProps 
       setDraft(saved);
       setBaseline(saved);
       setLoadFailed(false);
+      workspace.remember(screen, reset ? undefined : snapshot);
       setMessage(reset ? "Padrão restaurado para esta tela." : "Tela salva para sua conta.");
     } catch {
       if (mounted.current && current === request.current) {
@@ -139,23 +156,26 @@ function ScreenEditor({ screen, title, modules, workspace }: ModularScreenProps 
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex min-w-40 flex-col gap-1 text-xs text-ink-300">
             Modelo de visualização
-            <select className="rounded-md border border-ink-700 bg-ink-950 px-3 py-2 text-sm text-ink-100" value={choices.some((role) => role.id === layout.preset) ? layout.preset : ""} disabled={disabled} onChange={(event) => {
+            <select className="rounded-md border border-ink-700 bg-ink-950 px-3 py-2 text-sm text-ink-100" value={presetValue} disabled={disabled} onChange={(event) => {
+              if (event.target.value === PAGE_PRESET) { update(defaultLayout(modules), "Padrão da página aplicado. Salve para manter."); return; }
               const role = choices.find((choice) => choice.id === event.target.value);
               if (role) update(presetLayout(modules, role.id, role.preset), `Modelo ${role.label} aplicado. Salve para manter.`);
             }}>
-              {!choices.some((role) => role.id === layout.preset) && <option value="">Personalizado</option>}
-              {choices.map((role) => <option key={role.id} value={role.id}>{role.label}{workspace.user.role === role.id ? " (seu padrão)" : ""}</option>)}
+              <option value={PAGE_PRESET}>Padrão da página</option>
+              {choices.map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}
+              {presetValue === CUSTOM_PRESET && <option value={CUSTOM_PRESET}>Personalizado</option>}
             </select>
           </label>
-          <button type="button" className={`${buttonClass} bg-v4-red text-white hover:bg-v4-red-600`} disabled={disabled || !dirty} onClick={() => persist()}>Salvar organização</button>
+          <button type="button" className={`${buttonClass} bg-v4-red text-white hover:bg-v4-red-600`} disabled={disabled || !dirty || loadFailed} onClick={() => persist()}>Salvar organização</button>
           <button type="button" className={buttonClass} disabled={disabled} onClick={() => persist(true)}>Restaurar padrão</button>
         </div>
       </div>
       <div className="grid min-w-0 grid-cols-1 items-start gap-5 md:grid-cols-2">
         {layout.panels.map((panel, index) => {
           const definition = byId.get(panel.id)!;
-          return <div key={panel.id} data-workspace-module={panel.id} hidden={panel.hidden && !editing}
-            className={`min-w-0 ${panel.width === "full" ? "md:col-span-2" : "md:col-span-1"} ${editing ? "rounded-xl border border-dashed border-ink-600 p-3" : ""} ${dragged === panel.id ? "opacity-50" : ""}`}
+          const width = widths.get(panel.id) ?? panel.width;
+          return <div key={panel.id} data-workspace-module={panel.id} hidden={(panel.hidden || Boolean(definition.empty)) && !editing}
+            className={`min-w-0 ${width === "full" ? "md:col-span-2" : "md:col-span-1"} ${editing ? "rounded-xl border border-dashed border-ink-600 p-3" : ""} ${dragged === panel.id ? "opacity-50" : ""}`}
             onDragOver={(event) => { if (editing && dragged && !disabled) event.preventDefault(); }}
             onDrop={(event) => {
               if (!editing || !dragged || disabled) return;
@@ -172,13 +192,16 @@ function ScreenEditor({ screen, title, modules, workspace }: ModularScreenProps 
                   const target = event.key === "ArrowUp" ? index - 1 : event.key === "ArrowDown" ? index + 1 : event.key === "Home" ? 0 : event.key === "End" ? layout.panels.length - 1 : null;
                   if (target !== null) { event.preventDefault(); move(panel.id, target); }
                 }}>⠿</button>
-              <span className="mr-auto text-xs font-semibold text-ink-200">{definition.label}{panel.hidden ? " (oculto)" : ""}</span>
+              <span className="mr-auto text-xs font-semibold text-ink-200">
+                {definition.label}{panel.hidden ? " (oculto)" : ""}{definition.empty ? " (vazio agora)" : ""}
+                {panel.width === "half" && width === "full" && <span className="font-normal text-ink-400"> · sem par ao lado, ocupa a linha</span>}
+              </span>
               <button type="button" className={buttonClass} disabled={disabled || index === 0} aria-label={`Mover ${definition.label} para cima`} onClick={() => move(panel.id, index - 1)}>↑</button>
               <button type="button" className={buttonClass} disabled={disabled || index === layout.panels.length - 1} aria-label={`Mover ${definition.label} para baixo`} onClick={() => move(panel.id, index + 1)}>↓</button>
-              <select aria-label={`Largura de ${definition.label}`} className="rounded-md border border-ink-700 bg-ink-950 px-2 py-2 text-xs text-ink-200" value={panel.width} disabled={disabled} onChange={(event) => update({ ...layout, panels: layout.panels.map((item) => item.id === panel.id ? { ...item, width: event.target.value === "half" ? "half" : "full" } : item) }, `Largura de ${definition.label} alterada.`)}>
+              <select aria-label={`Largura de ${definition.label}`} className="rounded-md border border-ink-700 bg-ink-950 px-2 py-2 text-xs text-ink-200" value={panel.width} disabled={disabled} onChange={(event) => update(updatePanel(layout, panel.id, { width: event.target.value === "half" ? "half" : "full" }), `Largura de ${definition.label} alterada.`)}>
                 <option value="full">Largura inteira</option><option value="half">Meia largura</option>
               </select>
-              <button type="button" className={buttonClass} disabled={disabled} aria-label={`${panel.hidden ? "Exibir" : "Ocultar"} ${definition.label}`} onClick={() => update({ ...layout, panels: layout.panels.map((item) => item.id === panel.id ? { ...item, hidden: !item.hidden } : item) }, `${definition.label} ${panel.hidden ? "exibido" : "oculto"}.`)}>{panel.hidden ? "Exibir" : "Ocultar"}</button>
+              <button type="button" className={buttonClass} disabled={disabled} aria-label={`${panel.hidden ? "Exibir" : "Ocultar"} ${definition.label}`} onClick={() => update(updatePanel(layout, panel.id, { hidden: !panel.hidden }), `${definition.label} ${panel.hidden ? "exibido" : "oculto"}.`)}>{panel.hidden ? "Exibir" : "Ocultar"}</button>
             </div>}
             {/* Keep this keyed slot mounted so input/filter state survives edits. */}
             <div hidden={panel.hidden}>{definition.content}</div>

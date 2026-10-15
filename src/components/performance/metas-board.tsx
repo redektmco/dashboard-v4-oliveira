@@ -1,10 +1,9 @@
 "use client";
 
-import { ModularScreen } from "@/components/workspace/modular-screen";
-
 import { useEffect, useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ModularScreen } from "@/components/workspace/modular-screen";
 import { loadTargetSuggestions, saveClientTargets } from "@/actions";
 import type { TargetSuggestion } from "@/lib/repo";
 import type { CrmRow } from "@/lib/crm/board";
@@ -129,8 +128,9 @@ export function MetasBoard({
         }
       />
 
+      {/* Os filtros andam com a lista que recortam. */}
       <ModularScreen screen="performance" modules={[
-{ id: "filters", label: "Filtros de performance", kind: "filters", defaultWidth: 'full' as const, content: <><div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4 lg:mx-0 lg:px-0">
+{ id: "filters", label: "Filtros de performance", kind: "filters", group: "forecast", defaultWidth: 'full' as const, content: <><div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4 lg:mx-0 lg:px-0">
         {chips.map((c) => {
           const on = filter === c.f;
           const n = lists[c.f].length;
@@ -150,7 +150,7 @@ export function MetasBoard({
           );
         })}
       </div></> },
-{ id: "forecast", label: "Forecast e fontes", kind: "list", defaultWidth: 'full' as const, content: <><div className="overflow-hidden rounded-xl border border-[var(--border-hair)] bg-ink-900">
+{ id: "forecast", label: "Forecast e fontes", kind: "list", group: "forecast", defaultWidth: 'full' as const, content: <><div className="overflow-hidden rounded-xl border border-[var(--border-hair)] bg-ink-900">
         <div className="hidden h-[37.5px] items-center gap-4 border-b border-[var(--border-hair)] px-4 md:flex">
           <ColLabel className="w-[220px] shrink-0">Cliente</ColLabel>
           <ColLabel className="flex-1">Realizado / forecast</ColLabel>
