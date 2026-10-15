@@ -1,9 +1,8 @@
 "use client";
 
-import { ModularScreen } from "@/components/workspace/modular-screen";
-
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { ModularScreen, type WorkspaceModule } from "@/components/workspace/modular-screen";
 import type { AccountType, Band, Confidence } from "@/lib/model/types";
 import { initials } from "@/lib/social/clients";
 import { BAND_STYLE, brl } from "../ui";
@@ -47,7 +46,7 @@ const dec = (n: number) => n.toLocaleString("pt-BR", { minimumFractionDigits: 1,
  * Carteira: chips por banda, busca, filtros extras e ordenação, em cima de uma
  * tabela de linhas clicáveis. Mostra 8 contas por vez; "Ver todas" abre o resto.
  */
-export function Portfolio({ rows, mrrTotal, leadingModules = [] }: { rows: Row[]; mrrTotal: number; leadingModules?: import("@/components/workspace/modular-screen").WorkspaceModule[] }) {
+export function Portfolio({ rows, mrrTotal, leadingModules = [] }: { rows: Row[]; mrrTotal: number; leadingModules?: WorkspaceModule[] }) {
   const [quick, setQuick] = useState<Quick>("todas");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortKey>("risk");
@@ -109,8 +108,10 @@ export function Portfolio({ rows, mrrTotal, leadingModules = [] }: { rows: Row[]
     ["sem_score", "Sem score"],
   ];
 
-  return (
-    <ModularScreen screen="carteira" modules={[...leadingModules,{ id: "filters", label: "Filtros da carteira", kind: "filters", defaultWidth: 'full' as const, content: <><header className="flex flex-col gap-3 px-4 pb-4 pt-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+  // Busca, filtros e lista são um módulo só: a moldura e o título são dela.
+  const carteira = (
+    <section className="panel" aria-labelledby="carteira-title">
+      <header className="flex flex-col gap-3 px-4 pb-4 pt-5 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
         <div className="min-w-0">
           <h2 id="carteira-title" className="font-display text-[17px] font-semibold text-ink-100">
             Carteira
@@ -149,7 +150,8 @@ export function Portfolio({ rows, mrrTotal, leadingModules = [] }: { rows: Row[]
           </label>
         </div>
       </header>
-{filters && (
+
+      {filters && (
         <div className="mx-4 mb-3 flex flex-wrap items-end gap-3 rounded-lg border border-[var(--border-hair)] bg-ink-950 p-3 sm:mx-6">
           <FilterSelect label="Tipo" value={type} onChange={(v) => setType(v as typeof type)}
             options={[["todos", "Todos"], ["lead_gen", "Lead Gen"], ["ecommerce", "E-commerce"], ["branding", "Branding"]]} />
@@ -167,7 +169,8 @@ export function Portfolio({ rows, mrrTotal, leadingModules = [] }: { rows: Row[]
           )}
         </div>
       )}
-<div className="flex flex-wrap gap-1.5 px-4 pb-3 sm:px-6" role="tablist" aria-label="Recorte por banda">
+
+      <div className="flex flex-wrap gap-1.5 px-4 pb-3 sm:px-6" role="tablist" aria-label="Recorte por banda">
         {chips.map(([v, l]) => (
           <button
             key={v}
@@ -183,8 +186,9 @@ export function Portfolio({ rows, mrrTotal, leadingModules = [] }: { rows: Row[]
             <span className="tnum text-ink-500">{counts[v]}</span>
           </button>
         ))}
-      </div></> },
-{ id: "portfolio", label: "Contas da carteira", kind: "list", defaultWidth: 'full' as const, content: <><div className={`grid ${COLS} items-center gap-4 border-y border-[var(--border-hair)] px-4 py-2.5 text-[12px] font-medium text-ink-500 sm:px-6`}>
+      </div>
+
+      <div className={`grid ${COLS} items-center gap-4 border-y border-[var(--border-hair)] px-4 py-2.5 text-[12px] font-medium text-ink-500 sm:px-6`}>
         <span>Cliente</span>
         <span>Score</span>
         <span className="hidden md:block">7 dias</span>
@@ -193,7 +197,8 @@ export function Portfolio({ rows, mrrTotal, leadingModules = [] }: { rows: Row[]
         <span className="hidden xl:block">Renovação</span>
         <span aria-hidden />
       </div>
-<ul>
+
+      <ul>
         {shown.map((r) => {
           const s = r.band ? BAND_STYLE[r.band] : null;
           const late = r.renewalIn !== null && r.renewalIn < 0;
@@ -250,7 +255,8 @@ export function Portfolio({ rows, mrrTotal, leadingModules = [] }: { rows: Row[]
         })}
         {filtered.length === 0 && <li className="px-6 py-10 text-center text-sm text-ink-400">Nenhuma conta com esses filtros.</li>}
       </ul>
-{filtered.length > 0 && (
+
+      {filtered.length > 0 && (
         <footer className="flex items-center justify-between border-t border-[var(--border-hair)] px-4 py-3.5 text-[13px] sm:px-6">
           <span className="text-ink-500">
             Mostrando {shown.length} de {filtered.length} contas
@@ -262,8 +268,11 @@ export function Portfolio({ rows, mrrTotal, leadingModules = [] }: { rows: Row[]
             </button>
           )}
         </footer>
-      )}</> }]} />
+      )}
+    </section>
   );
+
+  return <ModularScreen screen="carteira" modules={[...leadingModules, { id: "portfolio", label: "Carteira", kind: "list", content: carteira }]} />;
 }
 
 function FilterSelect({

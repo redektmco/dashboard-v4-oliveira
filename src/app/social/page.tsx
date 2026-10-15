@@ -36,6 +36,61 @@ export default async function SocialPage() {
     { pendentes: 0, aprovados: 0, reprovados: 0, agendados: 0 },
   );
 
+  // Os quatro números que pedem ação, não inventário.
+  const stats = (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <Stat label="Aguardando cliente" value={totals.pendentes} hint="cobrar retorno" />
+      <Stat label="A refazer" value={totals.reprovados} tone={totals.reprovados ? "vermelho" : "default"} hint="reprovados pelo cliente" />
+      <Stat label="Aprovados" value={totals.aprovados} tone="verde" />
+      <Stat label="No calendário" value={totals.agendados} tone="amarelo" hint="aprovados com data" />
+    </div>
+  );
+
+  // Relatório, não tarefa: fechado por padrão para não disputar a atenção.
+  const organicReport = organic.length > 0 && (
+    <details className="panel group">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 sm:px-5">
+        <div>
+          <h2 className="font-display text-[16px] font-semibold text-ink-100">Orgânico por cliente</h2>
+          <p className="mt-0.5 text-[12.5px] text-ink-400">Volume de criativos e estágio de aprovação, agregado por cliente.</p>
+        </div>
+        <Icon name="chevronDown" size={16} className="shrink-0 text-ink-400 transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="border-t border-[var(--border-hair)]">
+        <TableScroll>
+          <table className="data-table is-dense">
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th className="text-right">Projetos</th>
+                <th className="text-right">Criativos</th>
+                <th className="text-right">Aprovados</th>
+                <th className="text-right">Reprovados</th>
+                <th className="text-right">Pendentes</th>
+                <th className="text-right">No calendário</th>
+              </tr>
+            </thead>
+            <tbody>
+              {organic.map((c) => (
+                <tr key={`${c.clientId ?? "x"}-${c.clientName}`}>
+                  <td className="font-medium">
+                    {c.clientId ? <ClientLink id={c.clientId} name={c.clientName} /> : c.clientName}
+                  </td>
+                  <td className="tnum text-right text-ink-300">{c.projects}</td>
+                  <td className="tnum text-right text-ink-300">{c.total}</td>
+                  <td className="tnum text-right text-verde-fg">{c.approved}</td>
+                  <td className="tnum text-right text-vermelho-fg">{c.rejected}</td>
+                  <td className="tnum text-right text-ink-400">{c.pending}</td>
+                  <td className="tnum text-right text-amarelo-fg">{c.scheduled}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
+      </div>
+    </details>
+  );
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -48,54 +103,11 @@ export default async function SocialPage() {
         }
       />
 
-      <ClientBoard leadingModules={[{id:'metrics',label:'Aprovações e entregas',kind:'metrics',content:<><div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Aguardando cliente" value={totals.pendentes} hint="cobrar retorno" />
-        <Stat label="A refazer" value={totals.reprovados} tone={totals.reprovados ? "vermelho" : "default"} hint="reprovados pelo cliente" />
-        <Stat label="Aprovados" value={totals.aprovados} tone="verde" />
-        <Stat label="No calendário" value={totals.agendados} tone="amarelo" hint="aprovados com data" />
-      </div></>}, ...(organic.length ? [{id:'organic',label:'Orgânico por cliente',kind:'activity',content:<>{organic.length > 0 && (
-        <details className="panel group">
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 sm:px-5">
-            <div>
-              <h2 className="font-display text-[16px] font-semibold text-ink-100">Orgânico por cliente</h2>
-              <p className="mt-0.5 text-[12.5px] text-ink-400">Volume de criativos e estágio de aprovação, agregado por cliente.</p>
-            </div>
-            <Icon name="chevronDown" size={16} className="shrink-0 text-ink-400 transition-transform group-open:rotate-180" />
-          </summary>
-          <div className="border-t border-[var(--border-hair)]">
-            <TableScroll>
-              <table className="data-table is-dense">
-                <thead>
-                  <tr>
-                    <th>Cliente</th>
-                    <th className="text-right">Projetos</th>
-                    <th className="text-right">Criativos</th>
-                    <th className="text-right">Aprovados</th>
-                    <th className="text-right">Reprovados</th>
-                    <th className="text-right">Pendentes</th>
-                    <th className="text-right">No calendário</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {organic.map((c) => (
-                    <tr key={`${c.clientId ?? "x"}-${c.clientName}`}>
-                      <td className="font-medium">
-                        {c.clientId ? <ClientLink id={c.clientId} name={c.clientName} /> : c.clientName}
-                      </td>
-                      <td className="tnum text-right text-ink-300">{c.projects}</td>
-                      <td className="tnum text-right text-ink-300">{c.total}</td>
-                      <td className="tnum text-right text-verde-fg">{c.approved}</td>
-                      <td className="tnum text-right text-vermelho-fg">{c.rejected}</td>
-                      <td className="tnum text-right text-ink-400">{c.pending}</td>
-                      <td className="tnum text-right text-amarelo-fg">{c.scheduled}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TableScroll>
-          </div>
-        </details>
-      )}</>}] : [])]}
+      {/* Primeiro o cliente, depois o planejamento — ver ClientBoard. Números e
+          orgânico são módulos da mesma tela, em volta do quadro. */}
+      <ClientBoard
+        leadingModules={[{ id: "metrics", label: "Aprovações e entregas", kind: "metrics", content: stats }]}
+        trailingModules={[{ id: "organic", label: "Orgânico por cliente", kind: "activity", empty: !organicReport, content: organicReport }]}
         canManage={canManage}
         covers={covers}
         projects={projects.map((p) => ({

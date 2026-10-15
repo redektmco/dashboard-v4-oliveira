@@ -2,14 +2,14 @@
 
 import { getSessionUser } from "@/lib/auth";
 import { one, run } from "@/lib/db";
-import { isWorkspaceKey, parseWorkspaceLayout, workspaceStorageKey, type WorkspaceLayout } from "@/lib/workspace/layout";
+import { isWorkspaceScreen, parseWorkspaceLayout, workspaceStorageKey, type WorkspaceLayout } from "@/lib/workspace/layout";
 
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
 export async function loadWorkspace(screen: string): Promise<Result<WorkspaceLayout | null>> {
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Sua sessão expirou. Entre novamente para carregar sua tela." };
-  if (!isWorkspaceKey(screen)) return { ok: false, error: "Tela inválida." };
+  if (!isWorkspaceScreen(screen)) return { ok: false, error: "Tela inválida." };
   try {
     const row = await one<{ value: unknown }>("SELECT value FROM settings WHERE key = ?", [workspaceStorageKey(user.id, screen)]);
     const layout = row ? parseWorkspaceLayout(row.value) : null;
@@ -22,7 +22,8 @@ export async function saveWorkspace(screen: string, input: unknown): Promise<Res
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Sua sessão expirou. Entre novamente para salvar sua tela." };
   const layout = parseWorkspaceLayout(input);
-  if (!isWorkspaceKey(screen) || !layout) return { ok: false, error: "Configuração de tela inválida." };
+  // Only the real screens: an arbitrary name would create one more settings row per request.
+  if (!isWorkspaceScreen(screen) || !layout) return { ok: false, error: "Configuração de tela inválida." };
   try {
     await run(`INSERT INTO settings (key, value, updated_at) VALUES (?, ?::jsonb, now())
       ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()`,
@@ -34,7 +35,7 @@ export async function saveWorkspace(screen: string, input: unknown): Promise<Res
 export async function resetWorkspace(screen: string): Promise<Result<null>> {
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Sua sessão expirou. Entre novamente para restaurar sua tela." };
-  if (!isWorkspaceKey(screen)) return { ok: false, error: "Tela inválida." };
+  if (!isWorkspaceScreen(screen)) return { ok: false, error: "Tela inválida." };
   try {
     await run("DELETE FROM settings WHERE key = ?", [workspaceStorageKey(user.id, screen)]);
     return { ok: true, value: null };

@@ -1,11 +1,10 @@
 "use client";
 
-import { ModularScreen } from "@/components/workspace/modular-screen";
-
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { importClientsSheet } from "@/actions";
+import { ModularScreen } from "@/components/workspace/modular-screen";
 import type { CrmRow, CrmSummary } from "@/lib/crm/board";
 import { CORE_COLUMNS, visibleColumns, type ColumnId } from "@/lib/crm/columns";
 import { GROUP_BY, type GroupBy } from "@/lib/crm/kanban";
@@ -22,6 +21,7 @@ import {
   type View,
 } from "@/lib/crm/views";
 import type { User } from "@/lib/model/types";
+import { hasRole } from "@/lib/roles";
 import { ActionForm, SubmitButton } from "../form-controls";
 import { Modal } from "../modal";
 import { PageHead } from "../page-head";
@@ -228,9 +228,10 @@ export function ClientsCrm({
         }
       />
 
+      {/* Abas, filtros e lista andam juntos (grupo "clientes"): quem controla fica em cima do que controla. */}
       <ModularScreen screen="clientes" modules={[
 { id: "overview", label: "Resumo da carteira", kind: "metrics", defaultWidth: 'full' as const, content: <><Indicators summary={summary} /></> },
-{ id: "views", label: "Visualizações", kind: "overview", defaultWidth: 'full' as const, content: <><div className="flex items-center gap-3">
+{ id: "views", label: "Visualizações", kind: "overview", group: "clientes", defaultWidth: 'full' as const, content: <><div className="flex items-center gap-3">
         <div className="subnav subnav--plain no-scrollbar -ml-4 min-w-0 flex-1 overflow-x-auto pl-4 lg:ml-0 lg:pl-0">
           {VIEWS.map((v) => (
             <button
@@ -269,7 +270,7 @@ export function ClientsCrm({
           ))}
         </div>
       </div></> },
-{ id: "filters", label: "Filtros e colunas", kind: "filters", defaultWidth: 'full' as const, content: <><CrmFilters
+{ id: "filters", label: "Filtros e colunas", kind: "filters", group: "clientes", defaultWidth: 'full' as const, content: <><CrmFilters
         filters={filters}
         onChange={(f) => retriage({ filters: f })}
         accounts={accounts}
@@ -277,7 +278,7 @@ export function ClientsCrm({
         columns={columns}
         onColumns={(c) => patch({ columns: c })}
       /></> },
-{ id: "clients", label: "Clientes e ações", kind: "list", defaultWidth: 'full' as const, content: <>{layout === "lista" && selectedRows.length > 0 && (
+{ id: "clients", label: "Clientes e ações", kind: "list", group: "clientes", defaultWidth: 'full' as const, content: <div className="flex flex-col gap-5">{layout === "lista" && selectedRows.length > 0 && (
         <CrmBulkBar
           rows={selectedRows}
           users={users}
@@ -345,7 +346,7 @@ export function ClientsCrm({
             </footer>
           )}
         </section>
-      )}</> }
+      )}</div> }
 ]} />
 
       <ImportDialog open={importing} onClose={() => setImporting(false)} />
@@ -425,12 +426,13 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose: () => void })
 
 /**
  * Filtro inicial pela pessoa logada: Account vê as contas em que é Account,
- * GT as que é GT. Só aplica se ela de fato tem conta na carteira — senão a
+ * GT as que é GT — pelo cargo principal ou por um dos adicionais (`hasRole`).
+ * Só aplica se ela de fato tem conta na carteira — senão a
  * tela abriria vazia sem explicação. Coordenação e social veem tudo.
  */
-function loginFilter(me: { name: string; role: User["role"] }, rows: CrmRow[]): Partial<Filters> {
-  if (me.role === "account" && rows.some((r) => r.accountName === me.name)) return { account: me.name };
-  if (me.role === "gt" && rows.some((r) => r.gtName === me.name)) return { gt: me.name };
+function loginFilter(me: { name: string; role: User["role"]; roles?: string[] }, rows: CrmRow[]): Partial<Filters> {
+  if (hasRole(me, "account") && rows.some((r) => r.accountName === me.name)) return { account: me.name };
+  if (hasRole(me, "gt") && rows.some((r) => r.gtName === me.name)) return { gt: me.name };
   return {};
 }
 

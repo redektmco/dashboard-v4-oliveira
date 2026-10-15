@@ -1,8 +1,8 @@
 "use client";
-import { ModularScreen, type WorkspaceModule } from "@/components/workspace/modular-screen";
 
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { Icon } from "@/components/icon";
+import { ModularScreen, type WorkspaceModule } from "@/components/workspace/modular-screen";
 import {
   clientKeyOf,
   groupByClient,
@@ -85,12 +85,15 @@ export function ClientBoard({
   covers,
   canManage,
   leadingModules = [],
+  trailingModules = [],
 }: {
   projects: ProjectCard[];
   archived: ArchivedCard[];
   covers: Record<string, string>;
   canManage: boolean;
+  /** Módulos da página ao redor do quadro (números, orgânico), na ordem da tela. */
   leadingModules?: WorkspaceModule[];
+  trailingModules?: WorkspaceModule[];
 }) {
   const view = useSyncExternalStore(subscribeView, readView, (): BoardView => "grade");
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -116,56 +119,54 @@ export function ClientBoard({
     />
   ) : null;
 
-  if (open) {
-    return (
-      <section className="panel">
-        <header className="border-b border-[var(--border-hair)] px-4 py-3.5 sm:px-5">
-          <button type="button" className="btn btn-sm btn-ghost -ml-2" onClick={() => setOpenKey(null)}>
-            <Icon name="chevronLeft" size={14} />
-            Todos os clientes
-          </button>
-          <div className="mt-2.5 flex flex-wrap items-center gap-3">
-            {canManage ? (
-              <button
-                type="button"
-                className="shrink-0 rounded-md"
-                onClick={() => setCoverOf(open)}
-                title={open.imageUrl ? "Trocar a capa" : "Adicionar uma capa"}
-                aria-label={`${open.imageUrl ? "Trocar" : "Adicionar"} a capa de ${open.clientName}`}
-              >
-                <ClientCover name={open.clientName} imageUrl={open.imageUrl} className="sm-thumb--badge" monogramSize={14} />
-              </button>
-            ) : (
+  // Um módulo só nas duas visões: abrir um cliente troca o conteúdo do quadro,
+  // não a tela — os números e o orgânico seguem no lugar e nada remonta.
+  const board = open ? (
+    <section className="panel">
+      <header className="border-b border-[var(--border-hair)] px-4 py-3.5 sm:px-5">
+        <button type="button" className="btn btn-sm btn-ghost -ml-2" onClick={() => setOpenKey(null)}>
+          <Icon name="chevronLeft" size={14} />
+          Todos os clientes
+        </button>
+        <div className="mt-2.5 flex flex-wrap items-center gap-3">
+          {canManage ? (
+            <button
+              type="button"
+              className="shrink-0 rounded-md"
+              onClick={() => setCoverOf(open)}
+              title={open.imageUrl ? "Trocar a capa" : "Adicionar uma capa"}
+              aria-label={`${open.imageUrl ? "Trocar" : "Adicionar"} a capa de ${open.clientName}`}
+            >
               <ClientCover name={open.clientName} imageUrl={open.imageUrl} className="sm-thumb--badge" monogramSize={14} />
-            )}
-            <div className="min-w-0">
-              <h2 className="truncate font-display text-[16px] font-semibold text-ink-100">{open.clientName}</h2>
-              <p className="mt-0.5 truncate text-[12.5px] text-ink-400">
-                {plural(open.projects.length, "planejamento", "planejamentos")}
-                {open.handles.length > 0 && ` · @${open.handles.join(" · @")}`}
-              </p>
-            </div>
-            <div className="ml-auto flex items-center gap-3">
-              <div className="hidden sm:block">
-                <Scoreboard p={open} />
-              </div>
-              <ViewToggle view={view} onChange={pickView} />
-            </div>
+            </button>
+          ) : (
+            <ClientCover name={open.clientName} imageUrl={open.imageUrl} className="sm-thumb--badge" monogramSize={14} />
+          )}
+          <div className="min-w-0">
+            <h2 className="truncate font-display text-[16px] font-semibold text-ink-100">{open.clientName}</h2>
+            <p className="mt-0.5 truncate text-[12.5px] text-ink-400">
+              {plural(open.projects.length, "planejamento", "planejamentos")}
+              {open.handles.length > 0 && ` · @${open.handles.join(" · @")}`}
+            </p>
           </div>
-        </header>
+          <div className="ml-auto flex items-center gap-3">
+            <div className="hidden sm:block">
+              <Scoreboard p={open} />
+            </div>
+            <ViewToggle view={view} onChange={pickView} />
+          </div>
+        </div>
+      </header>
 
-        <ProjectList projects={open.projects} canManage={canManage} view={view} />
+      <ProjectList projects={open.projects} canManage={canManage} view={view} />
 
-        {openArchived.length > 0 && <ArchivedDrawer archived={openArchived} canManage={canManage} />}
+      {openArchived.length > 0 && <ArchivedDrawer archived={openArchived} canManage={canManage} />}
 
-        {coverModal}
-      </section>
-    );
-  }
-
-  return (
-    <>
-<ModularScreen screen="social" modules={[...leadingModules,{id:'filters',label:'Busca e visualização',kind:'filters',content:<><header className="flex flex-col gap-3 border-b border-[var(--border-hair)] px-4 py-3.5 sm:px-5">
+      {coverModal}
+    </section>
+  ) : (
+    <section className="panel">
+      <header className="flex flex-col gap-3 border-b border-[var(--border-hair)] px-4 py-3.5 sm:px-5">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 className="font-display text-[16px] font-semibold text-ink-100">Clientes</h2>
@@ -197,8 +198,9 @@ export function ClientBoard({
             />
           </div>
         )}
-      </header></>},
-{id:'projects',label:'Projetos e criativos',kind:'list',content:<>{groups.length === 0 ? (
+      </header>
+
+      {groups.length === 0 ? (
         <div className="px-5 py-10 text-center">
           <Icon name="image" size={28} className="mx-auto text-ink-600" />
           <p className="mt-2 text-sm font-semibold text-ink-200">Nenhum projeto ativo</p>
@@ -284,9 +286,18 @@ export function ClientBoard({
             </li>
           ))}
         </ul>
-      )}</>},
-{id:'archived',label:'Projetos arquivados',kind:'activity',content:<>{showArchived && archived.length > 0 && <ArchivedDrawer archived={archived} canManage={canManage} />}</>}]} />
-{coverModal}
-</>
+      )}
+
+      {showArchived && archived.length > 0 && <ArchivedDrawer archived={archived} canManage={canManage} />}
+
+      {coverModal}
+    </section>
+  );
+
+  return (
+    <ModularScreen
+      screen="social"
+      modules={[...leadingModules, { id: "projects", label: "Clientes e projetos", kind: "list", content: board }, ...trailingModules]}
+    />
   );
 }

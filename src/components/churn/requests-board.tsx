@@ -1,10 +1,9 @@
 "use client";
 
-import { ModularScreen } from "@/components/workspace/modular-screen";
-
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { ModularScreen, type WorkspaceModule } from "@/components/workspace/modular-screen";
 import {
   REASONS,
   STATUS,
@@ -48,7 +47,7 @@ const COLS = "lg:grid-cols-[minmax(0,1fr)_176px_150px_104px_92px_130px_100px_32p
  * ordenação. Solicitação aberta aparece sempre; o período recorta as
  * concluídas pela data de conclusão.
  */
-export function RequestsBoard({ requests, owners, today, leadingModules = [] }: { requests: ChurnRequest[]; owners: string[]; today: string; leadingModules?: import("@/components/workspace/modular-screen").WorkspaceModule[] }) {
+export function RequestsBoard({ requests, owners, today, leadingModules = [] }: { requests: ChurnRequest[]; owners: string[]; today: string; leadingModules?: WorkspaceModule[] }) {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [period, setPeriod] = useState<Period>("90");
@@ -121,8 +120,10 @@ export function RequestsBoard({ requests, owners, today, leadingModules = [] }: 
     ...(Object.keys(STATUS) as ChurnStatus[]).map((s) => ({ key: s, label: STATUS[s].short, dot: TONE[STATUS[s].tone].dot })),
   ];
 
-  return (
-    <ModularScreen screen="churn" modules={[...leadingModules,{ id: "filters", label: "Filtros das solicitações", kind: "filters", defaultWidth: 'full' as const, content: <><header className="flex flex-col gap-3.5 px-4 pb-3.5 pt-[18px] sm:px-5">
+  // Filtros e lista são um módulo só: a moldura e o título são dela.
+  const board = (
+    <section className="overflow-hidden rounded-xl border border-[var(--border-hair)] bg-ink-900" aria-labelledby="sol-title">
+      <header className="flex flex-col gap-3.5 px-4 pb-3.5 pt-[18px] sm:px-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0 space-y-[3px]">
             <h2 id="sol-title" className="text-[15px] font-semibold text-ink-100">
@@ -185,8 +186,9 @@ export function RequestsBoard({ requests, owners, today, leadingModules = [] }: 
             <CountChip key={c.key} active={chip === c.key} onClick={() => (setChip(c.key), reset())} label={c.label} count={counts[c.key] ?? 0} dot={c.dot} />
           ))}
         </div>
-      </header></> },
-{ id: "requests", label: "Solicitações de cancelamento", kind: "list", defaultWidth: 'full' as const, content: <><div className={`hidden gap-3.5 border-y border-[var(--border-hair)] px-5 py-[9px] text-[12px] text-ink-500 lg:grid ${COLS}`}>
+      </header>
+
+      <div className={`hidden gap-3.5 border-y border-[var(--border-hair)] px-5 py-[9px] text-[12px] text-ink-500 lg:grid ${COLS}`}>
         <span>Cliente / contrato</span>
         <span>Status</span>
         <span>Motivo principal</span>
@@ -196,7 +198,8 @@ export function RequestsBoard({ requests, owners, today, leadingModules = [] }: 
         <span>Receita mensal</span>
         <span />
       </div>
-{shown.length === 0 && (
+
+      {shown.length === 0 && (
         <div className="border-t border-[var(--border-hair)] px-5 py-12 text-center lg:border-t-0">
           <p className="text-[13px] text-ink-300">
             {requests.length === 0 ? "Nenhuma solicitação de cancelamento registrada." : "Nenhuma solicitação com esses filtros."}
@@ -209,7 +212,8 @@ export function RequestsBoard({ requests, owners, today, leadingModules = [] }: 
           )}
         </div>
       )}
-{shown.map((r) => (
+
+      {shown.map((r) => (
         <div
           key={r.id}
           role="link"
@@ -245,7 +249,8 @@ export function RequestsBoard({ requests, owners, today, leadingModules = [] }: 
           </span>
         </div>
       ))}
-<footer className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5">
+
+      <footer className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5">
         <span className="text-[12px] text-ink-500">
           Exibindo {shown.length} de {list.length} {list.length === 1 ? "solicitação" : "solicitações"} · {PERIODS.find((p) => p.value === period)!.label.toLowerCase()}
         </span>
@@ -262,8 +267,11 @@ export function RequestsBoard({ requests, owners, today, leadingModules = [] }: 
             </button>
           </div>
         )}
-      </footer></> }]} />
+      </footer>
+    </section>
   );
+
+  return <ModularScreen screen="churn" modules={[...leadingModules, { id: "requests", label: "Solicitações de cancelamento", kind: "list", content: board }]} />;
 }
 
 function EndCell({ r, today }: { r: ChurnRequest; today: string }) {

@@ -1,9 +1,8 @@
 "use client";
 
-import { ModularScreen } from "@/components/workspace/modular-screen";
-
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { ModularScreen } from "@/components/workspace/modular-screen";
 import { ACCOUNT_TYPE_LABEL, type AccountType, type Band } from "@/lib/model/types";
 import { Icon, type IconName } from "../icon";
 import { Modal } from "../modal";
@@ -156,7 +155,10 @@ export function CheckinQueue({ rows, limit, scales }: { rows: QueueRow[]; limit:
           <Metric dot="bg-amarelo" label="Flags de risco ativas" value={flags} hint="Cada flag gera plano de ação" />
         </div>
       </section></> },
-{ id: "filters", label: "Filtros da fila", kind: "filters", defaultWidth: 'full' as const, content: <><header className="flex flex-col gap-3.5 px-4 pb-3.5 pt-[18px] sm:px-5">
+{ id: "queue", label: "Fila de check-ins", kind: "list", defaultWidth: 'full' as const, content: <>
+        {/* Filtros e lista são um módulo só: a moldura e o título são da fila. */}
+        <section className="min-w-0 overflow-hidden rounded-xl border border-[var(--border-hair)] bg-ink-900" aria-labelledby="fila-title">
+          <header className="flex flex-col gap-3.5 px-4 pb-3.5 pt-[18px] sm:px-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0 space-y-[3px]">
                 <h2 id="fila-title" className="text-[15px] font-semibold text-ink-100">
@@ -192,19 +194,22 @@ export function CheckinQueue({ rows, limit, scales }: { rows: QueueRow[]; limit:
                 ))}
               </div>
             )}
-          </header></> },
-{ id: "queue", label: "Fila de check-ins", kind: "list", defaultWidth: 'full' as const, content: <><div className="hidden grid-cols-[minmax(0,1fr)_160px_140px_96px] gap-4 border-y border-[var(--border-hair)] px-5 py-[9px] text-[12px] text-ink-500 md:grid">
+          </header>
+
+          <div className="hidden grid-cols-[minmax(0,1fr)_160px_140px_96px] gap-4 border-y border-[var(--border-hair)] px-5 py-[9px] text-[12px] text-ink-500 md:grid">
             <span>Cliente</span>
             <span>Última leitura</span>
             <span>Score atual</span>
             <span />
           </div>
-{visible.length === 0 && (
+
+          {visible.length === 0 && (
             <p className="border-t border-[var(--border-hair)] px-5 py-10 text-center text-[13px] text-ink-400">
               Nenhuma conta encontrada{term ? ` para “${q.trim()}”` : ""}.
             </p>
           )}
-{visible.map((g) => {
+
+          {visible.map((g) => {
             const read = g.rows.filter(isFresh).length;
             const orphan = g.key === "" && groupBy !== "nenhum";
             return (
@@ -243,7 +248,8 @@ export function CheckinQueue({ rows, limit, scales }: { rows: QueueRow[]; limit:
               </div>
             );
           })}
-<footer className="flex flex-col gap-3 px-4 py-3.5 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
+
+          <footer className="flex flex-col gap-3 px-4 py-3.5 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
             <span className="text-[12px] text-ink-500">
               {term ? `${shownCount} de ${rows.length} contas` : `${rows.length} contas`}
               {groupBy !== "nenhum" && ` · ${groups.length} ${groups.length === 1 ? "grupo" : "grupos"}`}
@@ -254,8 +260,9 @@ export function CheckinQueue({ rows, limit, scales }: { rows: QueueRow[]; limit:
               <Legend fresh="vencida" label={`Vencida > ${limit} dias`} />
               <Legend fresh="nunca" label="Nunca registrada" />
             </div>
-          </footer></> },
-{ id: "activity", label: "Últimos registros", kind: "activity", defaultWidth: 'half' as const, content: <><section className="flex flex-col gap-3.5 rounded-xl border border-[var(--border-hair)] bg-ink-900 p-[18px]" aria-labelledby="start-title">
+          </footer>
+        </section></> },
+{ id: "start", label: "Comece por aqui", kind: "priorities", defaultWidth: 'half' as const, content: <><section className="flex flex-col gap-3.5 rounded-xl border border-[var(--border-hair)] bg-ink-900 p-[18px]" aria-labelledby="start-title">
             <div className="space-y-1">
               <h2 id="start-title" className="text-[14px] font-semibold text-ink-100">
                 Comece por aqui
