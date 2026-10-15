@@ -4,7 +4,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import type { SheetClient } from "../src/lib/import/clients-sheet";
 import { BUILTIN_ROLES, hasRole, roleLabel } from "../src/lib/roles";
+import { workspaceStorageKey } from "../src/lib/workspace/layout";
 
 test("legacy primary roles and additional memberships both match", () => {
   assert.equal(hasRole({ role: "gt" }, "gt"), true);
@@ -21,7 +23,7 @@ test("builtin catalog and custom labels remain independent of presets", () => {
   assert.equal(hasRole({ role: "redator" }, "social"), false);
 });
 
-test("legacy migration preserves users and references; multiple/custom jobs persist safely", async () => {
+test("legacy migration preserves users and references; multiple/custom jobs persist safely", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "v4-job-roles-"));
   // Set before the lazy database driver opens; never use .env.local or shared data.
   process.env.DATABASE_URL = `pglite://${dir}`;
@@ -30,7 +32,7 @@ test("legacy migration preserves users and references; multiple/custom jobs pers
     canManageSocial, createAuthUser, createJobRole, listAuthUsers, listJobRoles,
     updateUserProfile, validateUserRoles, verifyPassword,
   } = await import("../src/lib/auth");
-  const { listUsers } = await import("../src/lib/repo");
+  const { deleteUser, importClients, listUsers } = await import("../src/lib/repo");
   try {
     await run(`CREATE TABLE users (
       id SERIAL PRIMARY KEY, name TEXT NOT NULL,
@@ -97,6 +99,67 @@ test("legacy migration preserves users and references; multiple/custom jobs pers
     assert.equal((await one<{ token: string }>("SELECT token FROM sessions WHERE user_id = 1"))?.token, "original-session");
     assert.deepEqual(await one("SELECT gt_user_id, account_user_id FROM clients WHERE id = 1"), { gt_user_id: 1, account_user_id: 2 });
     assert.deepEqual(await one("SELECT filled_by, data FROM performance_snapshots WHERE id = 1"), { filled_by: 1, data: { leads_real: 42 } });
+
+    await t.test("spreadsheet import reuses a person through any of their job roles", async () => {
+      const password = "Local-test-only";
+      await createAuthUser({ name: "Bruno Coord", login: "bruno-coord", role: "coord", roles: ["gt"], password, is_admin: false });
+      await createAuthUser({ name: "Bruno Gt", login: "bruno-gt", role: "gt", password, is_admin: false });
+      await createAuthUser({ name: "Carla Ribeiro", login: "carla", role: "coord", roles: ["gt", "account"], password, is_admin: false });
+      const ids = new Map((await listAuthUsers()).map((u) => [u.login, u.id]));
+      const row = (name: string, gt: string | null, account: string | null): SheetClient =>
+        ({ name, accountType: "lead_gen", mrr: 1000, gt, account, email: null, phone: null, mediaMonthly: null, start: null });
+      const sheet = [row("Cliente Carla", "Carla", "Carla Ribeiro"), row("Cliente Bruno", "Bruno", "Diego Novo"), row("Cliente Diego", null, "Diego")];
+      const count = async () => (await one<{ n: number }>("SELECT COUNT(*)::int AS n FROM users"))!.n;
+      const before = await count();
+
+      const first = await importClients(sheet);
+      assert.deepEqual(first.people, ["Diego Novo (Account)"], "only the genuinely new name becomes a team member");
+      assert.equal(await count(), before + 1);
+      const { id: diego, ...ghost } = (await one<{ id: number; role: string; roles: string[]; login: string | null }>(
+        "SELECT id, role, roles, login FROM users WHERE name = 'Diego Novo'"))!;
+      assert.deepEqual(ghost, { role: "account", roles: ["account"], login: null });
+      const team = async (name: string) => one("SELECT gt_user_id, account_user_id FROM clients WHERE name = ?", [name]);
+      assert.deepEqual(await team("Cliente Carla"), { gt_user_id: ids.get("carla"), account_user_id: ids.get("carla") });
+      assert.deepEqual(await team("Cliente Bruno"), { gt_user_id: ids.get("bruno-gt"), account_user_id: diego }, "a primary match wins");
+      assert.deepEqual(await team("Cliente Diego"), { gt_user_id: null, account_user_id: diego });
+
+      const again = await importClients(sheet);
+      assert.deepEqual(again.people, []);
+      assert.equal(again.updated.length, 3);
+      assert.equal(await count(), before + 1);
+    });
+
+    await t.test("deleting a person drops their saved screens and nobody else's", async () => {
+      const victim = (await one<{ id: number }>("SELECT id FROM users WHERE name = 'Diego Novo'"))!.id;
+      const layout = JSON.stringify({ version: 1, preset: "account", panels: [] });
+      const mine = [workspaceStorageKey(victim, "carteira"), workspaceStorageKey(victim, "social-planejamento")];
+      // Same digits as a prefix ("9" vs "90") must not match the LIKE pattern.
+      const others = [workspaceStorageKey(1, "carteira"), workspaceStorageKey(Number(`${victim}0`), "carteira")];
+      for (const key of [...mine, ...others]) {
+        await run("INSERT INTO settings (key, value) VALUES (?, ?::jsonb)", [key, layout]);
+      }
+      assert.deepEqual(await deleteUser(victim), {});
+      assert.equal(await one("SELECT id FROM users WHERE id = ?", [victim]), null);
+      const left = await all<{ key: string }>("SELECT key FROM settings WHERE key LIKE 'workspace:%' ORDER BY key");
+      assert.deepEqual(left.map((r) => r.key), [...others].sort());
+      assert.equal((await one<{ value: string }>("SELECT value FROM settings WHERE key = 'schema_version'"))?.value, SCHEMA_VERSION);
+    });
+
+    await t.test("onboarding team progress carries every job of each person", async () => {
+      const { teamProgress } = await import("../src/lib/onboarding/db");
+      const carla = (await teamProgress()).find((u) => u.name === "Carla Ribeiro");
+      assert.deepEqual(carla && { role: carla.role, roles: carla.roles }, { role: "coord", roles: ["coord", "gt", "account"] });
+    });
+
+    await t.test("demo seed hands its clients to whoever holds GT/Account, primary or additional", async () => {
+      // Nobody keeps GT/Account as primary; Bruno Coord (GT) and Carla (GT, Account) hold them as additional jobs.
+      await run("UPDATE users SET role = 'coord', roles = ARRAY['coord'] WHERE role IN ('gt', 'account')");
+      const ids = new Map((await listAuthUsers()).map((u) => [u.login, u.id]));
+      const { insertDemoData } = await import("../src/lib/seed");
+      assert.equal(await insertDemoData(), 2);
+      assert.deepEqual(await one("SELECT gt_user_id, account_user_id FROM clients WHERE name = 'Construtora Horizonte'"),
+        { gt_user_id: ids.get("bruno-coord"), account_user_id: ids.get("carla") });
+    });
     console.log("Verified fresh migration, legacy user preservation, 2 forced reruns, custom catalog, membership filters, password data and Social authorization.");
   } finally {
     const db = await (globalThis as typeof globalThis & { __pglite?: Promise<{ close(): Promise<void> }> }).__pglite;

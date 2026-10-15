@@ -17,8 +17,9 @@
  */
 import { all, migrate, run } from "../src/lib/db";
 import { portfolio, recomputeRange } from "../src/lib/repo";
+import { hasRole } from "../src/lib/roles";
 
-type UserRow = { id: number; name: string; login: string | null; role: string };
+type UserRow = { id: number; name: string; login: string | null; role: string; roles: string[] };
 
 async function main() {
   const confirm = process.argv.includes("--confirm");
@@ -45,15 +46,15 @@ async function main() {
 
   /* ---------- 2 e 3. usuários ---------- */
 
-  const users = await all<UserRow>("SELECT id, name, login, role FROM users ORDER BY id");
+  const users = await all<UserRow>("SELECT id, name, login, role, roles FROM users ORDER BY id");
   const comAcesso = users.filter((u) => u.login);
   const semAcesso = users.filter((u) => !u.login);
 
   if (!comAcesso.length)
     throw new Error("ninguém tem login: apagar o time sem acesso deixaria a base sem usuário");
 
-  const novoGt = comAcesso.find((u) => u.role === "gt") ?? comAcesso[0];
-  const novoAcc = comAcesso.find((u) => u.role === "account") ?? comAcesso[comAcesso.length - 1];
+  const novoGt = comAcesso.find((u) => hasRole(u, "gt")) ?? comAcesso[0];
+  const novoAcc = comAcesso.find((u) => hasRole(u, "account")) ?? comAcesso[comAcesso.length - 1];
 
   console.log(`\nREMOVER ${semAcesso.length} usuário(s) sem acesso`);
   for (const u of semAcesso) console.log(`  #${u.id} ${u.name} (${u.role})`);

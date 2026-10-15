@@ -314,13 +314,13 @@ export async function adminStats(): Promise<{
  * calculado uma vez; a query traz o numerador por usuário.
  */
 export async function teamProgress(): Promise<
-  { userId: number; name: string; role: string; done: number; total: number; lastActivity: string | null }[]
+  { userId: number; name: string; role: string; roles: string[]; done: number; total: number; lastActivity: string | null }[]
 > {
   const total =
     (await one<{ n: number }>(`SELECT COUNT(*)::int AS n FROM ob_lessons WHERE status = 'published'`))
       ?.n ?? 0;
-  const rows = await all<{ userId: number; name: string; role: string; done: number; lastActivity: string | null }>(
-    `SELECT u.id AS "userId", u.name, u.role,
+  const rows = await all<{ userId: number; name: string; role: string; roles: string[]; done: number; lastActivity: string | null }>(
+    `SELECT u.id AS "userId", u.name, u.role, u.roles,
             COUNT(p.id) FILTER (WHERE p.status = 'done')::int AS done,
             MAX(p.updated_at)::text AS "lastActivity"
        FROM users u

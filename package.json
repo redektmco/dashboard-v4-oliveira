@@ -11,7 +11,7 @@
     "seed:onboarding": "dotenv -e .env.local -- tsx scripts/seed-onboarding.ts",
     "recompute": "dotenv -e .env.local -- tsx scripts/recompute.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test scripts/test.ts",
+    "test": "tsx --test scripts/test.ts scripts/test-workspace.ts scripts/test-roles.ts",
     "check": "dotenv -e .env.local -- tsx scripts/check.ts",
     "migrate:sqlite": "dotenv -e .env.local -- tsx scripts/migrate-sqlite.ts",
     "usuarios": "dotenv -e .env.local -- tsx scripts/usuarios.ts",

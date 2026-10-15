@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   adminCreateUser,
   adminCreateJobRole,
@@ -418,10 +418,40 @@ export function UsersManager({ users, roles, meId, senhaPadrao }: { users: UserR
   );
 }
 
-function RoleSelect({ catalog, defaultValue = "", memberships = [] }: { catalog: JobRole[]; defaultValue?: string; memberships?: string[] }) {
-  const [primary, setPrimary] = useState(defaultValue);
+type RoleSelectProps = { catalog: JobRole[]; defaultValue?: string; memberships?: string[] };
+
+function RoleSelect(props: RoleSelectProps) {
+  // O React 19 reseta o formulário depois de cada envio, inclusive quando a
+  // action devolve erro. Os cargos vivem em estado: remontar os campos faz a
+  // tela voltar ao início junto com o resto do formulário, em vez de mostrar
+  // um cargo e enviar outro.
+  const ref = useRef<HTMLFieldSetElement>(null);
+  const [round, setRound] = useState(0);
+  useEffect(() => {
+    const form = ref.current?.form;
+    if (!form) return;
+    const reset = () => setRound((n) => n + 1);
+    form.addEventListener("reset", reset);
+    return () => form.removeEventListener("reset", reset);
+  }, []);
   return (
-    <fieldset className="block space-y-2">
+    <fieldset ref={ref} className="block space-y-2">
+      <RoleFields key={round} {...props} />
+    </fieldset>
+  );
+}
+
+/**
+ * Os adicionais ficam à parte do principal. O principal escolhido aparece
+ * marcado e travado (o servidor sempre o inclui); ao trocá-lo, o antigo vira
+ * uma opção comum desmarcada — antes ele seguia salvo, com as permissões dele.
+ */
+function RoleFields({ catalog, defaultValue = "", memberships = [] }: RoleSelectProps) {
+  const [primary, setPrimary] = useState(defaultValue);
+  const [extras, setExtras] = useState(() => memberships.filter((id) => id !== defaultValue));
+  const toggle = (id: string, on: boolean) => setExtras((cur) => (on ? [...cur, id] : cur.filter((x) => x !== id)));
+  return (
+    <>
       <legend className="label">Cargos</legend>
       <label className="block">
         <span className="label">Cargo principal</span>
@@ -433,10 +463,18 @@ function RoleSelect({ catalog, defaultValue = "", memberships = [] }: { catalog:
       <span className="label">Cargos adicionais</span>
       <div className="flex flex-wrap gap-x-4 gap-y-2">
         {catalog.map((r) => <label key={r.id} className="flex items-center gap-2 text-xs text-ink-300">
-          <input type="checkbox" name="roles" value={r.id} defaultChecked={memberships.includes(r.id)} />{r.label}
+          <input
+            type="checkbox"
+            name="roles"
+            value={r.id}
+            checked={r.id === primary || extras.includes(r.id)}
+            disabled={r.id === primary}
+            onChange={(e) => toggle(r.id, e.target.checked)}
+          />
+          {r.label}
         </label>)}
       </div>
       <p className="text-xs text-ink-500">O cargo principal sempre faz parte dos cargos da pessoa.</p>
-    </fieldset>
+    </>
   );
 }
