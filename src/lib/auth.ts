@@ -4,6 +4,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { all, one, run } from "./db";
+import { BUILTIN_ROLES, hasRole, type JobRole } from "./roles";
 import type { User } from "./model/types";
 
 /**
@@ -76,7 +77,7 @@ export async function login(rawLogin: string, password: string): Promise<AuthUse
   if (!l || !password) return null;
 
   const u = await one<AuthUser & { password_hash: string | null }>(
-    `SELECT id, name, role, login, is_admin, active, password_hash
+    `SELECT id, name, role, roles, login, is_admin, active, password_hash
      FROM users WHERE login = ?`,
     [l],
   );
@@ -103,6 +104,7 @@ export async function login(rawLogin: string, password: string): Promise<AuthUse
     id: u.id,
     name: u.name,
     role: u.role,
+    roles: u.roles,
     login: u.login,
     is_admin: u.is_admin,
     active: u.active,
@@ -124,7 +126,7 @@ export const getSessionUser = cache(async (): Promise<AuthUser | null> => {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
   return one<AuthUser>(
-    `SELECT u.id, u.name, u.role, u.login, u.is_admin, u.active
+    `SELECT u.id, u.name, u.role, u.roles, u.login, u.is_admin, u.active
      FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token = ? AND s.expires_at > now() AND u.active = 1`,
     [token],
@@ -148,8 +150,8 @@ export async function requireAdmin(): Promise<AuthUser> {
 }
 
 /** Quem opera Social media: o time de social (role) e os admins. */
-export function canManageSocial(u: Pick<AuthUser, "role" | "is_admin">): boolean {
-  return Boolean(u.is_admin) || u.role === "social";
+export function canManageSocial(u: Pick<AuthUser, "role" | "roles" | "is_admin">): boolean {
+  return Boolean(u.is_admin) || hasRole(u, "social");
 }
 
 /** Trava de servidor para as mutacoes de Social media. */
@@ -163,7 +165,7 @@ export async function requireSocial(): Promise<AuthUser> {
 
 export const listAuthUsers = () =>
   all<AuthUser & { created_at: string | null }>(
-    `SELECT id, name, role, login, is_admin, active, created_at::text AS created_at
+    `SELECT id, name, role, roles, login, is_admin, active, created_at::text AS created_at
      FROM users ORDER BY is_admin DESC, name`,
   );
 
@@ -174,14 +176,16 @@ export async function createAuthUser(u: {
   name: string;
   login: string;
   role: User["role"];
+  roles?: string[];
   password: string;
   is_admin: boolean;
 }) {
+  const roles = await validateUserRoles(u.role, u.roles);
   const hash = await hashPassword(u.password);
   await run(
-    `INSERT INTO users (name, role, login, password_hash, is_admin, active)
-     VALUES (?, ?, ?, ?, ?, 1)`,
-    [u.name, u.role, normalizeLogin(u.login), hash, u.is_admin ? 1 : 0],
+    `INSERT INTO users (name, role, roles, login, password_hash, is_admin, active)
+     VALUES (?, ?, ?, ?, ?, ?, 1)`,
+    [u.name, u.role, roles, normalizeLogin(u.login), hash, u.is_admin ? 1 : 0],
   );
 }
 
@@ -209,14 +213,15 @@ export async function setUserAdmin(userId: number, isAdmin: boolean) {
   await run("UPDATE users SET is_admin = ? WHERE id = ?", [isAdmin ? 1 : 0, userId]);
 }
 
-export async function updateUserProfile(userId: number, name: string, role: User["role"], login?: string) {
+export async function updateUserProfile(userId: number, name: string, role: User["role"], login?: string, memberships?: string[]) {
+  const roles = await validateUserRoles(role, memberships);
   if (login) {
-    await run("UPDATE users SET name = ?, role = ?, login = ? WHERE id = ?", [name, role, normalizeLogin(login), userId]);
+    await run("UPDATE users SET name = ?, role = ?, roles = ?, login = ? WHERE id = ?", [name, role, roles, normalizeLogin(login), userId]);
     // Login trocado: quem estava logado entra de novo com o nome novo.
     await run("DELETE FROM sessions WHERE user_id = ?", [userId]);
     return;
   }
-  await run("UPDATE users SET name = ?, role = ? WHERE id = ?", [name, role, userId]);
+  await run("UPDATE users SET name = ?, role = ?, roles = ? WHERE id = ?", [name, role, roles, userId]);
 }
 
 /**
@@ -259,4 +264,25 @@ export async function ensureAdmins() {
       });
     }
   }
+}
+
+/** Presets describe screens only; authorization always uses explicit membership. */
+export const listJobRoles = () => all<JobRole>("SELECT id, label, preset FROM job_roles ORDER BY label");
+
+export async function validateUserRoles(primary: string, memberships?: string[]): Promise<string[]> {
+  const catalog = await listJobRoles();
+  const roles = [...new Set([primary, ...(memberships ?? [])])];
+  if (!primary || roles.some((id) => !catalog.some((r) => r.id === id))) {
+    throw new Error("Selecione cargos válidos.");
+  }
+  return roles;
+}
+
+export async function createJobRole(role: JobRole) {
+  if (!/^[a-z][a-z0-9_-]{1,47}$/.test(role.id) || !role.label.trim() || role.label.trim().length > 80
+    || !BUILTIN_ROLES.some((r) => r.id === role.preset)) {
+    throw new Error("Informe um identificador, nome e modelo válidos.");
+  }
+  return one<JobRole>(`INSERT INTO job_roles (id, label, preset) VALUES (?, ?, ?)
+    ON CONFLICT (id) DO NOTHING RETURNING id, label, preset`, [role.id, role.label.trim(), role.preset]);
 }

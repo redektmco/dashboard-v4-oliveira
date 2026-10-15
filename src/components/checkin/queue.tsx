@@ -1,5 +1,7 @@
 "use client";
 
+import { ModularScreen } from "@/components/workspace/modular-screen";
+
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ACCOUNT_TYPE_LABEL, type AccountType, type Band } from "@/lib/model/types";
@@ -130,7 +132,8 @@ export function CheckinQueue({ rows, limit, scales }: { rows: QueueRow[]; limit:
       />
 
       {/* ------------------------------ cobertura ------------------------------ */}
-      <section className="flex flex-col gap-5 rounded-xl border border-[var(--border-hair)] bg-ink-900 px-5 py-5 lg:flex-row lg:items-center lg:gap-8 lg:px-6" aria-label="Cobertura de leitura">
+      <ModularScreen screen="checkin" modules={[
+{ id: "coverage", label: "Cobertura dos check-ins", kind: "metrics", defaultWidth: 'full' as const, content: <><section className="flex flex-col gap-5 rounded-xl border border-[var(--border-hair)] bg-ink-900 px-5 py-5 lg:flex-row lg:items-center lg:gap-8 lg:px-6" aria-label="Cobertura de leitura">
         <div className="flex min-w-0 flex-1 flex-col gap-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-[13px] text-ink-300">Cobertura de leitura</span>
@@ -152,12 +155,8 @@ export function CheckinQueue({ rows, limit, scales }: { rows: QueueRow[]; limit:
           <Metric dot="bg-vermelho" label="Score crítico sem leitura" value={criticalUnread} hint="Confirme estas primeiro" />
           <Metric dot="bg-amarelo" label="Flags de risco ativas" value={flags} hint="Cada flag gera plano de ação" />
         </div>
-      </section>
-
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        {/* -------------------------------- fila -------------------------------- */}
-        <section className="min-w-0 overflow-hidden rounded-xl border border-[var(--border-hair)] bg-ink-900" aria-labelledby="fila-title">
-          <header className="flex flex-col gap-3.5 px-4 pb-3.5 pt-[18px] sm:px-5">
+      </section></> },
+{ id: "filters", label: "Filtros da fila", kind: "filters", defaultWidth: 'full' as const, content: <><header className="flex flex-col gap-3.5 px-4 pb-3.5 pt-[18px] sm:px-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0 space-y-[3px]">
                 <h2 id="fila-title" className="text-[15px] font-semibold text-ink-100">
@@ -193,22 +192,19 @@ export function CheckinQueue({ rows, limit, scales }: { rows: QueueRow[]; limit:
                 ))}
               </div>
             )}
-          </header>
-
-          <div className="hidden grid-cols-[minmax(0,1fr)_160px_140px_96px] gap-4 border-y border-[var(--border-hair)] px-5 py-[9px] text-[12px] text-ink-500 md:grid">
+          </header></> },
+{ id: "queue", label: "Fila de check-ins", kind: "list", defaultWidth: 'full' as const, content: <><div className="hidden grid-cols-[minmax(0,1fr)_160px_140px_96px] gap-4 border-y border-[var(--border-hair)] px-5 py-[9px] text-[12px] text-ink-500 md:grid">
             <span>Cliente</span>
             <span>Última leitura</span>
             <span>Score atual</span>
             <span />
           </div>
-
-          {visible.length === 0 && (
+{visible.length === 0 && (
             <p className="border-t border-[var(--border-hair)] px-5 py-10 text-center text-[13px] text-ink-400">
               Nenhuma conta encontrada{term ? ` para “${q.trim()}”` : ""}.
             </p>
           )}
-
-          {visible.map((g) => {
+{visible.map((g) => {
             const read = g.rows.filter(isFresh).length;
             const orphan = g.key === "" && groupBy !== "nenhum";
             return (
@@ -247,8 +243,7 @@ export function CheckinQueue({ rows, limit, scales }: { rows: QueueRow[]; limit:
               </div>
             );
           })}
-
-          <footer className="flex flex-col gap-3 px-4 py-3.5 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
+<footer className="flex flex-col gap-3 px-4 py-3.5 sm:px-5 lg:flex-row lg:items-center lg:justify-between">
             <span className="text-[12px] text-ink-500">
               {term ? `${shownCount} de ${rows.length} contas` : `${rows.length} contas`}
               {groupBy !== "nenhum" && ` · ${groups.length} ${groups.length === 1 ? "grupo" : "grupos"}`}
@@ -259,12 +254,8 @@ export function CheckinQueue({ rows, limit, scales }: { rows: QueueRow[]; limit:
               <Legend fresh="vencida" label={`Vencida > ${limit} dias`} />
               <Legend fresh="nunca" label="Nunca registrada" />
             </div>
-          </footer>
-        </section>
-
-        {/* -------------------------------- lateral -------------------------------- */}
-        <aside className="flex flex-col gap-4">
-          <section className="flex flex-col gap-3.5 rounded-xl border border-[var(--border-hair)] bg-ink-900 p-[18px]" aria-labelledby="start-title">
+          </footer></> },
+{ id: "activity", label: "Últimos registros", kind: "activity", defaultWidth: 'half' as const, content: <><section className="flex flex-col gap-3.5 rounded-xl border border-[var(--border-hair)] bg-ink-900 p-[18px]" aria-labelledby="start-title">
             <div className="space-y-1">
               <h2 id="start-title" className="text-[14px] font-semibold text-ink-100">
                 Comece por aqui
@@ -307,9 +298,8 @@ export function CheckinQueue({ rows, limit, scales }: { rows: QueueRow[]; limit:
                 Nenhuma conta com score baixo sem leitura recente.
               </p>
             )}
-          </section>
-
-          <section className="flex flex-col gap-3.5 rounded-xl border border-[var(--border-hair)] bg-ink-900 p-[18px]" aria-labelledby="how-title">
+          </section></> },
+{ id: "guide", label: "Roteiro do check-in", kind: "overview", defaultWidth: 'half' as const, content: <><section className="flex flex-col gap-3.5 rounded-xl border border-[var(--border-hair)] bg-ink-900 p-[18px]" aria-labelledby="how-title">
             <h2 id="how-title" className="text-[14px] font-semibold text-ink-100">
               Como funciona o check-in
             </h2>
@@ -328,9 +318,8 @@ export function CheckinQueue({ rows, limit, scales }: { rows: QueueRow[]; limit:
               <Icon name="book" size={15} />
               Como a leitura afeta o score
             </Link>
-          </section>
-        </aside>
-      </div>
+          </section></> }
+]} />
 
       <ScriptPanel open={script} onClose={() => setScript(false)} scales={scales} />
       <ClientPicker open={picker} onClose={() => setPicker(false)} rows={rows} />

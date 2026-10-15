@@ -14,11 +14,8 @@ async function main() {
   );
   console.log("Tabelas de Social media:", rows.map((r) => r.table_name).join(", ") || "(nenhuma)");
 
-  const roleCheck = await all<{ constraint_name: string }>(
-    `SELECT constraint_name FROM information_schema.check_constraints
-     WHERE constraint_name = 'users_role_check'`,
-  );
-  console.log("Constraint de role:", roleCheck.length ? "atualizada (inclui 'social')" : "não encontrada");
+  const roles = await all<{ id: string }>("SELECT id FROM job_roles WHERE id = 'social'");
+  console.log("Cargo Social:", roles.length ? "disponível" : "não encontrado");
 }
 
 main().catch((e) => {

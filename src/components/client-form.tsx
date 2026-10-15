@@ -1,5 +1,7 @@
 "use client";
 
+import { hasRole } from "@/lib/roles";
+
 import { useState } from "react";
 import { targetKeysFor } from "@/lib/model/catalog";
 import { ACCOUNT_TYPE_LABEL, type AccountType, type Client, type User } from "@/lib/model/types";
@@ -58,8 +60,8 @@ function ClientFields({
   // for o atual do cliente — senão salvar a ficha apagaria o vínculo calado.
   const keep = (list: User[], id: number | null | undefined, name: string | null | undefined, role: User["role"]) =>
     id && name && !list.some((u) => u.id === id) ? [...list, { id, name: `${name} (inativo)`, role }] : list;
-  const gts = keep(users.filter((u) => u.role === "gt"), client?.gt_user_id, client?.gt_name, "gt");
-  const accounts = keep(users.filter((u) => u.role === "account"), client?.account_user_id, client?.account_name, "account");
+  const gts = keep(users.filter((u) => hasRole(u, "gt")), client?.gt_user_id, client?.gt_name, "gt");
+  const accounts = keep(users.filter((u) => hasRole(u, "account")), client?.account_user_id, client?.account_name, "account");
   const semMeta = Object.keys(targets).length === 0;
 
   return (

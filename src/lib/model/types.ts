@@ -148,7 +148,7 @@ export const STAGE_LABEL: Record<Stage, string> = {
   retencao: "Retenção",
 };
 
-export type User = { id: number; name: string; role: "gt" | "account" | "coord" | "social" };
+export type User = { id: number; name: string; role: string; roles?: string[] };
 
 export type Snapshot = {
   id: number;

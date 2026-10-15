@@ -1,5 +1,7 @@
 "use client";
 
+import { ModularScreen } from "@/components/workspace/modular-screen";
+
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -54,7 +56,7 @@ const LAYOUTS = [
   { id: "lista", label: "Lista", icon: "layoutList" },
   { id: "kanban", label: "Kanban", icon: "layers" },
 ] as const;
-const STORE = "crm-clientes";
+const STORE = "crm-clientes:v2";
 
 /** Lista (tabela) ou kanban por etapa — os dois desenham a mesma triagem. */
 type Layout = "lista" | "kanban";
@@ -73,8 +75,9 @@ export function ClientsCrm({
   users: User[];
   isAdmin: boolean;
   /** Quem está logado: Account e GT abrem a lista já filtrada nas próprias contas. */
-  me: { name: string; role: User["role"] };
+  me: { id: number; name: string; role: User["role"]; roles?: string[] };
 }) {
+  const storageKey = `${STORE}:${me.id}`;
   const params = useSearchParams();
   const router = useRouter();
 
@@ -121,7 +124,7 @@ export function ClientsCrm({
   useEffect(() => {
     if (hasLegacy) return; // o link de fora manda
     try {
-      const raw = sessionStorage.getItem(STORE);
+      const raw = sessionStorage.getItem(storageKey);
       if (!raw) return;
       const s = JSON.parse(raw) as Stored;
       // eslint-disable-next-line react-hooks/set-state-in-effect -- restaurar do sessionStorage só pode acontecer depois da hidratação: ler no corpo do render quebraria o SSR.
@@ -135,15 +138,15 @@ export function ClientsCrm({
       // sessionStorage bloqueado (aba anônima, política do navegador):
       // a tela abre no padrão, que é um estado válido.
     }
-  }, [hasLegacy]);
+  }, [hasLegacy, storageKey]);
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(STORE, JSON.stringify({ view, filters, columns, sort, dir, layout, groupBy } satisfies Stored));
+      sessionStorage.setItem(storageKey, JSON.stringify({ view, filters, columns, sort, dir, layout, groupBy } satisfies Stored));
     } catch {
       /* idem */
     }
-  }, [view, filters, columns, sort, dir, layout, groupBy]);
+  }, [view, filters, columns, sort, dir, layout, groupBy, storageKey]);
 
   /* ---------------- listas derivadas (tudo em memória) --------------- */
   const counts = useMemo(() => countViews(rows), [rows]);
@@ -225,10 +228,9 @@ export function ClientsCrm({
         }
       />
 
-      <Indicators summary={summary} />
-
-      {/* abas de visualização + lista/kanban */}
-      <div className="flex items-center gap-3">
+      <ModularScreen screen="clientes" modules={[
+{ id: "overview", label: "Resumo da carteira", kind: "metrics", defaultWidth: 'full' as const, content: <><Indicators summary={summary} /></> },
+{ id: "views", label: "Visualizações", kind: "overview", defaultWidth: 'full' as const, content: <><div className="flex items-center gap-3">
         <div className="subnav subnav--plain no-scrollbar -ml-4 min-w-0 flex-1 overflow-x-auto pl-4 lg:ml-0 lg:pl-0">
           {VIEWS.map((v) => (
             <button
@@ -266,18 +268,16 @@ export function ClientsCrm({
             </button>
           ))}
         </div>
-      </div>
-
-      <CrmFilters
+      </div></> },
+{ id: "filters", label: "Filtros e colunas", kind: "filters", defaultWidth: 'full' as const, content: <><CrmFilters
         filters={filters}
         onChange={(f) => retriage({ filters: f })}
         accounts={accounts}
         gts={gts}
         columns={columns}
         onColumns={(c) => patch({ columns: c })}
-      />
-
-      {layout === "lista" && selectedRows.length > 0 && (
+      /></> },
+{ id: "clients", label: "Clientes e ações", kind: "list", defaultWidth: 'full' as const, content: <>{layout === "lista" && selectedRows.length > 0 && (
         <CrmBulkBar
           rows={selectedRows}
           users={users}
@@ -286,8 +286,7 @@ export function ClientsCrm({
           archivedView={view === "arquivados"}
         />
       )}
-
-      {layout === "kanban" && list.length > 0 ? (
+{layout === "kanban" && list.length > 0 ? (
         <CrmKanban
           rows={list}
           users={users}
@@ -346,7 +345,8 @@ export function ClientsCrm({
             </footer>
           )}
         </section>
-      )}
+      )}</> }
+]} />
 
       <ImportDialog open={importing} onClose={() => setImporting(false)} />
     </div>

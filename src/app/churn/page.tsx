@@ -37,7 +37,7 @@ export default async function ChurnPage() {
         }
       />
 
-      <Box className="grid grid-cols-2 gap-5 px-5 py-5 md:grid-cols-3 lg:px-6 xl:flex xl:items-stretch">
+      <RequestsBoard requests={requests} owners={users.map((u) => u.name)} today={at} leadingModules={[{ id: "metrics", label: "Indicadores de retenção", kind: "finance", defaultWidth: 'full' as const, content: <><Box className="grid grid-cols-2 gap-5 px-5 py-5 md:grid-cols-3 lg:px-6 xl:flex xl:items-stretch">
         <Kpi tone="azul" label="Solicitações abertas" value={String(open.length)} hint={`${open.filter((r) => r.status === "solicitado").length} aguardando análise`} />
         <Kpi tone="vermelho" label="Cancelamentos concluídos" value={String(canceled.length)} hint="Últimos 90 dias" />
         <Kpi tone="verde" label="Clientes retidos" value={String(retained.length)} hint={rate === null ? "Últimos 90 dias" : `Taxa de retenção de ${rate}%`} />
@@ -55,9 +55,7 @@ export default async function ChurnPage() {
           unit="/mês"
           hint={`${open.length} ${open.length === 1 ? "solicitação em andamento" : "solicitações em andamento"}`}
         />
-      </Box>
-
-      <RequestsBoard requests={requests} owners={users.map((u) => u.name)} today={at} />
+      </Box></> }]} />
     </>
   );
 }

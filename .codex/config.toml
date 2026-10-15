@@ -1,0 +1,16 @@
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 2
+max_depth = 1
+
+[agents.scan]
+description = "Varredura somente leitura dos arquivos atribuídos."
+config_file = "agents/scan.toml"
+
+[agents.fix]
+description = "Implementação no worktree e arquivos atribuídos."
+config_file = "agents/fix.toml"
+
+[agents.verify]
+description = "Verificação independente com evidências e testes."
+config_file = "agents/verify.toml"

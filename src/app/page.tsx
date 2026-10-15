@@ -116,8 +116,7 @@ export default async function CarteiraPage() {
         }
       />
 
-      {/* ---------------------------- Saúde ---------------------------- */}
-      <section className="panel space-y-7 p-5 sm:p-7" aria-label="Saúde da carteira">
+      <Portfolio rows={view} mrrTotal={summary.mrrTotal} leadingModules={[{ id: "health", label: "Saúde da carteira", kind: "metrics", defaultWidth: 'full' as const, content: <><section className="panel space-y-7 p-5 sm:p-7" aria-label="Saúde da carteira">
         <div className="grid gap-6 sm:grid-cols-3 sm:gap-8">
           <Kpi label="Contas em risco">
             <div className="flex items-baseline gap-2">
@@ -173,11 +172,8 @@ export default async function CarteiraPage() {
             )}
           </div>
         </div>
-      </section>
-
-      {/* -------------------- Prioridades + qualidade dos dados -------------------- */}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <section className="space-y-4" aria-labelledby="prioridades-title">
+      </section></> },
+{ id: "priorities", label: "Prioridades de hoje", kind: "priorities", defaultWidth: 'half' as const, content: <><section className="space-y-4" aria-labelledby="prioridades-title">
           <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
             <div>
               <h2 id="prioridades-title" className="font-display text-[17px] font-semibold text-ink-100">
@@ -232,9 +228,8 @@ export default async function CarteiraPage() {
             </ol>
           )}
 
-        </section>
-
-        <aside className="panel space-y-5 self-start p-5" aria-labelledby="qualidade-title">
+        </section></> },
+{ id: "quality", label: "Qualidade dos dados", kind: "activity", defaultWidth: 'half' as const, content: <><aside className="panel space-y-5 self-start p-5" aria-labelledby="qualidade-title">
           <div>
             <h2 id="qualidade-title" className="font-display text-[16px] font-semibold text-ink-100">
               Qualidade dos dados
@@ -273,10 +268,7 @@ export default async function CarteiraPage() {
             <Icon name="wrench" size={15} />
             Resolver pendências
           </Link>
-        </aside>
-      </div>
-
-      <Portfolio rows={view} mrrTotal={summary.mrrTotal} />
+        </aside></> }]} />
     </div>
   );
 }

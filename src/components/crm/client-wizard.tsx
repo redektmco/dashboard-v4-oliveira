@@ -1,5 +1,7 @@
 "use client";
 
+import { hasRole } from "@/lib/roles";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveClient } from "@/actions";
@@ -37,8 +39,8 @@ export function ClientWizard({ users }: { users: User[] }) {
   const [account, setAccount] = useState("");
   const [gt, setGt] = useState("");
 
-  const gts = users.filter((u) => u.role === "gt");
-  const accounts = users.filter((u) => u.role === "account");
+  const gts = users.filter((u) => hasRole(u, "gt"));
+  const accounts = users.filter((u) => hasRole(u, "account"));
 
   // O que falta para o botão deixar de ser um palpite.
   const missing = [!name.trim() && "o nome do cliente", !account && "o Account", !gt && "o GT"].filter(Boolean) as string[];

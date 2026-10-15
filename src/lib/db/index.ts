@@ -1,3 +1,4 @@
+import { BUILTIN_ROLES } from "../roles";
 import { neon } from "@neondatabase/serverless";
 
 /**
@@ -133,14 +134,22 @@ const DDL = `
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('gt','account','coord','social'))
+  role TEXT NOT NULL
 );
 
--- Abre o papel 'social' num banco que ja nasceu antes dele existir. O CHECK
--- do CREATE acima so vale na criacao; em base existente re-cria a restricao.
+-- Preserve every existing primary role; custom jobs use the same id space.
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE users ADD CONSTRAINT users_role_check
-  CHECK (role IN ('gt','account','coord','social'));
+ALTER TABLE users ADD COLUMN IF NOT EXISTS roles TEXT[] NOT NULL DEFAULT '{}';
+UPDATE users SET roles = ARRAY[role] WHERE cardinality(roles) = 0;
+
+CREATE TABLE IF NOT EXISTS job_roles (
+  id TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  preset TEXT NOT NULL CHECK (preset IN ('coord','gt','account','social','designer','crm','finance'))
+);
+INSERT INTO job_roles (id, label, preset) VALUES
+  ${BUILTIN_ROLES.map((r) => `('${r.id}', '${r.label}', '${r.preset}')`).join(", ")}
+  ON CONFLICT (id) DO NOTHING;
 
 -- Acesso: uso fechado da unidade. Quem preenche continua vivendo em users --
 -- as colunas abaixo dizem quem, alem disso, consegue entrar no painel.
@@ -989,7 +998,7 @@ INSERT INTO client_interactions (client_id, at, kind, title, note, user_id, user
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-10-13.crm-vendas-checkin";
+export const SCHEMA_VERSION = "2026-10-15.multiple-job-roles";
 
 let migrated = false;
 

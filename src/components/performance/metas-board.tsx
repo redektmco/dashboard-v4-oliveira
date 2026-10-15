@@ -1,5 +1,7 @@
 "use client";
 
+import { ModularScreen } from "@/components/workspace/modular-screen";
+
 import { useEffect, useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -127,7 +129,8 @@ export function MetasBoard({
         }
       />
 
-      <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4 lg:mx-0 lg:px-0">
+      <ModularScreen screen="performance" modules={[
+{ id: "filters", label: "Filtros de performance", kind: "filters", defaultWidth: 'full' as const, content: <><div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4 lg:mx-0 lg:px-0">
         {chips.map((c) => {
           const on = filter === c.f;
           const n = lists[c.f].length;
@@ -146,9 +149,8 @@ export function MetasBoard({
             </button>
           );
         })}
-      </div>
-
-      <div className="overflow-hidden rounded-xl border border-[var(--border-hair)] bg-ink-900">
+      </div></> },
+{ id: "forecast", label: "Forecast e fontes", kind: "list", defaultWidth: 'full' as const, content: <><div className="overflow-hidden rounded-xl border border-[var(--border-hair)] bg-ink-900">
         <div className="hidden h-[37.5px] items-center gap-4 border-b border-[var(--border-hair)] px-4 md:flex">
           <ColLabel className="w-[220px] shrink-0">Cliente</ColLabel>
           <ColLabel className="flex-1">Realizado / forecast</ColLabel>
@@ -226,7 +228,8 @@ export function MetasBoard({
             {filter === "todos" ? "Nenhum cliente ativo na carteira." : `Nenhum cliente ${FILTER_LABEL[filter]}. Tudo em dia.`}
           </p>
         )}
-      </div>
+      </div></> }
+]} />
 
       <SidePanel open={Boolean(row) && mounted} onClose={close} label="Forecast e fontes da conta" width={460}>
         {row && (

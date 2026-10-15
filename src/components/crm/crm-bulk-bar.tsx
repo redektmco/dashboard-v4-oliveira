@@ -1,5 +1,7 @@
 "use client";
 
+import { hasRole } from "@/lib/roles";
+
 import { useState, useTransition } from "react";
 import { bulkArchive, bulkAssignOwner, bulkSetStage, bulkSetTarget, exportClients } from "@/actions/crm";
 import type { CrmRow } from "@/lib/crm/board";
@@ -176,7 +178,7 @@ function OwnerDialog({
   const [field, setField] = useState<"account_user_id" | "gt_user_id">("account_user_id");
   const [userId, setUserId] = useState("");
   const role = field === "account_user_id" ? "account" : "gt";
-  const list = users.filter((u) => u.role === role);
+  const list = users.filter((u) => hasRole(u, role));
 
   return (
     <Modal

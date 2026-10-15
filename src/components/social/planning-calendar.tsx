@@ -1,5 +1,7 @@
 "use client";
 
+import { ModularScreen } from "@/components/workspace/modular-screen";
+
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { Asset, PublishStatus } from "@/lib/social/types";
@@ -111,7 +113,8 @@ export default function PlanningCalendar({ items }: { items: PlannedItem[] }) {
   return (
     <div className="space-y-4">
       {/* Barra de controle */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <ModularScreen screen="social-planejamento" modules={[
+{ id: "filters", label: "Filtros e datas", kind: "filters", defaultWidth: 'full' as const, content: <><div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
           <button
             type="button"
@@ -155,9 +158,8 @@ export default function PlanningCalendar({ items }: { items: PlannedItem[] }) {
             </button>
           ))}
         </div>
-      </div>
-
-      {view === "calendar" ? (
+      </div></> },
+{ id: "calendar", label: "Calendário editorial", kind: "calendar", defaultWidth: 'full' as const, content: <>{view === "calendar" ? (
         <div className="overflow-hidden rounded-xl border border-[var(--border-hair)] bg-ink-900">
           {/* Cabeçalho de dias da semana */}
           <div className="grid grid-cols-7 border-b border-[var(--border-hair)] bg-ink-925">
@@ -219,10 +221,8 @@ export default function PlanningCalendar({ items }: { items: PlannedItem[] }) {
         </div>
       ) : (
         <ListGrouped items={items} />
-      )}
-
-      {/* Detalhe do dia selecionado */}
-      {view === "calendar" && selected && selectedItems.length > 0 && (
+      )}</> },
+{ id: "selected", label: "Publicações do dia", kind: "activity", defaultWidth: 'full' as const, content: <>{view === "calendar" && selected && selectedItems.length > 0 && (
         <div className="overflow-hidden rounded-xl border border-[var(--border-hair)] bg-ink-900">
           <div className="border-b border-[var(--border-hair)] px-4 py-2.5 text-sm font-semibold capitalize text-ink-100">
             {longDay(selectedItems[0].scheduledAt)}
@@ -233,7 +233,8 @@ export default function PlanningCalendar({ items }: { items: PlannedItem[] }) {
             ))}
           </div>
         </div>
-      )}
+      )}</> }
+]} />
     </div>
   );
 }

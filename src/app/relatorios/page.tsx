@@ -1,3 +1,5 @@
+
+import { ModularScreen } from "@/components/workspace/modular-screen";
 import "@/components/reports/reports.css";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
@@ -49,7 +51,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         }
       />
 
-      <nav className="flex gap-1 border-b border-[var(--border-hair)]" aria-label="Seções de Relatórios">
+      <ModularScreen screen="relatorios" modules={[
+{ id: "filters", label: "Relatórios e modelos", kind: "filters", defaultWidth: 'full' as const, content: <><nav className="flex gap-1 border-b border-[var(--border-hair)]" aria-label="Seções de Relatórios">
         {(
           [
             ["relatorios", "Relatórios", reports.length],
@@ -66,9 +69,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
             <span className="tnum rounded-full bg-ink-800 px-[7px] py-px text-[11px] font-semibold text-ink-300">{n}</span>
           </Link>
         ))}
-      </nav>
-
-      {tab === "relatorios" ? (
+      </nav></> },
+{ id: "reports", label: "Documentos", kind: "list", defaultWidth: 'full' as const, content: <>{tab === "relatorios" ? (
         reports.length === 0 ? (
           <div className="rounded-xl border border-dashed border-[var(--border-strong)] px-6 py-14 text-center">
             <Icon name="fileText" size={30} className="mx-auto text-ink-500" stroke={1.4} />
@@ -132,7 +134,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
             )}
           </section>
         </div>
-      )}
+      )}</> }
+]} />
     </div>
   );
 }

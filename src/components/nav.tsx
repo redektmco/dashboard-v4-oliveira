@@ -1,5 +1,7 @@
 "use client";
 
+import { roleLabel, type JobRole } from "@/lib/roles";
+
 import { useEffect, useState, useTransition } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -99,14 +101,7 @@ const SETTINGS: NavLink = {
 
 const isActive = (href: string, path: string) => (href === "/" ? path === "/" : path.startsWith(href));
 
-const ROLE_LABEL: Record<string, string> = {
-  gt: "GT",
-  account: "Account Manager",
-  coord: "Coordenação",
-  social: "Social Media",
-};
-
-type Perfil = { name: string; isAdmin: boolean; role: string };
+type Perfil = { name: string; isAdmin: boolean; role: string; roles?: string[]; roleCatalog?: JobRole[] };
 
 function SideLink({ l, path, isAdmin }: { l: NavLink; path: string; isAdmin: boolean }) {
   const active = isActive(l.href, path);
@@ -201,7 +196,7 @@ export function Sidebar({ user, avisos }: { user: Perfil; avisos: Aviso[] }) {
                   {user.name}
                 </span>
                 <span className="block truncate text-[11px] text-ink-500">
-                  {ROLE_LABEL[user.role] ?? user.role}
+                  {[...new Set([user.role, ...(user.roles ?? [])])].map((id) => roleLabel(id, user.roleCatalog)).join(" · ")}
                   {user.isAdmin ? " · admin" : ""}
                 </span>
               </span>
@@ -215,7 +210,7 @@ export function Sidebar({ user, avisos }: { user: Perfil; avisos: Aviso[] }) {
           items={[
             {
               label: user.name,
-              hint: `${ROLE_LABEL[user.role] ?? user.role}${user.isAdmin ? " · administrador" : ""}`,
+              hint: `${[...new Set([user.role, ...(user.roles ?? [])])].map((id) => roleLabel(id, user.roleCatalog)).join(" · ")}${user.isAdmin ? " · administrador" : ""}`,
               icon: user.isAdmin ? "shield" : "users",
               disabled: true,
             },
@@ -365,7 +360,7 @@ export function MobileNav({ user }: { user: Perfil }) {
                 <div className="truncate text-sm font-semibold text-ink-100">{user.name}</div>
                 <div className="flex items-center gap-1.5 text-[11px] text-ink-500">
                   {user.isAdmin && <Icon name="shield" size={11} className="text-v4-red" />}
-                  {ROLE_LABEL[user.role] ?? user.role}
+                  {[...new Set([user.role, ...(user.roles ?? [])])].map((id) => roleLabel(id, user.roleCatalog)).join(" · ")}
                   {user.isAdmin ? " · administrador" : ""}
                 </div>
               </div>

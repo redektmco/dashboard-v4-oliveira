@@ -3,8 +3,10 @@
 import { usePathname } from "next/navigation";
 import { MobileNav, Sidebar } from "./nav";
 import type { Aviso } from "@/lib/repo";
+import type { JobRole } from "@/lib/roles";
+import { WorkspaceProvider } from "./workspace/workspace-provider";
 
-type Perfil = { name: string; isAdmin: boolean; role: string };
+type Perfil = { id: number; name: string; isAdmin: boolean; role: string; roles?: string[]; roleCatalog?: JobRole[] };
 
 /**
  * Moldura do console (rail lateral e, no celular, cabeçalho + abas). O link
@@ -20,10 +22,12 @@ type Perfil = { name: string; isAdmin: boolean; role: string };
 export function AppFrame({
   user,
   avisos,
+  jobRoles,
   children,
 }: {
   user: Perfil;
   avisos: Aviso[];
+  jobRoles: JobRole[];
   children: React.ReactNode;
 }) {
   const path = usePathname();
@@ -31,16 +35,16 @@ export function AppFrame({
   // O construtor de relatórios ocupa a tela inteira, como o Elementor.
   if (/^\/relatorios\/[^/]+$/.test(path)) return <>{children}</>;
   return (
-    <>
-      <Sidebar user={user} avisos={avisos} />
+    <WorkspaceProvider user={user} jobRoles={jobRoles}>
+      <Sidebar user={{ ...user, roleCatalog: jobRoles }} avisos={avisos} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <MobileNav user={user} />
+        <MobileNav user={{ ...user, roleCatalog: jobRoles }} />
         {/* A largura e o respiro de toda tela moram aqui, e só aqui: nenhuma
             página define o próprio container. */}
         <main className="app-main mx-auto w-full min-w-0 max-w-[1320px] px-4 pt-5 sm:px-6 lg:px-10 lg:pt-8">
           {children}
         </main>
       </div>
-    </>
+    </WorkspaceProvider>
   );
 }

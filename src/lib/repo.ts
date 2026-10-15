@@ -61,7 +61,7 @@ export async function getConfig(): Promise<ScoreConfig> {
  * de cliente (selects de GT/Account, "preenchido por") e o `*` levava o hash
  * de senha de todo mundo serializado para o navegador.
  */
-const USER_PUBLIC = "id, name, role";
+const USER_PUBLIC = "id, name, role, roles";
 
 /**
  * O time que pode ser escolhido nas listas (GT, Account, responsáveis).
@@ -70,10 +70,10 @@ const USER_PUBLIC = "id, name, role";
  */
 export const listUsers = (role?: User["role"], { includeInactive = false } = {}) => {
   const active = includeInactive ? "" : "active = 1";
-  const where = [role ? "role = ?" : "", active].filter(Boolean).join(" AND ");
+  const where = [role ? "(role = ? OR ? = ANY(roles))" : "", active].filter(Boolean).join(" AND ");
   return all<User>(
     `SELECT ${USER_PUBLIC} FROM users ${where ? `WHERE ${where}` : ""} ORDER BY ${role ? "name" : "role, name"}`,
-    role ? [role] : [],
+    role ? [role, role] : [],
   );
 };
 

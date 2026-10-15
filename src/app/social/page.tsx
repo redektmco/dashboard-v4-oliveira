@@ -48,43 +48,12 @@ export default async function SocialPage() {
         }
       />
 
-      {/* Os quatro números que pedem ação, não inventário. */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <ClientBoard leadingModules={[{id:'metrics',label:'Aprovações e entregas',kind:'metrics',content:<><div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Aguardando cliente" value={totals.pendentes} hint="cobrar retorno" />
         <Stat label="A refazer" value={totals.reprovados} tone={totals.reprovados ? "vermelho" : "default"} hint="reprovados pelo cliente" />
         <Stat label="Aprovados" value={totals.aprovados} tone="verde" />
         <Stat label="No calendário" value={totals.agendados} tone="amarelo" hint="aprovados com data" />
-      </div>
-
-      {/* Primeiro o cliente, depois o planejamento — ver ClientBoard. */}
-      <ClientBoard
-        canManage={canManage}
-        covers={covers}
-        projects={projects.map((p) => ({
-          id: p.id,
-          clientId: p.clientId,
-          title: p.title,
-          clientName: p.clientName,
-          igHandle: p.igHandle,
-          guestToken: p.guestToken,
-          createdAt: p.createdAt,
-          total: p.total,
-          pending: p.pending,
-          approved: p.approved,
-          rejected: p.rejected,
-          scheduled: p.scheduled,
-        }))}
-        archived={archived.map((p) => ({
-          id: p.id,
-          clientId: p.clientId,
-          title: p.title,
-          clientName: p.clientName,
-          createdAt: p.createdAt,
-        }))}
-      />
-
-      {/* Relatório, não tarefa: fechado por padrão para não disputar a atenção. */}
-      {organic.length > 0 && (
+      </div></>}, ...(organic.length ? [{id:'organic',label:'Orgânico por cliente',kind:'activity',content:<>{organic.length > 0 && (
         <details className="panel group">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 sm:px-5">
             <div>
@@ -126,7 +95,31 @@ export default async function SocialPage() {
             </TableScroll>
           </div>
         </details>
-      )}
+      )}</>}] : [])]}
+        canManage={canManage}
+        covers={covers}
+        projects={projects.map((p) => ({
+          id: p.id,
+          clientId: p.clientId,
+          title: p.title,
+          clientName: p.clientName,
+          igHandle: p.igHandle,
+          guestToken: p.guestToken,
+          createdAt: p.createdAt,
+          total: p.total,
+          pending: p.pending,
+          approved: p.approved,
+          rejected: p.rejected,
+          scheduled: p.scheduled,
+        }))}
+        archived={archived.map((p) => ({
+          id: p.id,
+          clientId: p.clientId,
+          title: p.title,
+          clientName: p.clientName,
+          createdAt: p.createdAt,
+        }))}
+      />
     </div>
   );
 }

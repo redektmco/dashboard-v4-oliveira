@@ -28,7 +28,7 @@ export default async function ClientesPage() {
       summary={summary}
       users={users}
       isAdmin={Boolean(me.is_admin)}
-      me={{ name: me.name, role: me.role }}
+      me={{ id: me.id, name: me.name, role: me.role, roles: me.roles }}
     />
   );
 }

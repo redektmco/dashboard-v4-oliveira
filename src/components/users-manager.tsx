@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   adminCreateUser,
+  adminCreateJobRole,
   adminDeleteUser,
   adminGrantAccess,
   adminResetPassword,
@@ -10,6 +11,7 @@ import {
   adminSetAdmin,
   adminUpdateUser,
 } from "@/actions/auth";
+import { BUILTIN_ROLES, roleLabel, type JobRole } from "@/lib/roles";
 import type { UserFootprint } from "@/lib/repo";
 import { ActionMenu, type MenuItem } from "./action-menu";
 import { ActionForm, SubmitButton } from "./form-controls";
@@ -19,18 +21,11 @@ import { Icon } from "./icon";
 import { CardList, CardRow, Empty, Panel, TableScroll } from "./ui";
 import { PageTitle } from "./kit";
 
-const ROLE_LABEL = {
-  gt: "GT",
-  account: "Account Manager",
-  coord: "Coordenação",
-  social: "Social Media",
-} as const;
-type Role = keyof typeof ROLE_LABEL;
-
 export type UserRow = {
   id: number;
   name: string;
-  role: Role;
+  role: string;
+  roles?: string[];
   login: string | null;
   is_admin: number;
   active: number;
@@ -40,6 +35,7 @@ export type UserRow = {
 
 type Dialog =
   | { kind: "create" }
+  | { kind: "role" }
   | { kind: "edit"; u: UserRow }
   | { kind: "grant"; u: UserRow }
   | { kind: "reset"; u: UserRow }
@@ -56,9 +52,11 @@ const inputs = (f: UserFootprint) => f.perfFilled + f.checkinsFilled;
  * para quem saiu (tira o acesso na hora, preserva o histórico); excluir é
  * para cadastro errado ou quem nunca assinou um input.
  */
-export function UsersManager({ users, meId, senhaPadrao }: { users: UserRow[]; meId: number; senhaPadrao: string }) {
+export function UsersManager({ users, roles, meId, senhaPadrao }: { users: UserRow[]; roles: JobRole[]; meId: number; senhaPadrao: string }) {
   const [dialog, setDialog] = useState<Dialog>(null);
   const close = () => setDialog(null);
+
+  const labels = (u: UserRow) => [...new Set([u.role, ...(u.roles ?? [])])].map((id) => roleLabel(id, roles)).join(" · ");
 
   const comAcesso = users.filter((u) => u.login);
   const semAcesso = users.filter((u) => !u.login);
@@ -139,10 +137,12 @@ export function UsersManager({ users, meId, senhaPadrao }: { users: UserRow[]; m
           </>
         }
         aside={
-          <button className="btn" onClick={() => setDialog({ kind: "create" })}>
-            <Icon name="plus" size={16} />
-            Novo usuário
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button className="btn" onClick={() => setDialog({ kind: "role" })}>Novo cargo</button>
+            <button className="btn" onClick={() => setDialog({ kind: "create" })}>
+              <Icon name="plus" size={16} />Novo usuário
+            </button>
+          </div>
         }
       />
 
@@ -159,7 +159,7 @@ export function UsersManager({ users, meId, senhaPadrao }: { users: UserRow[]; m
                       <span className="font-semibold text-ink-100">{u.name}</span>
                       {u.id === meId && <span className="ml-2 text-[11px] text-ink-500">você</span>}
                       <div className="mt-0.5 font-mono text-[11px] text-ink-400">
-                        {u.login} · {ROLE_LABEL[u.role]}
+                        {u.login} · {labels(u)}
                       </div>
                       <div className="mt-1.5">{status(u)}</div>
                     </div>
@@ -189,7 +189,7 @@ export function UsersManager({ users, meId, senhaPadrao }: { users: UserRow[]; m
                           {u.id === meId && <span className="ml-2 text-[11px] text-ink-500">você</span>}
                         </td>
                         <td className="font-mono text-xs text-ink-300">{u.login}</td>
-                        <td className="text-ink-400">{ROLE_LABEL[u.role]}</td>
+                        <td className="text-ink-400">{labels(u)}</td>
                         <td className="tnum text-right text-ink-400">{contas(u.footprint) || "—"}</td>
                         <td>{status(u)}</td>
                         <td className="text-right">
@@ -213,7 +213,7 @@ export function UsersManager({ users, meId, senhaPadrao }: { users: UserRow[]; m
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-ink-100">{u.name}</div>
                   <div className="text-[12px] text-ink-500">
-                    {ROLE_LABEL[u.role]}
+                    {labels(u)}
                     {contas(u.footprint) ? ` · ${contas(u.footprint)} conta(s)` : ""}
                   </div>
                 </div>
@@ -228,7 +228,34 @@ export function UsersManager({ users, meId, senhaPadrao }: { users: UserRow[]; m
         </Panel>
       )}
 
+      <Panel title="Cargos" subtitle="Cada cargo usa um modelo de tela. Cargos personalizados não concedem permissões de administrador ou de Social.">
+        <ul className="flex flex-wrap gap-2 p-4">
+          {roles.map((r) => <li key={r.id} className="rounded border border-ink-700 px-3 py-2 text-sm">
+            {r.label} <span className="text-ink-500">· {roleLabel(r.preset)}</span>
+          </li>)}
+        </ul>
+      </Panel>
+
       {/* ---------- diálogos ---------- */}
+      <Modal open={dialog?.kind === "role"} onClose={close} title="Novo cargo">
+        <ActionForm action={adminCreateJobRole} onSuccess={close}>
+          <label className="block"><span className="label">Nome do cargo</span>
+            <input name="label" required maxLength={80} autoFocus className="field mt-1" />
+          </label>
+          <label className="block"><span className="label">Identificador</span>
+            <input name="id" required pattern="[a-z][a-z0-9_-]{1,47}" maxLength={48} placeholder="ex.: redator" className="field mt-1" />
+            <span className="text-xs text-ink-500">Letras minúsculas, números, _ ou -; começa por letra.</span>
+          </label>
+          <label className="block"><span className="label">Modelo de tela</span>
+            <select name="preset" required className="field mt-1" defaultValue="">
+              <option value="" disabled>Selecione um modelo</option>
+              {BUILTIN_ROLES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+            </select>
+          </label>
+          <p className="text-xs text-ink-500">O modelo organiza a tela. Permissões de Social exigem o cargo Social Media; permissões de administrador são separadas.</p>
+          <div className="modal-actions"><button type="button" className="btn" onClick={close}>Cancelar</button><SubmitButton>Criar cargo</SubmitButton></div>
+        </ActionForm>
+      </Modal>
       <Modal open={dialog?.kind === "create"} onClose={close} title="Novo usuário" description="Cria o acesso com a senha padrão da unidade.">
         <ActionForm action={adminCreateUser} onSuccess={close}>
           <label className="block">
@@ -241,7 +268,7 @@ export function UsersManager({ users, meId, senhaPadrao }: { users: UserRow[]; m
               <input name="login" className="field mt-1 font-mono text-sm" placeholder="primeiro nome" />
               <span className="mt-1 block text-[11px] text-ink-500">Em branco: usa o primeiro nome.</span>
             </label>
-            <RoleSelect />
+            <RoleSelect catalog={roles} />
           </div>
           <label className="block">
             <span className="label">Senha inicial</span>
@@ -272,7 +299,7 @@ export function UsersManager({ users, meId, senhaPadrao }: { users: UserRow[]; m
               <input name="name" required defaultValue={target.name} className="field mt-1" />
             </label>
             <div className="grid gap-3 sm:grid-cols-2">
-              <RoleSelect defaultValue={target.role} />
+              <RoleSelect catalog={roles} defaultValue={target.role} memberships={target.roles} />
               {target.login && (
                 <label className="block">
                   <span className="label">Login</span>
@@ -285,7 +312,7 @@ export function UsersManager({ users, meId, senhaPadrao }: { users: UserRow[]; m
                 </label>
               )}
             </div>
-            <p className="text-[12px] text-ink-500">O papel define em quais formulários a pessoa aparece como opção (GT, Account).</p>
+            <p className="text-[12px] text-ink-500">Os cargos definem as telas e os formulários da pessoa. O acesso de administrador é gerenciado separadamente.</p>
             <div className="modal-actions">
               <button type="button" className="btn" onClick={close}>
                 Cancelar
@@ -391,17 +418,25 @@ export function UsersManager({ users, meId, senhaPadrao }: { users: UserRow[]; m
   );
 }
 
-function RoleSelect({ defaultValue = "gt" }: { defaultValue?: Role }) {
+function RoleSelect({ catalog, defaultValue = "", memberships = [] }: { catalog: JobRole[]; defaultValue?: string; memberships?: string[] }) {
+  const [primary, setPrimary] = useState(defaultValue);
   return (
-    <label className="block">
-      <span className="label">Papel</span>
-      <select name="role" className="field mt-1" defaultValue={defaultValue}>
-        {(Object.keys(ROLE_LABEL) as Role[]).map((r) => (
-          <option key={r} value={r}>
-            {ROLE_LABEL[r]}
-          </option>
-        ))}
-      </select>
-    </label>
+    <fieldset className="block space-y-2">
+      <legend className="label">Cargos</legend>
+      <label className="block">
+        <span className="label">Cargo principal</span>
+        <select name="role" required className="field mt-1" value={primary} onChange={(e) => setPrimary(e.target.value)}>
+          <option value="" disabled>Selecione um cargo</option>
+          {catalog.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+        </select>
+      </label>
+      <span className="label">Cargos adicionais</span>
+      <div className="flex flex-wrap gap-x-4 gap-y-2">
+        {catalog.map((r) => <label key={r.id} className="flex items-center gap-2 text-xs text-ink-300">
+          <input type="checkbox" name="roles" value={r.id} defaultChecked={memberships.includes(r.id)} />{r.label}
+        </label>)}
+      </div>
+      <p className="text-xs text-ink-500">O cargo principal sempre faz parte dos cargos da pessoa.</p>
+    </fieldset>
   );
 }

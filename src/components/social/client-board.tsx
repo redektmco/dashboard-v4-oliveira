@@ -1,4 +1,5 @@
 "use client";
+import { ModularScreen, type WorkspaceModule } from "@/components/workspace/modular-screen";
 
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { Icon } from "@/components/icon";
@@ -83,11 +84,13 @@ export function ClientBoard({
   archived,
   covers,
   canManage,
+  leadingModules = [],
 }: {
   projects: ProjectCard[];
   archived: ArchivedCard[];
   covers: Record<string, string>;
   canManage: boolean;
+  leadingModules?: WorkspaceModule[];
 }) {
   const view = useSyncExternalStore(subscribeView, readView, (): BoardView => "grade");
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -161,8 +164,8 @@ export function ClientBoard({
   }
 
   return (
-    <section className="panel">
-      <header className="flex flex-col gap-3 border-b border-[var(--border-hair)] px-4 py-3.5 sm:px-5">
+    <>
+<ModularScreen screen="social" modules={[...leadingModules,{id:'filters',label:'Busca e visualização',kind:'filters',content:<><header className="flex flex-col gap-3 border-b border-[var(--border-hair)] px-4 py-3.5 sm:px-5">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 className="font-display text-[16px] font-semibold text-ink-100">Clientes</h2>
@@ -194,9 +197,8 @@ export function ClientBoard({
             />
           </div>
         )}
-      </header>
-
-      {groups.length === 0 ? (
+      </header></>},
+{id:'projects',label:'Projetos e criativos',kind:'list',content:<>{groups.length === 0 ? (
         <div className="px-5 py-10 text-center">
           <Icon name="image" size={28} className="mx-auto text-ink-600" />
           <p className="mt-2 text-sm font-semibold text-ink-200">Nenhum projeto ativo</p>
@@ -282,11 +284,9 @@ export function ClientBoard({
             </li>
           ))}
         </ul>
-      )}
-
-      {showArchived && archived.length > 0 && <ArchivedDrawer archived={archived} canManage={canManage} />}
-
-      {coverModal}
-    </section>
+      )}</>},
+{id:'archived',label:'Projetos arquivados',kind:'activity',content:<>{showArchived && archived.length > 0 && <ArchivedDrawer archived={archived} canManage={canManage} />}</>}]} />
+{coverModal}
+</>
   );
 }

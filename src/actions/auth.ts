@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   createAuthUser,
+  createJobRole,
+  listJobRoles,
   FIXED_ADMIN_LOGINS,
   grantAccess,
   listAuthUsers,
@@ -20,15 +22,19 @@ import {
 } from "@/lib/auth";
 import { deleteUser } from "@/lib/repo";
 import { logChange } from "@/lib/audit";
-import type { User } from "@/lib/model/types";
+import { BUILTIN_ROLES } from "@/lib/roles";
 import type { ActionResult } from "@/lib/action";
 
 const str = (f: FormData, k: string) => (f.get(k) as string | null)?.trim() ?? "";
 const bool = (f: FormData, k: string) => f.get(k) === "on" || f.get(k) === "1";
-const role = (f: FormData, k: string) => {
-  const v = str(f, k);
-  return (["gt", "account", "coord", "social"].includes(v) ? v : "gt") as User["role"];
-};
+async function readRoles(form: FormData) {
+  const primary = str(form, "role");
+  const memberships = form.getAll("roles");
+  const catalog = await listJobRoles();
+  if (!primary || !catalog.some((r) => r.id === primary)
+    || memberships.some((id) => typeof id !== "string" || !catalog.some((r) => r.id === id))) return null;
+  return { role: primary, roles: [...new Set([primary, ...memberships as string[]])] };
+}
 
 /* -------------------------- entrar e sair -------------------------- */
 
@@ -50,6 +56,7 @@ export async function signOut() {
 /* ----------------------- painel de usuários ------------------------ */
 
 const done = (ok: string): ActionResult => {
+  revalidatePath("/", "layout");
   revalidatePath("/config/usuarios");
   revalidatePath("/config");
   return { ok };
@@ -69,7 +76,9 @@ export async function adminCreateUser(_prev: ActionResult, formData: FormData): 
   if (!l) return { error: "Login inválido." };
   if (await loginExists(l)) return { error: `O login "${l}" já existe.` };
 
-  await createAuthUser({ name, login: l, role: role(formData, "role"), password: senha, is_admin: bool(formData, "is_admin") });
+  const selection = await readRoles(formData);
+  if (!selection) return { error: "Selecione cargos válidos e um cargo principal." };
+  await createAuthUser({ name, login: l, ...selection, password: senha, is_admin: bool(formData, "is_admin") });
   await logChange(me, "usuario", `Usuário criado: ${name}`);
   return done(`${name} criado. Login "${l}"${withPassword(senha)}`);
 }
@@ -102,6 +111,9 @@ export async function adminUpdateUser(_prev: ActionResult, formData: FormData): 
   const target = users.find((u) => u.id === id);
   if (!target) return { error: "Usuário não encontrado." };
 
+  const selection = await readRoles(formData);
+  if (!selection) return { error: "Selecione cargos válidos e um cargo principal." };
+
   const rawLogin = str(formData, "login");
   if (target.login && rawLogin) {
     const l = normalizeLogin(rawLogin);
@@ -109,11 +121,11 @@ export async function adminUpdateUser(_prev: ActionResult, formData: FormData): 
     if (l !== target.login) {
       if (FIXED_ADMIN_LOGINS.includes(target.login)) return { error: "O login dos administradores fixos não muda." };
       if (await loginExists(l)) return { error: `O login "${l}" já existe.` };
-      await updateUserProfile(id, name, role(formData, "role"), l);
+      await updateUserProfile(id, name, selection.role, l, selection.roles);
       return done("Cadastro atualizado. O novo login vale a partir do próximo acesso.");
     }
   }
-  await updateUserProfile(id, name, role(formData, "role"));
+  await updateUserProfile(id, name, selection.role, undefined, selection.roles);
   return done("Cadastro atualizado.");
 }
 
@@ -163,4 +175,18 @@ export async function adminDeleteUser(id: number): Promise<ActionResult> {
   const r = await deleteUser(id);
   if (r.error) return { error: r.error };
   return done(`${target.name} excluído.`);
+}
+
+export async function adminCreateJobRole(_prev: ActionResult, formData: FormData): Promise<ActionResult> {
+  const me = await requireAdmin();
+  const id = str(formData, "id");
+  const label = str(formData, "label");
+  const preset = str(formData, "preset");
+  if (!/^[a-z][a-z0-9_-]{1,47}$/.test(id)) return { error: "Use um identificador de 2 a 48 caracteres: letras minúsculas, números, _ ou -, começando por letra." };
+  if (!label || label.length > 80) return { error: "Informe um nome de até 80 caracteres." };
+  if (!BUILTIN_ROLES.some((r) => r.id === preset)) return { error: "Selecione um modelo de tela válido." };
+  const created = await createJobRole({ id, label, preset });
+  if (!created) return { error: "Esse identificador de cargo já existe." };
+  await logChange(me, "usuario", `Cargo criado: ${label}`);
+  return done(`Cargo ${label} criado.`);
 }

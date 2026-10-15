@@ -4,7 +4,7 @@ import "./globals.css";
 import { Suspense } from "react";
 import { AppFrame } from "@/components/app-frame";
 import { FlashFromUrl, Toaster } from "@/components/toast";
-import { getSessionUser } from "@/lib/auth";
+import { getSessionUser, listJobRoles } from "@/lib/auth";
 import { avisos } from "@/lib/repo";
 
 /* Montserrat = tipo oficial da marca (display).
@@ -50,9 +50,10 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Sem sessão a única rota alcançável é /login, que não usa a moldura do app.
   const user = await getSessionUser();
-  const perfil = user ? { name: user.name, isAdmin: Boolean(user.is_admin), role: user.role } : null;
+  const perfil = user ? { id: user.id, name: user.name, isAdmin: Boolean(user.is_admin), role: user.role, roles: user.roles } : null;
   // Os avisos do rail nunca podem derrubar a página: banco fora do ar vira
   // sino vazio, não erro de layout.
+  const jobRoles = user ? await listJobRoles().catch(() => []) : [];
   const pendencias = user ? await avisos().catch(() => []) : [];
 
   return (
@@ -62,7 +63,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     >
       <body className="flex min-h-screen">
         {user && perfil ? (
-          <AppFrame user={perfil} avisos={pendencias}>
+          <AppFrame user={perfil} avisos={pendencias} jobRoles={jobRoles}>
             {children}
           </AppFrame>
         ) : (

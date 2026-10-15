@@ -1,5 +1,7 @@
 "use client";
 
+import { hasRole } from "@/lib/roles";
+
 import { useOptimistic, useState, useTransition } from "react";
 import { bulkAssignOwner, setRelationshipStage } from "@/actions/crm";
 import type { ActionResult } from "@/lib/action";
@@ -68,14 +70,14 @@ export function CrmKanban({
 
   const draggable = DRAGGABLE[groupBy];
   const role = groupBy === "account" ? "account" : "gt";
-  const people = groupBy === "account" || groupBy === "gt" ? users.filter((u) => u.role === role).map((u) => u.name) : [];
+  const people = groupBy === "account" || groupBy === "gt" ? users.filter((u) => hasRole(u, role)).map((u) => u.name) : [];
   const lanes = lanesFor(groupBy, board, people);
 
   const save = (row: CrmRow, lane: string): Promise<ActionResult> => {
     if (groupBy === "etapa") return setRelationshipStage(row.id, lane as Stage);
     const field = groupBy === "account" ? "account_user_id" : "gt_user_id";
     if (lane === NONE) return bulkAssignOwner([row.id], field, null);
-    const user = users.find((u) => u.role === role && u.name === lane);
+    const user = users.find((u) => hasRole(u, role) && u.name === lane);
     if (!user) return Promise.resolve({ error: `${lane} não está mais cadastrado como ${GROUP_LABEL[groupBy]}.` });
     return bulkAssignOwner([row.id], field, user.id);
   };
