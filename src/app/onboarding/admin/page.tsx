@@ -1,14 +1,9 @@
+import { listJobRoles } from "@/lib/auth";
 import { adminStats, teamProgress } from "@/lib/onboarding/db";
 import { pct } from "@/lib/onboarding/types";
+import { roleLabel } from "@/lib/roles";
 import { Empty, Panel, Stat, TableScroll, dateBR } from "@/components/ui";
 import { ProgressBar } from "@/components/onboarding/progress";
-
-const ROLE_LABEL: Record<string, string> = {
-  gt: "GT",
-  account: "Account",
-  coord: "Coordenação",
-  social: "Social Media",
-};
 
 function statusLabel(done: number, total: number) {
   if (total === 0) return { label: "—", cls: "text-ink-500" };
@@ -18,7 +13,7 @@ function statusLabel(done: number, total: number) {
 }
 
 export default async function AdminOverview() {
-  const [stats, team] = await Promise.all([adminStats(), teamProgress()]);
+  const [stats, team, catalog] = await Promise.all([adminStats(), teamProgress(), listJobRoles()]);
 
   const started = team.filter((t) => t.done > 0);
   const completed = team.filter((t) => t.total > 0 && t.done >= t.total);
@@ -65,7 +60,9 @@ export default async function AdminOverview() {
                   return (
                     <tr key={t.userId}>
                       <td className="font-semibold text-ink-100">{t.name}</td>
-                      <td className="text-ink-400">{ROLE_LABEL[t.role] ?? t.role}</td>
+                      <td className="text-ink-400">
+                        {[...new Set([t.role, ...t.roles])].map((id) => roleLabel(id, catalog)).join(" · ")}
+                      </td>
                       <td>
                         <div className="flex items-center gap-2">
                           <div className="w-28">

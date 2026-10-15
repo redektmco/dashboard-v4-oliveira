@@ -124,6 +124,8 @@ export async function deleteUser(id: number): Promise<{ error?: string }> {
     ["UPDATE clients SET account_user_id = NULL WHERE account_user_id = ?", [id]],
     ["UPDATE sm_projects SET created_by = NULL WHERE created_by = ?", [id]],
     ["UPDATE crm_integrations SET created_by = NULL WHERE created_by = ?", [id]],
+    // As telas montadas pela pessoa (workspaceStorageKey) não servem a mais ninguém.
+    ["DELETE FROM settings WHERE key LIKE ?", [`workspace:v1:user:${id}:screen:%`]],
     ["DELETE FROM users WHERE id = ?", [id]],
   ]);
   return {};
@@ -1495,17 +1497,22 @@ export async function importClients(rows: SheetClient[]): Promise<ImportSummary>
   ]);
   const byKey = new Map(existing.map((c) => [clientKey(c.name), c]));
   const people = new Map<string, number>();
-  for (const u of users) {
-    const k = `${u.role}:${personKey(u.name)}`;
+  const index = (u: User, role: string) => {
+    const k = `${role}:${personKey(u.name)}`;
     if (!people.has(k)) people.set(k, u.id);
-  }
+  };
+  // A pessoa vale por qualquer cargo que tenha (a coordenadora que também é
+  // GT não vira um homônimo novo). O cargo principal entra antes: entre dois
+  // "Bruno", o GT de cargo principal ganha de quem só acumula GT.
+  for (const u of users) index(u, u.role);
+  for (const u of users) for (const role of u.roles ?? []) index(u, role);
 
   const person = async (name: string | null, role: "gt" | "account") => {
     if (!name) return null;
     const k = `${role}:${personKey(name)}`;
     let id = people.get(k);
     if (id === undefined) {
-      id = await insert(`INSERT INTO users (name, role) VALUES (?, ?) RETURNING id`, [name, role]);
+      id = await insert(`INSERT INTO users (name, role, roles) VALUES (?, ?, ?) RETURNING id`, [name, role, [role]]);
       people.set(k, id);
       summary.people.push(`${name} (${role === "gt" ? "GT" : "Account"})`);
     }

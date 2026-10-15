@@ -92,14 +92,16 @@ export async function wipe() {
 
 /**
  * Escolhe quem responde pelos clientes de exemplo, entre quem já existe:
- * primeiro alguém com o papel, depois qualquer um com acesso ao painel.
+ * primeiro alguém com o papel (como principal ou adicional; o principal
+ * ganha), depois qualquer um com acesso ao painel.
  * Devolve `null` se a base ainda estiver vazia — o cadastro fica pendente e
  * o /config mostra isso.
  */
 async function pickUser(role: "gt" | "account"): Promise<number | null> {
-  const byRole = await all<{ id: number }>("SELECT id FROM users WHERE role = ? ORDER BY id LIMIT 1", [
-    role,
-  ]);
+  const byRole = await all<{ id: number }>(
+    "SELECT id FROM users WHERE role = ? OR ? = ANY(roles) ORDER BY (role = ?) DESC, id LIMIT 1",
+    [role, role, role],
+  );
   if (byRole.length) return Number(byRole[0].id);
   const withLogin = await all<{ id: number }>(
     "SELECT id FROM users WHERE login IS NOT NULL AND active = 1 ORDER BY id LIMIT 1",
