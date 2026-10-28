@@ -221,9 +221,9 @@ export type ChannelNums = {
   purchases: number;
   revenue: number;
   /**
-   * Verba só das campanhas que geraram lead (ou conversa, pela métrica da
-   * conta) — a base do CPL, como no score. Campanha de alcance ou de visita
-   * ao Instagram não entra.
+   * Base do CPL, como no score. Meta: verba só das campanhas que geraram
+   * lead (ou conversa, pela métrica da conta) — alcance ou visita ao
+   * Instagram não entra. Google: a verba toda, como no Google Ads.
    */
   leadSpend: number;
 };

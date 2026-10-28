@@ -364,7 +364,7 @@ function PerformanceView({ data, clientName, mobile, clientId, query }: { data: 
       <p className="text-[11px] text-ink-500">
         Lido direto das APIs da Meta e do Google às{" "}
         {new Date(data.fetchedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}. Cliques = todos os cliques;
-        {data.accountType === "lead_gen" && " leads = formulário, contato no site e conversas, conforme a regra de cada conta; CPL usa só a verba das campanhas que geraram lead;"}{" "}
+        {data.accountType === "lead_gen" && " leads = formulário, contato no site e conversas, conforme a regra de cada conta; CPL usa a verba das campanhas que geraram lead na Meta e a verba toda no Google (como no Google Ads);"}{" "}
         variação contra {ddmm(data.previous.since)}–{ddmm(data.previous.until)}.
       </p>
     </>
@@ -380,6 +380,12 @@ type Kpi = {
   change?: { pct: number | null; good: "up" | "down" | "neutral" };
   detail: string;
 };
+
+/** De onde sai a verba do CPL: só as campanhas de lead (Meta) ou a verba toda (Google). */
+function cplBase(t: Totals) {
+  const base = brl0(t.resultSpend || t.spend);
+  return base === brl0(t.spend) ? `sobre a verba toda (${base})` : `sobre ${base} das campanhas de lead`;
+}
 
 function kpisFor(type: AccountType, t: Totals, p: Totals | null, perChannel: { c: Channel; t: Totals }[]): Kpi[] {
   const by = (f: (x: Totals) => number | null, fmt: (n: number | null) => string) =>
@@ -407,7 +413,7 @@ function kpisFor(type: AccountType, t: Totals, p: Totals | null, perChannel: { c
     ];
   return [
     { label: "Leads", value: int(t.results), change: { pct: delta(t.results, p?.results), good: "up" }, detail: p ? vs(p.results, int) : `${int(t.leads)} de site/formulário · ${int(t.conversations)} conversas` },
-    { label: "CPL", value: money(cpr(t)), change: { pct: delta(cpr(t), p ? cpr(p) : null), good: "down" }, detail: by(cpr, money) || `sobre ${brl0(t.resultSpend || t.spend)} das campanhas de lead` },
+    { label: "CPL", value: money(cpr(t)), change: { pct: delta(cpr(t), p ? cpr(p) : null), good: "down" }, detail: by(cpr, money) || cplBase(t) },
     ctrK,
     { label: "Taxa de conversão", value: pct(convRate(t)), change: { pct: delta(convRate(t), p ? convRate(p) : null), good: "up" }, detail: `${compact(t.impressions)} impressões · CPM ${money(cpm(t))}` },
   ];

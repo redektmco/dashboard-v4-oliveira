@@ -139,8 +139,13 @@ mesma regra, em `src/lib/meta/metrics.ts`:
 - **Conversões** = a coluna "Conversões" do Google Ads (ações de conversão *principais*); vira lead
   na geração de leads e compra no e-commerce. Fracionária (atribuição por dados) com 1 casa, igual
   em toda leitura.
-- Toda leitura é **por campanha**: a base do CPL é só a verba das campanhas que converteram
-  (`google_insights.lead_spend`) — display de marca sem conversão fica fora, como no Meta.
+- **CPL** = verba toda do Google ÷ conversões, igual ao "Custo por lead bruto" do Google Ads — campanha
+  que gastou sem converter também pesa (na aba Performance, nos relatórios e no score). Na Meta segue
+  só a verba das campanhas de lead.
+- **Leads brutos** (card "Funil de lead" do Google Ads) somam as ações das categorias de lead
+  (formulário, contato, ligação, agendamento, orçamento, cadastro); o painel conta só "Conversões".
+  Se os dois diferem, confira em *Ver conversões* se a ação de lead está como secundária e marque
+  como principal no Google Ads.
 - **Vigia:** campanha com verba, "Conversões" zero e "Todas as conversões" acima de zero (ação de lead
   marcada como *secundária* no Google Ads) fica em `google_ad_accounts.unread_events` e aparece como
   alerta na conta e na ficha, com *Ver conversões* (`/api/google/eventos?cliente=<id>`: por campanha,
@@ -342,7 +347,7 @@ próprio painel, e entrega ao cliente por link, em tela cheia ou em PDF.
   no período exato do relatório (trechos de 7 dias a partir do início, mais o período anterior para
   comparar), com os mesmos critérios do score e da aba Performance: lead de site = formulário ou
   contato (o maior dos dois por campanha), conversa pela métrica da conta, e o CPL usa só a verba das
-  campanhas que geraram lead. A leitura fica gravada no relatório (`rp_reports.live`) e é ela que o
+  campanhas que geraram lead na Meta e a verba toda no Google. A leitura fica gravada no relatório (`rp_reports.live`) e é ela que o
   link público mostra. O editor sincroniza sozinho ao abrir quando a última leitura tem mais de 1 hora
   e quando o cliente ou o período mudam. Sem sincronizar (ou sem conta vinculada), valem as
   semanas-ritual do banco (`meta_insights`, `google_insights`). No total (Meta + Google), Lead segue

@@ -1440,9 +1440,10 @@ export async function googleWeeks(clientId?: number): Promise<Map<number, Map<st
     cur.week.impressions += Number(r.impressions);
     cur.week.clicks += Number(r.clicks);
     cur.leads += conv;
-    // Verba das campanhas que converteram (sync por campanha). Semana gravada
-    // antes disso não tem a coluna: aí a verba toda da semana é a base.
-    if (conv > 0) cur.leadSpend += Number(r.lead_spend) > 0 ? Number(r.lead_spend) : spend;
+    // CPL do Google sobre a verba toda, como o "Custo por lead bruto" do Google
+    // Ads (a coluna lead_spend de semanas antigas guardava só as campanhas que
+    // converteram e fica de lado).
+    cur.leadSpend += spend;
     byWeek.set(r.ref_date, cur);
   }
   return out;
