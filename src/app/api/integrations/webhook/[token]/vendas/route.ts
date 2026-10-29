@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getIntegrationByToken, persistScore, recordSale, scoreFor, today } from "@/lib/repo";
+import { getIntegrationByToken, persistScore, scoreFor, today } from "@/lib/repo";
+import { recordSaleReceipt } from "@/lib/crm/sale-receipt";
 import { ritualWeekEnd } from "@/lib/week";
 import { readBody, saleDedup, saleValue } from "@/lib/crm/webhook";
 
@@ -32,12 +33,16 @@ export async function POST(req: Request, { params }: Ctx) {
   }
 
   const refDate = ritualWeekEnd(today());
-  const counted = await recordSale(integration.client_id, refDate, saleDedup(bag), value, bag);
+  const receipt = await recordSaleReceipt(integration.client_id, refDate, saleDedup(bag), value, bag);
 
   const r = await scoreFor(integration.client_id);
   if (r) await persistScore(integration.client_id, today(), r);
 
-  return NextResponse.json({ ok: true, counted, value, ref_date: refDate });
+  return NextResponse.json({
+    ok: true, counted: receipt.counted, value: receipt.value, ref_date: receipt.refDate,
+    received_at: receipt.receivedAt, received_date: receipt.receivedDate,
+    reference_week_end: receipt.refDate,
+  });
 }
 
 /** Validação de URL que alguns CRMs fazem antes de ativar — responde sem contar. */
