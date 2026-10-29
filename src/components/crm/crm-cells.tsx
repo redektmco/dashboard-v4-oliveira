@@ -3,6 +3,7 @@
 import { agoLabel, type CrmRow } from "@/lib/crm/board";
 import { INTERACTION_LABEL } from "@/lib/crm/interactions";
 import type { ColumnId } from "@/lib/crm/columns";
+import { STATUS_LABEL } from "@/lib/client-lifecycle";
 import { STAGE_LABEL } from "@/lib/model/types";
 import { BAND_STYLE, brl } from "../ui";
 import { Icon } from "../icon";
@@ -212,7 +213,7 @@ export function ClientCell({ row }: { row: CrmRow }) {
             </span>
           )}
           {!row.active && (
-            <span className="shrink-0 rounded-full bg-ink-800 px-1.5 py-px text-[10px] font-semibold text-ink-400">Arquivado</span>
+            <span className="shrink-0 rounded-full bg-ink-800 px-1.5 py-px text-[10px] font-semibold text-ink-400">{STATUS_LABEL[row.lifecycleStatus ?? "legacy_inactive"]}</span>
           )}
         </span>
         <span className="truncate text-[12px] text-ink-500">{people || row.typeLabel}</span>

@@ -94,6 +94,7 @@ export type ChannelData = {
 };
 
 export type PerformanceData = {
+  notApplicableReason?: string;
   since: string;
   until: string;
   previous: { since: string; until: string };

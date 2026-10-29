@@ -1,4 +1,5 @@
 import { DIMENSIONS, fieldsFor } from "./catalog";
+import { applicableField } from "./services";
 import type {
   AccountType,
   Band,
@@ -136,6 +137,7 @@ export type ScoreInput = {
   accountType: AccountType;
   today: string; // YYYY-MM-DD
   renewalDate: string | null;
+  services?: string[];
   performance: {
     ref_date: string;
     filled_at: string;
@@ -292,7 +294,7 @@ function performanceScoreOf(
   snap: { ref_date: string; data: Record<string, unknown> },
   input: ScoreInput,
 ): number | null {
-  const fields = fieldsFor(accountType, "gt").filter((f) => f.dimension === "performance");
+  const fields = fieldsFor(accountType, "gt").filter((f) => f.dimension === "performance" && applicableField(f.key, input.services));
   const items = fields.map((f) => {
     const r = evalField(f, {
       ...input,
@@ -320,7 +322,7 @@ function periodOf(f: FieldDef, input: ScoreInput): string | undefined {
 export function computeScore(input: ScoreInput): ScoreResult {
   const cfg = input.config ?? DEFAULT_CONFIG;
   const weights = input.weights ?? {};
-  const fields = fieldsFor(input.accountType);
+  const fields = fieldsFor(input.accountType).filter((f) => applicableField(f.key, input.services));
 
   // 1) Normaliza cada campo.
   const results: FieldResult[] = fields.map((f) => {
@@ -395,7 +397,7 @@ export function computeScore(input: ScoreInput): ScoreResult {
     });
   }
   const perf = input.performance?.data;
-  if (perf && ruleBool(perf["tracking_ok"]) === 0) {
+  if (perf && applicableField("tracking_ok", input.services) && ruleBool(perf["tracking_ok"]) === 0) {
     overrides.push({
       trigger: "Tracking quebrado",
       effect: "teto_amarelo",

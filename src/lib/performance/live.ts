@@ -7,6 +7,7 @@
 import { getClient, getTargets, listGoogleLinks, listMetaLinks } from "../repo";
 import { metaConfigured } from "../meta/graph";
 import { googleAdsConfigured } from "../google/ads";
+import { hasMediaService, serviceScope } from "../model/services";
 import type { FichaPeriod } from "../ficha-period";
 import { googlePerformance } from "./google-live";
 import { metaPerformance } from "./meta-live";
@@ -71,8 +72,8 @@ export async function performanceFor(clientId: number, period: FichaPeriod): Pro
   const cur = { since: period.since, until: period.until };
   const prev = period.previous;
 
-  const meta = metaLinks.filter((l) => l.client_id === clientId && l.active === 1);
-  const google = googleLinks.filter((l) => l.client_id === clientId && l.active === 1);
+  const meta = metaLinks.filter((l) => l.client_id === clientId && l.active === 1 && hasMediaService(client.services, "meta") !== false);
+  const google = googleLinks.filter((l) => l.client_id === clientId && l.active === 1 && hasMediaService(client.services, "google") !== false);
 
   const [metaResults, googleResults] = await Promise.all([
     Promise.all(
@@ -100,6 +101,7 @@ export async function performanceFor(clientId: number, period: FichaPeriod): Pro
   ]);
 
   return {
+    ...(serviceScope(client.services).media === false ? { notApplicableReason: "Mídia paga não faz parte dos serviços cadastrados. Entregas, relacionamento e histórico continuam disponíveis na ficha." } : {}),
     since: cur.since,
     until: cur.until,
     previous: prev,

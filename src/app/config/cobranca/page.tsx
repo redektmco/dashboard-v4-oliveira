@@ -1,3 +1,4 @@
+import { recurringMrr } from "@/lib/client-lifecycle";
 import { requireAdmin } from "@/lib/auth";
 import { listCharges, listClientContacts, listDispatchLog } from "@/lib/billing/db";
 import { isEmailConfigured } from "@/lib/billing/email";
@@ -16,7 +17,7 @@ export default async function CobrancaPage() {
       clients={clients.map((c) => ({
         id: c.id,
         name: c.name,
-        mrr: c.mrr,
+        mrr: recurringMrr(c),
         renewalDate: c.renewal_date,
         billingEmail: contactOf.get(c.id)?.billingEmail ?? null,
         billingPhone: contactOf.get(c.id)?.billingPhone ?? null,

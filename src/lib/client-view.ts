@@ -1,3 +1,4 @@
+import { serviceScope } from "./model/services";
 import { DIMENSIONS, fieldByKey, fieldsFor } from "./model/catalog";
 import { bandOf, daysBetween, type ScoreConfig, type WeightMap } from "./model/scoring";
 import type { Band, DimensionKey, ScoreResult } from "./model/types";
@@ -160,13 +161,13 @@ export function nextActions(input: {
     });
   }
 
-  if (!input.hasTargets)
+  if (!input.hasTargets && (serviceScope(client.services).media !== false || serviceScope(client.services).crm !== false))
     out.push({
       id: "metas",
       title: "Definir o forecast da conta",
       status: "Pendente",
       owner: firstName(client.gt_name),
-      due: "Sem forecast, sem score",
+      due: "Resultado sem régua definida",
       kind: "metas",
       href: `/gt?c=${client.id}`,
       quick: "Definir",
@@ -208,7 +209,7 @@ export type DimView = {
 export function dimensionViews(s: ScoreResult, series: SeriesPoint[], config: ScoreConfig, accountType: ClientRow["account_type"], at: string): DimView[] {
   const ref = addDays(at, -7);
   const past = [...series].reverse().find((p) => p.day <= ref);
-  return s.dimensions.map((d) => {
+  return s.dimensions.filter((d) => d.fields.length > 0).map((d) => {
     const prev = past?.dims[d.key];
     const score = d.score;
     return {
@@ -217,7 +218,7 @@ export function dimensionViews(s: ScoreResult, series: SeriesPoint[], config: Sc
       short: DIM_SHORT[d.key],
       score,
       band: score === null ? null : bandOf(score, config),
-      indicators: fieldsFor(accountType).filter((f) => f.dimension === d.key).length,
+      indicators: d.fields.length,
       delta: score !== null && prev != null ? Math.round(score - Number(prev)) : null,
       weight: d.weight,
       loss: score === null ? 0 : (d.effectiveWeight / 100) * (100 - score),
@@ -252,8 +253,8 @@ export function accountStatus(s: ScoreResult, dims: DimView[], config: ScoreConf
     else if (o.trigger === "Tracking quebrado") issues.push("tracking quebrado");
   }
   const pAge = s.provenance.performance.ageDays;
-  if (pAge === null) issues.push("performance nunca preenchida");
-  else if (pAge > config.perfMaxAgeDays) issues.push(`campos importantes sem atualização há ${pAge} dias`);
+  if (perf && pAge === null) issues.push("performance nunca preenchida");
+  else if (perf && pAge !== null && pAge > config.perfMaxAgeDays) issues.push(`campos importantes sem atualização há ${pAge} dias`);
   const cAge = s.provenance.checkin.ageDays;
   if (cAge === null) issues.push("nenhum check-in registrado");
   else if (cAge > config.checkinMaxAgeDays) issues.push(`check-in atrasado há ${cAge - config.checkinMaxAgeDays} dias`);

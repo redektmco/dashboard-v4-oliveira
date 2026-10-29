@@ -11,16 +11,19 @@ import type { Stage } from "../model/types";
 
 /* ------------------------------ abas ------------------------------ */
 
-export type View = "todos" | "saudaveis" | "atencao" | "risco" | "churn" | "pendencias" | "arquivados";
+export type View = "todos" | "saudaveis" | "atencao" | "risco" | "churn" | "pendencias" | "arquivados" | "paused" | "closed" | "pending";
 
 export const VIEWS: { id: View; label: string }[] = [
-  { id: "todos", label: "Todos" },
+  { id: "todos", label: "Ativos" },
   { id: "saudaveis", label: "Saudáveis" },
   { id: "atencao", label: "Em atenção" },
   { id: "risco", label: "Em risco" },
   { id: "churn", label: "Churn solicitado" },
   { id: "pendencias", label: "Com pendências" },
-  { id: "arquivados", label: "Arquivados" },
+  { id: "paused", label: "Pausados" },
+  { id: "pending", label: "Aguardando início" },
+  { id: "closed", label: "Encerrados" },
+  { id: "arquivados", label: "Fora da carteira" },
 ];
 
 const VIEW_TEST: Record<View, (r: CrmRow) => boolean> = {
@@ -31,6 +34,9 @@ const VIEW_TEST: Record<View, (r: CrmRow) => boolean> = {
   churn: (r) => r.active && r.churn !== null,
   pendencias: (r) => r.active && r.pendencias.length > 0,
   arquivados: (r) => !r.active,
+  paused: (r) => r.lifecycleStatus === "paused",
+  closed: (r) => r.lifecycleStatus === "closed",
+  pending: (r) => r.lifecycleStatus === "pending",
 };
 
 export const inView = (r: CrmRow, v: View) => VIEW_TEST[v](r);

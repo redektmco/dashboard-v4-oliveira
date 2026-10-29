@@ -87,18 +87,28 @@ async function act(p: Promise<{ ok?: string; error?: string } | null>) {
 /* ------------------------------------------------------------------ */
 
 export function PlaybookSection({ data, variant }: { data: PlaybookData; variant: "desktop" | "mobile" }) {
-  const ref = useRef<HTMLElement>(null);
+  const ref = useRef<HTMLDetailsElement>(null);
   // O atalho "Ver playbook" da carteira aponta para #playbook; no celular a
   // seção visível é a segunda cópia, então ela mesma rola até aparecer.
   useEffect(() => {
-    if (window.location.hash === "#playbook" && ref.current?.offsetParent) ref.current.scrollIntoView();
+    const openFromHash = () => {
+      if (window.location.hash === "#playbook" && ref.current?.offsetParent) { ref.current.open = true; ref.current.scrollIntoView(); }
+    };
+    openFromHash();
+    window.addEventListener("hashchange", openFromHash);
+    return () => window.removeEventListener("hashchange", openFromHash);
   }, []);
 
   const { episode, flag } = data;
   const late = data.steps.filter((s) => s.status === "pendente" && s.due_at && s.due_at < data.now).length;
 
   return (
-    <section ref={ref} id={variant === "desktop" ? "playbook" : undefined} className="flex scroll-mt-20 flex-col gap-4">
+    <details ref={ref} id={variant === "desktop" ? "playbook" : undefined} className="group scroll-mt-20 rounded-xl border border-[var(--border-hair)]">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-[14px] font-semibold text-ink-100">
+        <span>Playbook{flag ? ` · ${flag.name}` : " da conta"}<span className="ml-2 text-[12px] font-normal text-ink-400">{data.steps.filter((s) => s.status === "pendente").length} pendentes{late ? ` · ${late} atrasados` : ""}</span></span>
+        <Icon name="chevronDown" size={16} className="shrink-0 transition-transform group-open:rotate-180" />
+      </summary>
+      <section className="flex flex-col gap-4 border-t border-[var(--border-hair)] p-4">
       {variant === "desktop" ? (
         <SectionHead
           title={episode && flag ? `Playbook · ${flag.name}` : "Playbook da flag"}
@@ -137,7 +147,8 @@ export function PlaybookSection({ data, variant }: { data: PlaybookData; variant
       )}
 
       <AttentionBlock data={data} />
-    </section>
+      </section>
+    </details>
   );
 }
 

@@ -62,7 +62,27 @@ export function splitServices(list: string[]): { known: Service[]; custom: strin
 
 /** O cliente contrata esse canal de mídia? Sem serviço cadastrado, não dá para afirmar que não. */
 export function hasMediaService(services: string[], channel: "meta" | "google"): boolean | null {
-  const { known } = splitServices(services);
+  const { known, custom } = splitServices(services);
   if (!known.length) return null;
-  return known.some((s) => MEDIA_SERVICE[s] === channel);
+  if (known.some((s) => MEDIA_SERVICE[s] === channel)) return true;
+  return custom.length ? null : false;
+}
+
+/** Só exclui indicadores quando o escopo conhecido comprova que não se aplicam. */
+export function serviceScope(services: string[] = []) {
+  const { known, custom } = splitServices(services);
+  const classified = known.length > 0 && custom.length === 0;
+  return {
+    media: classified ? known.some((s) => MEDIA_SERVICE[s]) : null,
+    crm: classified ? known.includes("Gestão de CRM") : null,
+    classified,
+  };
+}
+
+export function applicableField(key: string, services?: string[]): boolean {
+  const scope = serviceScope(services);
+  if (!scope.classified) return true;
+  if (["budget", "cpl", "roas", "roi", "tracking_ok", "campaign_status"].includes(key)) return scope.media !== false;
+  if (["leads", "mql", "q4_lead_quality", "revenue", "ticket"].includes(key)) return scope.media !== false || scope.crm !== false;
+  return true;
 }

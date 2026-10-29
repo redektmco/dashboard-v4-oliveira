@@ -68,6 +68,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="flex min-h-screen">
         {user && perfil ? (
           <AppFrame user={perfil} avisos={pendencias} jobRoles={jobRoles} savedLayouts={savedLayouts}>
+            {process.env.DATABASE_URL?.startsWith("pglite:") && <div className="mb-4 rounded-lg border border-amarelo-fg/30 bg-amarelo-dim px-4 py-2 text-[12px] text-amarelo-fg" role="note">Ambiente local de teste — dados de demonstração não representam a carteira real.</div>}
             {children}
           </AppFrame>
         ) : (

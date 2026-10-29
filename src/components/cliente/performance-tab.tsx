@@ -172,14 +172,14 @@ function PerformanceView({ data, clientName, mobile, clientId, query }: { data: 
     return (
       <Card className="flex flex-col items-center gap-2 px-5 py-10 text-center">
         <Icon name="plug" size={20} className="text-ink-500" />
-        <p className="text-[14px] font-medium text-ink-100">Nenhuma conta de mídia vinculada</p>
+        <p className="text-[14px] font-medium text-ink-100">{data.notApplicableReason ? "Performance de mídia não se aplica" : "Nenhuma conta de mídia vinculada"}</p>
         <p className="max-w-[440px] text-[13px] text-ink-400">
-          Vincule a conta do Meta Ads ou do Google Ads deste cliente para ver investimento, resultados e campanhas aqui.
+          {data.notApplicableReason ?? "Vincule a conta do Meta Ads ou do Google Ads deste cliente para ver investimento, resultados e campanhas aqui."}
         </p>
-        <Link href={`/gt?c=${clientId}`} className="btn mt-2 h-8">
+        {!data.notApplicableReason && <Link href={`/gt?c=${clientId}`} className="btn mt-2 h-8">
           <Icon name="plug" size={14} />
           Vincular em Performance › Metas
-        </Link>
+        </Link>}
       </Card>
     );
 

@@ -1,3 +1,6 @@
+import { clientStatus, currentMrr, isCurrentClient, type ClientStatus, type RevenueModel } from "../client-lifecycle";
+import { applicableField } from "../model/services";
+import { fieldsFor } from "../model/catalog";
 import { all } from "../db";
 import {
   getConfig,
@@ -48,6 +51,8 @@ export type CrmRow = {
   id: number;
   name: string;
   active: boolean;
+  lifecycleStatus?: ClientStatus | "legacy_inactive";
+  revenueModel?: RevenueModel | null;
   accountType: AccountType;
   typeLabel: string;
   /** Segmento/nicho da conta — `clients.niche`. */
@@ -238,7 +243,7 @@ export async function crmBoard({ baseUrl, at = today() }: { baseUrl: string; at?
     const clientPlans = plansBy.get(client.id) ?? [];
     const latePlans = clientPlans.filter((x) => x.due_date && x.due_date < at).length;
     const lateStepN = lateBy.get(client.id) ?? 0;
-    const fields = targetFields(client.account_type);
+    const fields = targetFields(client.account_type).filter((f) => fieldsFor(client.account_type).some((d) => d.targetKey === f.key && applicableField(d.key, client.services)));
     const targets = snap.targets.get(client.id) ?? {};
     const hasTargets = fields.some((f) => targets[f.key] !== undefined);
     const inter = interactionBy.get(client.id) ?? null;
@@ -258,7 +263,7 @@ export async function crmBoard({ baseUrl, at = today() }: { baseUrl: string; at?
         severity: "atencao",
       });
 
-    const next = client.active
+    const next = isCurrentClient(client)
       ? nextActions({
           client,
           at,
@@ -272,7 +277,9 @@ export async function crmBoard({ baseUrl, at = today() }: { baseUrl: string; at?
     return {
       id: client.id,
       name: client.name,
-      active: Boolean(client.active),
+      active: isCurrentClient(client),
+      lifecycleStatus: clientStatus(client),
+      revenueModel: client.revenue_model,
       accountType: client.account_type,
       typeLabel: ACCOUNT_TYPE_LABEL[client.account_type],
       segment: client.niche,
@@ -294,7 +301,7 @@ export async function crmBoard({ baseUrl, at = today() }: { baseUrl: string; at?
       }),
       stageManual: Boolean(client.stage_override),
 
-      mrr: Number(client.mrr),
+      mrr: currentMrr(client),
       since: client.contract_start ?? client.created_at.slice(0, 10),
       renewalDate: client.renewal_date,
       renewalIn: client.renewal_date ? daysBetween(at, client.renewal_date) : null,
@@ -317,7 +324,7 @@ export async function crmBoard({ baseUrl, at = today() }: { baseUrl: string; at?
       meta: metaBy.get(client.id) ?? [],
       google: googleBy.get(client.id) ?? [],
 
-      forecast: forecastLines(client.account_type, targets, p?.score ?? null),
+      forecast: forecastLines(client.account_type, targets, p?.score ?? null, client.services),
       sources: clientSources({
         clientId: client.id,
         meta: snap.metaLinks.filter((l) => l.client_id === client.id),
@@ -328,8 +335,8 @@ export async function crmBoard({ baseUrl, at = today() }: { baseUrl: string; at?
   };
 
   // Ativos primeiro, ordenados por risco (igual à Carteira); arquivados ao fim.
-  const ativos = allClients.filter((c) => c.active);
-  const arquivados = allClients.filter((c) => !c.active);
+  const ativos = allClients.filter(isCurrentClient);
+  const arquivados = allClients.filter((c) => !isCurrentClient(c));
   const byRisk = (a: ClientRow, b: ClientRow) => {
     const pa = scored.get(a.id);
     const pb = scored.get(b.id);

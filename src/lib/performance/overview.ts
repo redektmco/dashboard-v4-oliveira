@@ -19,7 +19,8 @@ export function overviewMetrics(data: PerformanceData | null, crm: CrmPeriodTota
   // Uma parte ausente não pode parecer o total da conta nem baratear os custos.
   const complete = linked.length > 0 && failed.length === 0;
   const media = complete ? sumTotals(linked.map((c) => c.totals)) : null;
-  const campaignLeads = media?.leadResults ?? null;
+  // Conversões agregadas do Google em e-commerce/branding não comprovam leads.
+  const campaignLeads = data?.accountType === "lead_gen" ? media?.leadResults ?? null : null;
   const leads = source === "webhook" ? crm.leads : source === "campaign" ? campaignLeads
     : campaignLeads !== null && crm.leads !== null ? campaignLeads + crm.leads : null;
   const spend = media?.spend ?? null;
