@@ -67,6 +67,9 @@ import {
 } from "@/components/cliente/client-ui";
 import { EvolutionSection, type ChartEvent } from "@/components/cliente/evolution";
 import { PeriodPicker } from "@/components/cliente/period-picker";
+import { crmPeriodTotals } from "@/lib/crm/period-totals";
+import { OverviewMetrics } from "@/components/cliente/overview-metrics";
+import { PerformanceProvider } from "@/components/cliente/performance-data";
 import { PerformanceTab } from "@/components/cliente/performance-tab";
 import { parsePeriod, periodQuery } from "@/lib/ficha-period";
 import { brl, TableScroll } from "@/components/ui";
@@ -130,7 +133,7 @@ export default async function ClientePage({
 
   const at = today();
   // Período da ficha (filtro do topo): vale para Performance, Saúde, Metas,
-  // Atividades e Histórico. A Visão geral segue o score de hoje.
+  // Atividades, Histórico e os resultados da Visão geral. O score segue o de hoje.
   const period = parsePeriod(sp, at);
   const inPeriod = (day: string) => day >= period.since && day <= period.until;
   const [client, s, series, perf, checkins, plans, targets, users, targetHist, audit, config, churns] = await Promise.all([
@@ -191,11 +194,12 @@ export default async function ClientePage({
   // `configSnapshot` é a mesma fonte que Configurações usa — aqui só
   // filtramos as pendências deste cliente, para a ficha não inventar uma
   // régua paralela. Origem dos leads no período exato do filtro.
-  const [fontes, origens, webhook, cfg] = await Promise.all([
+  const [fontes, origens, webhook, cfg, crmTotals] = await Promise.all([
     listLeadSources(clientId),
     leadsByOrigin(clientId, period.since, period.until),
     getIntegration(clientId),
     configSnapshot(),
+    crmPeriodTotals(clientId, period.since, period.until),
   ]);
   const leadsNoPeriodo = origens.reduce((acc, o) => acc + o.n, 0);
 
@@ -390,6 +394,7 @@ export default async function ClientePage({
   ];
 
   return (
+    <PerformanceProvider clientId={clientId} query={pq} revision={Date.parse(nowIso)}>
     <ClientUI data={uiData} history={history} startWithNewPlan={plano === "novo"}>
       {/* Cabeçalho único (desktop e celular). O Churn abre a solicitação já
           com a conta — ou a que está em andamento, para não duplicar. */}
@@ -424,6 +429,7 @@ export default async function ClientePage({
       <div className="hidden flex-col pb-6 lg:flex">
         <FichaTabs tabs={fichaTabs} aside={<PeriodPicker value={period} today={at} />}>
         <FichaPane id="visao">
+        <OverviewMetrics crm={crmTotals} source={client.lead_source} periodLabel={`${period.label} · ${period.range}`} clientId={clientId} query={pq} />
         {/* Resumo da conta */}
         <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_404px]">
           <HealthCard
@@ -578,6 +584,7 @@ export default async function ClientePage({
       {/* ============================ CELULAR ============================ */}
       <div className="flex flex-col gap-4 pb-8 lg:hidden">
         <PeriodPicker value={period} today={at} full />
+        <OverviewMetrics crm={crmTotals} source={client.lead_source} periodLabel={`${period.label} · ${period.range}`} clientId={clientId} query={pq} />
         <Card className="flex flex-col gap-3.5 p-4">
           <div className="flex items-center justify-between">
             <span className="text-[13px] font-medium text-ink-300">Health Score</span>
@@ -646,7 +653,7 @@ export default async function ClientePage({
 
         <MediaChannels split={split} clientId={clientId} />
 
-        <h2 className="pt-2 font-display text-[16px] font-semibold tracking-[-0.2px] text-ink-100">Performance</h2>
+        <h2 id="performance" className="scroll-mt-4 pt-2 font-display text-[16px] font-semibold tracking-[-0.2px] text-ink-100">Performance</h2>
         <PerformanceTab clientId={clientId} clientName={client.name} query={pq} periodLabel={`${period.label} · ${period.range}`} compact />
 
         <EvolutionSection
@@ -719,6 +726,7 @@ export default async function ClientePage({
         </Card>
       </div>
     </ClientUI>
+    </PerformanceProvider>
   );
 }
 

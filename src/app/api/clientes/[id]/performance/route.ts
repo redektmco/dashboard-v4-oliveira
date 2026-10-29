@@ -10,8 +10,8 @@ export const maxDuration = 60;
 /**
  * Aba Performance da ficha: Meta e Google lidos ao vivo no período da URL
  * (`?periodo=30d` ou `?de=…&ate=…`, o mesmo filtro da ficha). Fica fora da
- * página porque as APIs levam alguns segundos — a ficha abre na hora e a
- * aba carrega quando alguém a abre.
+ * página porque as APIs levam alguns segundos — a ficha abre na hora e
+ * Visão geral e Performance compartilham a mesma leitura no cliente.
  */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!(await getSessionUser()))

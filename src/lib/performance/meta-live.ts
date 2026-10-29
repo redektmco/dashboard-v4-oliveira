@@ -56,6 +56,8 @@ export function metaTotals(row: MetaRow, metric: LeadMetric, type: AccountType, 
     revenue: w.revenue,
     results,
     resultSpend: results > 0 ? w.spend : 0,
+    leadResults: leadsOf(w, metric),
+    leadSpend: leadsOf(w, metric) > 0 ? w.spend : 0,
   };
 }
 
@@ -75,8 +77,10 @@ export function accountTotals(account: MetaRow | undefined, campaigns: Totals[],
       revenue: a.revenue + c.revenue,
       results: a.results + c.results,
       resultSpend: a.resultSpend + c.resultSpend,
+      leadResults: a.leadResults + c.leadResults,
+      leadSpend: a.leadSpend + c.leadSpend,
     }),
-    { leads: 0, conversations: 0, purchases: 0, revenue: 0, results: 0, resultSpend: 0 },
+    { leads: 0, conversations: 0, purchases: 0, revenue: 0, results: 0, resultSpend: 0, leadResults: 0, leadSpend: 0 },
   );
   // Marca não soma alcance de campanha: vale o da conta, sem pessoa repetida.
   if (type === "branding") sum.results = base.reach ?? 0;

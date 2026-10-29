@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import type { AccountType } from "@/lib/model/types";
 import {
   CHANNELS,
@@ -32,11 +32,11 @@ import { Icon } from "../icon";
 import { Card, Segmented } from "../kit";
 import { CHANNEL_COLOR, DailyMetricChart, DailySpendChart } from "./performance-chart";
 import { Demographics } from "./demographics";
+import { usePerformanceData } from "./performance-data";
 
 /**
  * Aba Performance da ficha: Meta e Google lidos ao vivo no período da ficha.
- * Carrega só quando a aba aparece na tela (as APIs levam alguns segundos) e
- * de novo quando o período muda.
+ * Compartilha a leitura iniciada pela Visão geral e atualiza com o período.
  */
 
 type ChannelFilter = "todos" | Channel;
@@ -75,52 +75,22 @@ export function PerformanceTab({
   periodLabel: string;
   compact?: boolean;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(false);
-  const [state, setState] = useState<{ q: string; data?: PerformanceData; error?: string } | null>(null);
-  const [reload, setReload] = useState(0);
-
-  // Painel escondido (`hidden`) não cruza a tela: só busca quando a aba abre.
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const io = new IntersectionObserver(([e]) => e.isIntersecting && setVisible(true));
-    io.observe(el);
-    return () => io.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!visible) return;
-    let gone = false;
-    fetch(`/api/clientes/${clientId}/performance${query ? `?${query}` : ""}`)
-      .then(async (r) => {
-        const body = (await r.json().catch(() => ({}))) as { data?: PerformanceData; error?: string };
-        if (gone) return;
-        if (!r.ok || !body.data) setState({ q: query, error: body.error ?? `Não deu para carregar (${r.status}).` });
-        else setState({ q: query, data: body.data });
-      })
-      .catch(() => !gone && setState({ q: query, error: "Sem conexão com o servidor." }));
-    return () => {
-      gone = true;
-    };
-  }, [visible, clientId, query, reload]);
-
-  const loading = !state || state.q !== query;
+  const { data, error, loading, retry } = usePerformanceData();
 
   return (
-    <div ref={ref} className="flex min-h-[40px] flex-col gap-6">
+    <div className="flex min-h-[40px] flex-col gap-6">
       {loading ? (
         <Skeleton label={periodLabel} />
-      ) : state.error ? (
+      ) : error ? (
         <Card className="flex flex-col items-center gap-3 px-5 py-10 text-center">
           <Icon name="alertCircle" size={20} className="text-vermelho-fg" />
-          <p className="text-[13px] text-ink-300">{state.error}</p>
-          <button type="button" className="btn h-8" onClick={() => { setState(null); setReload((n) => n + 1); }}>
+          <p className="text-[13px] text-ink-300">{error}</p>
+          <button type="button" className="btn h-8" onClick={retry}>
             Tentar de novo
           </button>
         </Card>
       ) : (
-        <PerformanceView data={state.data!} clientName={clientName} mobile={mobile} clientId={clientId} query={query} />
+        <PerformanceView data={data!} clientName={clientName} mobile={mobile} clientId={clientId} query={query} />
       )}
     </div>
   );

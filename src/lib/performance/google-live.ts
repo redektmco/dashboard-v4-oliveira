@@ -51,6 +51,8 @@ export function googleTotals(m: Metrics | undefined, type: AccountType): Totals 
     revenue: num(m?.conversionsValue),
     results,
     resultSpend: spend,
+    leadResults: conv,
+    leadSpend: spend,
   };
 }
 
