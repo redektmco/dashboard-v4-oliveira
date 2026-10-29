@@ -16,7 +16,7 @@ test("vendas: dias SP, deduplicação, isolamento, totais globais e paginação 
   const { migrate, run } = await import("../src/lib/db");
   try {
     await migrate();
-    await run("INSERT INTO clients (name, account_type, active) VALUES ('Histórico inativo', 'lead_gen', 0), ('Outra conta', 'lead_gen', 1)");
+    await run("INSERT INTO clients (name, account_type, active) VALUES ('Histórico inativo', 'lead_gen', 0), ('Outra conta', 'lead_gen', 1), ('Sem histórico', 'lead_gen', 1)");
     const add = (client: number, at: string, key: string | null, value: number) => run(`INSERT INTO crm_sales (client_id, ref_date, received_at, dedup_key, value, payload)
       VALUES (?, '2026-10-09', ?::timestamptz, ?, ?, '{"token":"private","email":"private"}'::jsonb) ON CONFLICT DO NOTHING`, [client, at, key, value]);
     await add(1, "2026-10-01T02:59:59Z", "before", 999);
@@ -25,6 +25,8 @@ test("vendas: dias SP, deduplicação, isolamento, totais globais e paginação 
     await add(1, "2026-10-02T03:00:00Z", "after", 999);
     await add(2, "2026-10-01T12:00:00Z", "start", 999);
     await add(1, "2026-10-01T03:00:00Z", "start", 100);
+    const noHistory = await listSales(3, "2026-10-01", "2026-10-01");
+    assert.deepEqual([noHistory.count, noHistory.revenue, noHistory.ticket, noHistory.rows], [0, 0, null, []]);
     const result = await listSales(1, "2026-10-01", "2026-10-01");
     assert.deepEqual([result.count, result.revenue, result.ticket], [2, 350, 175]);
     assert.deepEqual(result.rows.map(r => r.externalId), ["end", "start"]);
