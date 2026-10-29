@@ -30,6 +30,10 @@ export type Totals = {
   results: number;
   /** Base do custo por resultado: na Meta, a verba das campanhas que geraram resultado; no Google, a verba toda. */
   resultSpend: number;
+  /** Leads conforme a configuração da conta, mesmo em e-commerce/branding. */
+  leadResults: number;
+  /** Base do CPL: campanhas de lead na Meta, toda a verba no Google. */
+  leadSpend: number;
 };
 
 export const EMPTY_TOTALS: Totals = {
@@ -44,6 +48,8 @@ export const EMPTY_TOTALS: Totals = {
   revenue: 0,
   results: 0,
   resultSpend: 0,
+  leadResults: 0,
+  leadSpend: 0,
 };
 
 export type CampaignStatus = "ativa" | "pausada" | "encerrada" | "problema";
@@ -225,6 +231,8 @@ export function sumTotals(list: Totals[]): Totals {
     out.revenue += t.revenue;
     out.results += t.results;
     out.resultSpend += t.resultSpend;
+    out.leadResults += t.leadResults;
+    out.leadSpend += t.leadSpend;
     if (t.reach !== null) reach = (reach ?? 0) + t.reach;
     if (t.linkClicks !== null) link = (link ?? 0) + t.linkClicks;
   }
