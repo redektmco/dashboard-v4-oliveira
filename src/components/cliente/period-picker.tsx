@@ -47,6 +47,8 @@ export function PeriodPicker({
     q.delete("periodo");
     q.delete("de");
     q.delete("ate");
+    q.delete("vendas_pagina");
+    q.delete("page");
     for (const [k, v] of new URLSearchParams(periodQuery(p))) q.set(k, v);
     const qs = q.toString();
     setOpen(false);

@@ -32,7 +32,7 @@ export function OverviewMetrics({ crm, source, periodLabel, clientId, query, ser
   const showLeads = source === "webhook" || !data || data.accountType === "lead_gen";
   const leadPending = loading && source !== "webhook";
   const performanceHref = `/clientes/${clientId}${query ? `?${query}` : ""}#performance`;
-  const salesHref = `/clientes/${clientId}/vendas${query ? `?${query}` : ""}`;
+  const salesHref = `/clientes/${clientId}${query ? `?${query}` : ""}#vendas`;
   if (!media && scope.crm === false) return <Card className="p-4">
     <h2 className="font-display text-[15px] font-semibold text-ink-100">Serviços e entregáveis</h2>
     <p className="mt-2 text-[13px] text-ink-300">{services.join(" · ")}</p>

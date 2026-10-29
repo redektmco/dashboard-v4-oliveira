@@ -4,19 +4,21 @@
  * (`?periodo=30d` ou `?de=2026-09-01&ate=2026-09-30`) para o link colado
  * abrir no mesmo recorte. Regras puras, sem rede nem banco.
  *
- * "Últimos N dias" segue o Gerenciador da Meta e o Google Ads: os N dias
- * fechados até ontem, sem o dia de hoje.
+ * O padrão inclui hoje (dia parcial). Presets 7d/14d/30d/90d continuam
+ * representando dias fechados até ontem, preservando URLs já compartilhadas.
  */
 
-export type PeriodPreset = "7d" | "14d" | "30d" | "90d" | "mes" | "mes-anterior";
+export type PeriodPreset = "atual" | "hoje" | "7d" | "14d" | "30d" | "90d" | "mes" | "mes-anterior";
 export type PeriodKey = PeriodPreset | "custom";
 
-export const DEFAULT_PRESET: PeriodPreset = "30d";
+export const DEFAULT_PRESET: PeriodPreset = "atual";
 
 export const PRESETS: { value: PeriodPreset; label: string }[] = [
+  { value: "atual", label: "Últimos 30 dias (inclui hoje)" },
+  { value: "hoje", label: "Hoje" },
   { value: "7d", label: "Últimos 7 dias" },
   { value: "14d", label: "Últimos 14 dias" },
-  { value: "30d", label: "Últimos 30 dias" },
+  { value: "30d", label: "Últimos 30 dias (até ontem)" },
   { value: "90d", label: "Últimos 90 dias" },
   { value: "mes", label: "Este mês" },
   { value: "mes-anterior", label: "Mês passado" },
@@ -83,6 +85,8 @@ function build(key: PeriodKey, label: string, since: string, until: string): Fic
 
 export function presetPeriod(preset: PeriodPreset, today: string): FichaPeriod {
   const label = PRESETS.find((p) => p.value === preset)!.label;
+  if (preset === "atual") return build(preset, label, shiftDay(today, -29), today);
+  if (preset === "hoje") return build(preset, label, today, today);
   if (preset === "mes") return build(preset, label, today.slice(0, 8) + "01", today);
   if (preset === "mes-anterior") {
     const until = shiftDay(today.slice(0, 8) + "01", -1);

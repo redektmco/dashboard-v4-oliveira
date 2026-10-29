@@ -1424,17 +1424,21 @@ test("Relatório: documento do banco é saneado e os modelos da V4 são válidos
 
 /* ------------------------ período da ficha ------------------------ */
 
-test("ficha: período padrão e presets seguem o 'Últimos N dias' da Meta (até ontem)", () => {
+test("ficha: padrão inclui hoje, preservando presets fechados e suas URLs", () => {
   const p = parsePeriod({}, "2026-10-13");
-  assert.equal(p.key, "30d");
-  assert.deepEqual([p.since, p.until, p.days], ["2026-09-13", "2026-10-12", 30]);
-  assert.equal(p.range, "13 set – 12 out");
-  assert.deepEqual(p.previous, { since: "2026-08-14", until: "2026-09-12" });
+  assert.equal(p.key, "atual");
+  const closed = presetPeriod("30d", "2026-10-13");
+  assert.deepEqual([closed.since, closed.until], ["2026-09-13", "2026-10-12"]);
+  assert.equal(periodQuery(closed), "periodo=30d");
+  assert.deepEqual([presetPeriod("hoje", "2026-10-13").since, presetPeriod("hoje", "2026-10-13").until], ["2026-10-13", "2026-10-13"]);
+  assert.deepEqual([p.since, p.until, p.days], ["2026-09-14", "2026-10-13", 30]);
+  assert.equal(p.range, "14 set – 13 out");
+  assert.deepEqual(p.previous, { since: "2026-08-15", until: "2026-09-13" });
   assert.deepEqual(presetPeriod("mes", "2026-10-13").since, "2026-10-01");
   const prev = presetPeriod("mes-anterior", "2026-10-13");
   assert.deepEqual([prev.since, prev.until, prev.days], ["2026-09-01", "2026-09-30", 30]);
   assert.equal(parsePeriod({ periodo: "7d" }, "2026-10-13").since, "2026-10-06");
-  assert.equal(parsePeriod({ periodo: "lixo" }, "2026-10-13").key, "30d");
+  assert.equal(parsePeriod({ periodo: "lixo" }, "2026-10-13").key, "atual");
 });
 
 test("ficha: período personalizado é validado e vira preset quando bate", () => {
@@ -1444,10 +1448,10 @@ test("ficha: período personalizado é validado e vira preset quando bate", () =
   assert.equal(parsePeriod({ de: "2026-10-01", ate: "2026-10-13" }, "2026-10-13").key, "mes");
   assert.equal(parsePeriod({ de: "2026-09-01", ate: "2026-09-30" }, "2026-10-13").key, "mes-anterior");
   // Futuro, invertido, data torta ou longo demais: volta ao padrão.
-  assert.equal(parsePeriod({ de: "2026-10-01", ate: "2026-10-20" }, "2026-10-13").key, "30d");
-  assert.equal(parsePeriod({ de: "2026-10-10", ate: "2026-10-01" }, "2026-10-13").key, "30d");
-  assert.equal(parsePeriod({ de: "2026-02-30", ate: "2026-03-10" }, "2026-10-13").key, "30d");
-  assert.equal(parsePeriod({ de: "2024-01-01", ate: "2026-10-01" }, "2026-10-13").key, "30d");
+  assert.equal(parsePeriod({ de: "2026-10-01", ate: "2026-10-20" }, "2026-10-13").key, "atual");
+  assert.equal(parsePeriod({ de: "2026-10-10", ate: "2026-10-01" }, "2026-10-13").key, "atual");
+  assert.equal(parsePeriod({ de: "2026-02-30", ate: "2026-03-10" }, "2026-10-13").key, "atual");
+  assert.equal(parsePeriod({ de: "2024-01-01", ate: "2026-10-01" }, "2026-10-13").key, "atual");
   assert.equal(rangeLabel("2025-12-20", "2026-01-10"), "20 dez 2025 – 10 jan 2026");
   assert.equal(periodQuery(c), "de=2026-10-02&ate=2026-10-12");
   assert.equal(periodQuery(parsePeriod({}, "2026-10-13")), "");

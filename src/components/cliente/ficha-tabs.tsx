@@ -73,6 +73,8 @@ export function FichaTabs({
     // `replaceState` em vez de `location.hash =` para não empilhar uma entrada
     // no histórico por clique — e para não rolar a página até o âncora.
     window.history.replaceState(null, "", `#${id}`);
+    // Mantém as versões desktop e mobile alinhadas ao mudar a resolução.
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
   }, []);
 
   const panelId = useCallback((id: string) => `${uid}-painel-${id}`, [uid]);

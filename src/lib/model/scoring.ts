@@ -315,6 +315,8 @@ function performanceScoreOf(
  * próprio ("Mês até hoje · 01/10 – 13/10"); o resto usa o do catálogo.
  */
 function periodOf(f: FieldDef, input: ScoreInput): string | undefined {
+  const salesPeriod = input.performance?.data.crm_sales_period;
+  if (["revenue", "roas", "roi", "ticket"].includes(f.key) && typeof salesPeriod === "string") return salesPeriod;
   const own = f.key === "budget" ? input.performance?.data.budget_period : undefined;
   return typeof own === "string" ? own : f.period;
 }

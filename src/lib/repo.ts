@@ -9,6 +9,7 @@ import { EMPTY_WEEK, leadSpendOf, leadsOf, metaFields, type LeadMetric, type Met
 import { clientKey, type SheetClient } from "./import/clients-sheet";
 import { monthLabel, monthSpend, monthTarget, type DailySpend } from "./media-daily";
 import { hasMediaService } from "./model/services";
+import { mergeLiveSales } from "./crm/live-sales";
 import { currentMrr, recurringMrr } from "./client-lifecycle";
 import type {
   AccountType,
@@ -571,9 +572,8 @@ function applyOverlay(client: ClientRow, perf: Snap[], at: string, ov: AutoOverl
     list.push({ id: 0, client_id: client.id, ref_date: ref, filled_by: null, filled_at: ref + "T23:59:00", filler: "CRM", data: { ...ov.targets, ...sales } });
   }
 
-  // Semana em curso: só o webhook de LEADS sintetiza um registro "vivo" (as
-  // vendas da semana aberta entram quando ela fecha — um registro só com
-  // faturamento viraria o mais recente e apagaria verba, CPL e leads).
+  // Leads da semana em curso mantêm o registro vivo; as vendas são mescladas
+  // em seguida sem substituir os demais indicadores da leitura vigente.
   const curCount = crmLeads(curWeek);
   const curSales = crmSales(curWeek);
   const hasCur = list.some((s) => s.ref_date === curWeek && s.ref_date <= at);
@@ -591,6 +591,17 @@ function applyOverlay(client: ClientRow, perf: Snap[], at: string, ov: AutoOverl
         ...(curSales ? { ...curSales, roas_meta: ov.targets.roas_meta, roi_meta: ov.targets.roi_meta } : {}),
       },
     });
+  }
+  // Venda de hoje entra imediatamente, sem deslocar a data real para sexta
+  // nem substituir o snapshot inteiro (o que apagaria verba, CPL e leads).
+  // Somente a leitura de hoje: sugestões e snapshots históricos ficam intactos.
+  if (monthBudget && at === today() && curSales && ov.salesByWeek?.has(curWeek)) {
+    const latest = [...list].filter((s) => s.ref_date <= at).sort((a, b) => b.ref_date.localeCompare(a.ref_date) || b.id - a.id)[0];
+    const data = mergeLiveSales(latest?.data ?? ov.targets, curSales, ov.metaByWeek.has(curWeek), `Semana em curso · até ${at.split("-").reverse().join("/")}`);
+    for (const key of ["revenue_meta", "roas_meta", "roi_meta"])
+      if (blank(data[key]) && ov.targets[key] !== undefined) data[key] = ov.targets[key];
+    if (latest) list[list.indexOf(latest)] = { ...latest, data };
+    else list.push({ id: 0, client_id: client.id, ref_date: at, filled_by: null, filled_at: at + "T12:00:00", filler: "CRM", data });
   }
   list.sort((a, b) => (a.ref_date < b.ref_date ? 1 : a.ref_date > b.ref_date ? -1 : b.id - a.id));
 
