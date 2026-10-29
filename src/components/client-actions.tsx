@@ -8,6 +8,7 @@ import { ClientDialog, type ClientFormClient } from "./client-form";
 import { ConfirmDialog } from "./modal";
 import { toast } from "./toast";
 import { Icon } from "./icon";
+import { ClassificationDialog } from "./cliente/classification-dialog";
 
 /** ⋯ da ficha do cliente: editar cadastro/metas e arquivar, sem sair da página. */
 export function ClientActions({
@@ -15,15 +16,18 @@ export function ClientActions({
   users,
   targets,
   size,
+  isAdmin = false,
 }: {
   client: ClientFormClient;
   users: User[];
   targets: Record<string, number>;
   /** Botão quadrado do cabeçalho da ficha (36px; 42px no celular). */
   size?: "md" | "lg";
+  isAdmin?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [classifying, setClassifying] = useState(false);
 
   return (
     <>
@@ -42,6 +46,7 @@ export function ClientActions({
         }
         items={[
           { label: "Editar cadastro e forecast", icon: "settings", onSelect: () => setEditing(true) },
+          ...(isAdmin ? [{ label: "Situação e natureza da receita", icon: "settings" as const, onSelect: () => setClassifying(true) }] : []),
           ...(client.active
             ? [{ label: "Registrar pedido de cancelamento", icon: "userMinus" as const, href: `/churn/nova?cliente=${client.id}` }]
             : []),
@@ -60,6 +65,7 @@ export function ClientActions({
         ]}
       />
       <ClientDialog open={editing} onClose={() => setEditing(false)} users={users} client={client} targets={targets} />
+      {isAdmin && <ClassificationDialog open={classifying} onClose={() => setClassifying(false)} client={client} />}
       <ConfirmDialog
         open={archiving}
         onClose={() => setArchiving(false)}

@@ -23,10 +23,14 @@ export function SyncClientButton({ clientId }: { clientId: number }) {
       title="Relê as 12 últimas semanas da Meta e do Google deste cliente e recalcula o score"
       onClick={() =>
         start(async () => {
+          try {
           const r = await resyncClientMedia(clientId);
           if (r?.error) toast(r.error, { tone: "error" });
           else if (r?.ok) toast(r.ok);
           router.refresh();
+          } catch {
+            toast("Não foi possível sincronizar. Confira a conexão e tente novamente.", { tone: "error" });
+          }
         })
       }
     >

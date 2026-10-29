@@ -992,13 +992,31 @@ INSERT INTO client_interactions (client_id, at, kind, title, note, user_id, user
   SELECT s.client_id, s.filled_at, 'checkin', 'Check-in registrado', COALESCE(s.data->>'summary', ''), s.filled_by, u.name, s.id
   FROM checkin_snapshots s LEFT JOIN users u ON u.id = s.filled_by
   WHERE NOT EXISTS (SELECT 1 FROM client_interactions i WHERE i.checkin_id = s.id);
+
+-- Legados permanecem NULL: não adivinhar pausa/encerramento nem receita pontual.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS lifecycle_status TEXT
+  CHECK (lifecycle_status IN ('active','paused','closed','pending'));
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS revenue_model TEXT
+  CHECK (revenue_model IN ('recurring','one_off','mixed'));
+CREATE TABLE IF NOT EXISTS client_classification_events (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+  client_reference INTEGER NOT NULL,
+  client_name TEXT NOT NULL,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  actor_name TEXT NOT NULL,
+  source TEXT NOT NULL,
+  previous JSONB NOT NULL,
+  current JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `;
 
 /**
  * Versão do DDL acima. Mudou o schema? Troque a string — é ela que faz o
  * próximo boot aplicar o DDL de novo.
  */
-export const SCHEMA_VERSION = "2026-10-15.multiple-job-roles";
+export const SCHEMA_VERSION = "2026-10-29.client-classification";
 
 let migrated = false;
 

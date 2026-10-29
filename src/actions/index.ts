@@ -188,10 +188,12 @@ export async function saveClient(_prev: ActionResult, formData: FormData): Promi
   if (!name) return { error: "Informe o nome do cliente." };
   if (!(accountType in ACCOUNT_TYPE_LABEL)) return { error: "Escolha o tipo de conta." };
 
+  const mrr = numOrNull(formData, "mrr") ?? 0;
+  if (!Number.isFinite(mrr) || mrr < 0) return { error: "MRR deve ser maior ou igual a zero." };
   const payload = {
     name,
     account_type: accountType,
-    mrr: numOrNull(formData, "mrr") ?? 0,
+    mrr,
     gt_user_id: Number(str(formData, "gt_user_id")) || null,
     account_user_id: Number(str(formData, "account_user_id")) || null,
     renewal_date: str(formData, "renewal_date") || null,
@@ -229,6 +231,7 @@ export async function setClientArchived(id: number, archived: boolean): Promise<
   await requireUser();
   const client = await getClient(id);
   if (!client) return { error: "Cliente não encontrado." };
+  if (!archived && client.lifecycle_status !== "active") return { error: "Confirme a situação em Situação e natureza da receita antes de restaurar este cliente." };
   await updateClient(id, { active: archived ? 0 : 1 });
   await logChange(await requireUser(), "cliente", `${archived ? "Cliente arquivado" : "Cliente reativado"}: ${client.name}`, {
     clientId: id,

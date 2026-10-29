@@ -103,6 +103,8 @@ export type Client = {
   account_user_id: number | null;
   renewal_date: string | null;
   active: number;
+  lifecycle_status?: import("../client-lifecycle").ClientStatus | null;
+  revenue_model?: import("../client-lifecycle").RevenueModel | null;
   created_at: string;
   /** Contrato (puxado pelo churn): número, serviços, início, fidelidade e aviso prévio. */
   contract_code: string | null;

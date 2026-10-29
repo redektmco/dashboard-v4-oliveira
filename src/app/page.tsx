@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { currentMrr } from "@/lib/client-lifecycle";
 import { lastRecompute, listOpenPlans, mediaWeeks, portfolio, portfolioSummary, today } from "@/lib/repo";
 import { lateSteps } from "@/lib/playbook/db";
 import { configSnapshot } from "@/lib/config-status";
@@ -44,7 +45,7 @@ export default async function CarteiraPage() {
   const evaluated = total - summary.byBand.sem_dado;
   const atRisk = summary.byBand.vermelho + summary.byBand.amarelo;
   const unscored = rows.filter((r) => !r.score.band);
-  const unscoredMrr = unscored.reduce((a, r) => a + r.client.mrr, 0);
+  const unscoredMrr = unscored.reduce((a, r) => a + currentMrr(r.client), 0);
   const neverFilled = rows.filter((r) => r.score.provenance.performance.ageDays === null).length;
 
   // Mídia parada: conta com Meta vinculado e zero de verba na última semana
@@ -68,7 +69,7 @@ export default async function CarteiraPage() {
       band: r.score.band,
       score: r.score.score,
       delta7: r.delta7,
-      mrr: r.client.mrr,
+      mrr: currentMrr(r.client),
       owner: r.client.gt_name ?? r.client.account_name,
       overrides: r.score.overrides.map((o) => o.trigger),
       openPlans: r.openPlans,
@@ -86,7 +87,7 @@ export default async function CarteiraPage() {
     typeKey: r.client.account_type,
     gt: r.client.gt_name ?? "—",
     account: r.client.account_name ?? "—",
-    mrr: r.client.mrr,
+    mrr: currentMrr(r.client),
     renewal: r.client.renewal_date,
     renewalIn: r.client.renewal_date ? daysBetween(at, r.client.renewal_date) : null,
     score: r.score.score,

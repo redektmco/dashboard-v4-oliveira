@@ -1,4 +1,5 @@
 import { fieldsFor } from "../model/catalog";
+import { applicableField } from "../model/services";
 import { fmtBR, targetFields, type TargetField } from "../model/target-fields";
 import type { AccountType, ScoreResult } from "../model/types";
 
@@ -26,10 +27,10 @@ export type ForecastLine = {
 
 export const fmtTarget = (f: TargetField, v: number) => `${f.prefix ? `${f.prefix} ` : ""}${fmtBR(v, f.decimals)}${f.suffix ?? ""}`;
 
-export function forecastLines(type: AccountType, targets: Record<string, number>, score: ScoreResult | null): ForecastLine[] {
-  const defs = fieldsFor(type, "gt");
+export function forecastLines(type: AccountType, targets: Record<string, number>, score: ScoreResult | null, services?: string[]): ForecastLine[] {
+  const defs = fieldsFor(type, "gt").filter((f) => applicableField(f.key, services));
   const results = new Map((score?.dimensions ?? []).flatMap((d) => d.fields).map((f) => [f.key, f]));
-  return targetFields(type).map((f) => {
+  return targetFields(type).filter((f) => defs.some((d) => d.targetKey === f.key)).map((f) => {
     const def = defs.find((d) => d.targetKey === f.key);
     const r = def ? results.get(def.key) : undefined;
     return {

@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { ClientSwitcher } from "@/components/cliente/client-switcher";
+import { clientStatus, STATUS_LABEL, currentMrr, REVENUE_LABEL } from "@/lib/client-lifecycle";
+import { serviceScope } from "@/lib/model/services";
 import { notFound } from "next/navigation";
 import {
   checkinSnapshots,
@@ -8,6 +11,7 @@ import {
   getTargets,
   listPlans,
   listUsers,
+  listClients,
   perfSnapshots,
   scoreFor,
   scoreSeries,
@@ -124,7 +128,7 @@ export default async function ClientePage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ plano?: string; periodo?: string; de?: string; ate?: string }>;
 }) {
-  await requireUser();
+  const me = await requireUser();
   const { id } = await params;
   const sp = await searchParams;
   const { plano } = sp;
@@ -151,6 +155,8 @@ export default async function ClientePage({
     requestsForClient(clientId),
   ]);
   if (!client || !s) notFound();
+  const switchClients = await listClients(false);
+  const scope = serviceScope(client.services);
   const openChurn = churns.find((r) => isOpen(r.status)) ?? null;
 
   // Playbook: a ficha também alinha a flag (cobre o primeiro uso e o dia em
@@ -211,7 +217,7 @@ export default async function ClientePage({
     google: googleLinks.filter((l) => l.client_id === clientId),
     hook: webhook,
   });
-  const forecast = forecastLines(client.account_type, targets, s);
+  const forecast = forecastLines(client.account_type, targets, s, client.services);
 
   // O título da pendência conta a carteira inteira ("2 clientes sem fonte");
   // dentro da ficha ele fala só desta conta.
@@ -362,7 +368,7 @@ export default async function ClientePage({
     { v: ACCOUNT_TYPE_LABEL[client.account_type] },
     { k: "GT", v: firstName(client.gt_name) },
     { k: "Account", v: firstName(client.account_name) },
-    { v: `${brl(client.mrr)}/mês` },
+    { v: `${brl(currentMrr(client))}/mês recorrente` },
   ];
   if (!client.active) metaParts.push({ v: "arquivado" });
 
@@ -399,6 +405,10 @@ export default async function ClientePage({
       {/* Cabeçalho único (desktop e celular). O Churn abre a solicitação já
           com a conta — ou a que está em andamento, para não duplicar. */}
       <div className="mb-6 lg:mb-8">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <ClientSwitcher clients={switchClients.map((c) => ({ id: c.id, name: c.name, status: STATUS_LABEL[clientStatus(c)] }))} current={clientId} query={pq} />
+          <span className="text-[12px] text-ink-400">{STATUS_LABEL[clientStatus(client)]} · {client.revenue_model ? REVENUE_LABEL[client.revenue_model] : "Receita ainda não classificada"} · MRR atual {brl(currentMrr(client))}</span>
+        </div>
         <PageHead
           crumbs={[{ href: "/clientes", label: "Clientes" }]}
           title={client.name}
@@ -406,7 +416,8 @@ export default async function ClientePage({
           description={<MetaLine parts={metaParts} />}
           actions={
             <>
-              <SyncClientButton clientId={clientId} />
+              <Link href={`/clientes/${clientId}/vendas${pq ? `?${pq}` : ""}`} className="btn">Vendas realizadas</Link>
+              {scope.media !== false && <SyncClientButton clientId={clientId} />}
               <Link href={`/account/${clientId}`} className="btn btn-light">
                 <Icon name="plus" size={16} />
                 Registrar check-in
@@ -417,7 +428,7 @@ export default async function ClientePage({
                   Churn
                 </Link>
               )}
-              <ClientActions client={client} users={users} targets={targets} size="md" />
+              <ClientActions client={client} users={users} targets={targets} size="md" isAdmin={Boolean(me.is_admin)} />
             </>
           }
         />
@@ -429,7 +440,7 @@ export default async function ClientePage({
       <div className="hidden flex-col pb-6 lg:flex">
         <FichaTabs tabs={fichaTabs} aside={<PeriodPicker value={period} today={at} />}>
         <FichaPane id="visao">
-        <OverviewMetrics crm={crmTotals} source={client.lead_source} periodLabel={`${period.label} · ${period.range}`} clientId={clientId} query={pq} />
+        <OverviewMetrics crm={crmTotals} source={client.lead_source} periodLabel={`${period.label} · ${period.range}`} clientId={clientId} query={pq} services={client.services} />
         {/* Resumo da conta */}
         <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_404px]">
           <HealthCard
@@ -501,7 +512,7 @@ export default async function ClientePage({
         <FichaPane id="metas">
           <MetasIntegracoes data={metas} />
 
-        <MediaChannels split={split} clientId={clientId} />
+        {scope.media !== false && <MediaChannels split={split} clientId={clientId} />}
         </FichaPane>
 
         <FichaPane id="performance">
@@ -584,7 +595,7 @@ export default async function ClientePage({
       {/* ============================ CELULAR ============================ */}
       <div className="flex flex-col gap-4 pb-8 lg:hidden">
         <PeriodPicker value={period} today={at} full />
-        <OverviewMetrics crm={crmTotals} source={client.lead_source} periodLabel={`${period.label} · ${period.range}`} clientId={clientId} query={pq} />
+        <OverviewMetrics crm={crmTotals} source={client.lead_source} periodLabel={`${period.label} · ${period.range}`} clientId={clientId} query={pq} services={client.services} />
         <Card className="flex flex-col gap-3.5 p-4">
           <div className="flex items-center justify-between">
             <span className="text-[13px] font-medium text-ink-300">Health Score</span>
@@ -651,7 +662,7 @@ export default async function ClientePage({
 
         <PlaybookSection data={playbook} variant="mobile" />
 
-        <MediaChannels split={split} clientId={clientId} />
+        {scope.media !== false && <MediaChannels split={split} clientId={clientId} />}
 
         <h2 id="performance" className="scroll-mt-4 pt-2 font-display text-[16px] font-semibold tracking-[-0.2px] text-ink-100">Performance</h2>
         <PerformanceTab clientId={clientId} clientName={client.name} query={pq} periodLabel={`${period.label} · ${period.range}`} compact />

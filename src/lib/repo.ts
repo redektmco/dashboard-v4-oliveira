@@ -8,6 +8,8 @@ import { syncFlags } from "./playbook/db";
 import { EMPTY_WEEK, leadSpendOf, leadsOf, metaFields, type LeadMetric, type MetaWeek, type UnreadEvent } from "./meta/metrics";
 import { clientKey, type SheetClient } from "./import/clients-sheet";
 import { monthLabel, monthSpend, monthTarget, type DailySpend } from "./media-daily";
+import { hasMediaService } from "./model/services";
+import { currentMrr, recurringMrr } from "./client-lifecycle";
 import type {
   AccountType,
   Band,
@@ -19,7 +21,7 @@ import type {
   User,
 } from "./model/types";
 
-export const today = () => new Date().toISOString().slice(0, 10);
+export const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
 const addDaysIso = (day: string, n: number) => {
   const d = new Date(day + "T00:00:00Z");
@@ -147,14 +149,14 @@ const CLIENT_SELECT = `
          c.contract_code, c.services, c.contract_start::text AS contract_start,
          c.fidelity_months, c.notice_days, c.niche, c.proximity,
          c.main_contact, c.contact_email, c.contact_phone,
-         c.checkin_every_days, c.stage_override, c.lead_source,
+         c.checkin_every_days, c.stage_override, c.lead_source, c.lifecycle_status, c.revenue_model,
          g.name AS gt_name, a.name AS account_name
   FROM clients c
   LEFT JOIN users g ON g.id = c.gt_user_id
   LEFT JOIN users a ON a.id = c.account_user_id`;
 
 export const listClients = (onlyActive = true) =>
-  all<ClientRow>(`${CLIENT_SELECT} ${onlyActive ? "WHERE c.active = 1" : ""} ORDER BY c.name`);
+  all<ClientRow>(`${CLIENT_SELECT} ${onlyActive ? "WHERE c.active = 1 AND COALESCE(c.lifecycle_status, 'active') = 'active'" : ""} ORDER BY c.name`);
 
 export const getClient = (id: number) => one<ClientRow>(`${CLIENT_SELECT} WHERE c.id = ?`, [id]);
 
@@ -174,6 +176,8 @@ type ClientExtras = Pick<
   | "checkin_every_days"
   | "stage_override"
   | "lead_source"
+  | "lifecycle_status"
+  | "revenue_model"
 >;
 
 export async function createClient(
@@ -222,6 +226,8 @@ export async function updateClient(id: number, c: Partial<Client>) {
       "checkin_every_days",
       "stage_override",
       "lead_source",
+      "lifecycle_status",
+      "revenue_model",
     ] as const
   ).filter((k) => k in c);
   if (!keys.length) return;
@@ -519,7 +525,7 @@ function applyOverlay(client: ClientRow, perf: Snap[], at: string, ov: AutoOverl
     const w = ov.salesByWeek!.get(ref) ?? { n: 0, revenue: 0 };
     const m = ov.metaByWeek.get(ref);
     const spend = m && firstSpend && ref >= firstSpend ? m.week.spend : 0;
-    return crmSaleFields(type, w, spend, client.mrr ?? 0);
+    return crmSaleFields(type, w, spend, recurringMrr(client));
   };
 
   const list = perf.map((s) => {
@@ -630,6 +636,7 @@ function scoreFrom(
   return computeScore({
     clientId: client.id,
     accountType: client.account_type,
+    services: client.services,
     today: at,
     renewalDate: client.renewal_date,
     performance: latestPerf
@@ -708,7 +715,7 @@ export async function suggestTargets(clientId: number, at = today()): Promise<Ta
           }
           return n(s.data[i.realKey]);
         })
-        .filter((v): v is number => v !== null && Number.isFinite(v) && v > 0);
+        .filter((v): v is number => v !== null && Number.isFinite(v) && (f.rule === "B" ? v > 0 : v >= 0));
       if (!values.length) return { key: f.targetKey!, avg: null, suggestion: null, weeks: 0 };
       const avg = values.reduce((a, b) => a + b, 0) / values.length;
       const suggestion = niceRound(f.rule === "B" ? avg * 0.9 : avg * 1.1);
@@ -1202,31 +1209,42 @@ export const saveGoogleDaily = (customerId: string, days: Map<string, number>) =
 export async function mediaDaily(clientId?: number): Promise<Map<number, DailySpend>> {
   const where = clientId ? "AND a.client_id = ?" : "";
   const params = clientId ? [clientId, clientId] : [];
-  const [days, accounts] = await Promise.all([
-    all<{ client_id: number; day: string; spend: number; n: number }>(
-      `SELECT client_id, day, SUM(spend) AS spend, COUNT(*)::int AS n FROM (
-         SELECT a.client_id, d.day::text AS day, d.spend
+  const [days, accounts, clients] = await Promise.all([
+    all<{ client_id: number; channel: "meta" | "google"; day: string; spend: number; n: number }>(
+      `SELECT client_id, channel, day, SUM(spend) AS spend, COUNT(*)::int AS n FROM (
+         SELECT a.client_id, 'meta' AS channel, d.day::text AS day, d.spend
          FROM meta_daily_spend d JOIN meta_ad_accounts a ON a.ad_account_id = d.ad_account_id AND a.active = 1 ${where}
          WHERE d.day >= CURRENT_DATE - 400
          UNION ALL
-         SELECT a.client_id, d.day::text AS day, d.spend
+         SELECT a.client_id, 'google' AS channel, d.day::text AS day, d.spend
          FROM google_daily_spend d JOIN google_ad_accounts a ON a.customer_id = d.customer_id AND a.active = 1 ${where}
          WHERE d.day >= CURRENT_DATE - 400
-       ) x GROUP BY client_id, day`,
+       ) x GROUP BY client_id, channel, day`,
       params,
     ),
-    all<{ client_id: number; n: number }>(
-      `SELECT client_id, COUNT(*)::int AS n FROM (
-         SELECT a.client_id FROM meta_ad_accounts a WHERE a.active = 1 ${where}
+    all<{ client_id: number; channel: "meta" | "google"; n: number }>(
+      `SELECT client_id, channel, COUNT(*)::int AS n FROM (
+         SELECT a.client_id, 'meta' AS channel FROM meta_ad_accounts a WHERE a.active = 1 ${where}
          UNION ALL
-         SELECT a.client_id FROM google_ad_accounts a WHERE a.active = 1 ${where}
-       ) x GROUP BY client_id`,
+         SELECT a.client_id, 'google' AS channel FROM google_ad_accounts a WHERE a.active = 1 ${where}
+       ) x GROUP BY client_id, channel`,
       params,
     ),
+    listClients(false),
   ]);
+  const services = new Map(clients.map((c) => [c.id, c.services]));
+  const allowed = (r: {client_id: number; channel: "meta" | "google"}) => hasMediaService(services.get(r.client_id) ?? [], r.channel) !== false;
   const out = new Map<number, DailySpend>();
-  for (const a of accounts) out.set(a.client_id, { accounts: Number(a.n), byDay: new Map() });
-  for (const d of days) out.get(d.client_id)?.byDay.set(d.day, { spend: Number(d.spend), accounts: Number(d.n) });
+  for (const a of accounts.filter(allowed)) {
+    const cur = out.get(a.client_id) ?? { accounts: 0, byDay: new Map() };
+    cur.accounts += Number(a.n);
+    out.set(a.client_id, cur);
+  }
+  for (const d of days.filter(allowed)) {
+    const byDay = out.get(d.client_id)?.byDay;
+    const old = byDay?.get(d.day);
+    byDay?.set(d.day, { spend: (old?.spend ?? 0) + Number(d.spend), accounts: (old?.accounts ?? 0) + Number(d.n) });
+  }
   return out;
 }
 
@@ -1301,15 +1319,17 @@ const weekOf = (r: MetaWeek): MetaWeek => ({
 
 /** Semanas da Meta por cliente, somando as contas ativas de cada um. */
 export async function metaWeeks(clientId?: number): Promise<Map<number, Map<string, MetaAgg>>> {
-  const rows = await all<MetaWeek & { client_id: number; lead_metric: LeadMetric; ref_date: string }>(
-    `SELECT a.client_id, a.lead_metric, i.ref_date::text AS ref_date, ${META_COLS}
+  const rows = await all<MetaWeek & { client_id: number; services: string[]; lead_metric: LeadMetric; ref_date: string }>(
+    `SELECT a.client_id, c.services, a.lead_metric, i.ref_date::text AS ref_date, ${META_COLS}
      FROM meta_insights i
      JOIN meta_ad_accounts a ON a.ad_account_id = i.ad_account_id AND a.active = 1
+     JOIN clients c ON c.id = a.client_id
      ${clientId ? "WHERE a.client_id = ?" : ""}`,
     clientId ? [clientId] : [],
   );
   const out = new Map<number, Map<string, MetaAgg>>();
   for (const r of rows) {
+    if (hasMediaService(r.services, "meta") === false) continue;
     const byWeek = out.get(r.client_id) ?? new Map<string, MetaAgg>();
     out.set(r.client_id, byWeek);
     const cur = byWeek.get(r.ref_date) ?? { week: { ...EMPTY_WEEK }, leads: 0, leadSpend: 0 };
@@ -1419,15 +1439,17 @@ export const saveGoogleError = (customerId: string, error: string) =>
 
 /** Semanas do Google Ads por cliente, somando as contas ativas de cada um. */
 export async function googleWeeks(clientId?: number): Promise<Map<number, Map<string, MetaAgg>>> {
-  const rows = await all<{ client_id: number; ref_date: string; spend: number; conversions: number; revenue: number; impressions: number; clicks: number; lead_spend: number }>(
-    `SELECT a.client_id, i.ref_date::text AS ref_date, i.spend, i.conversions, i.revenue, i.impressions, i.clicks, i.lead_spend
+  const rows = await all<{ client_id: number; services: string[]; ref_date: string; spend: number; conversions: number; revenue: number; impressions: number; clicks: number; lead_spend: number }>(
+    `SELECT a.client_id, c.services, i.ref_date::text AS ref_date, i.spend, i.conversions, i.revenue, i.impressions, i.clicks, i.lead_spend
      FROM google_insights i
      JOIN google_ad_accounts a ON a.customer_id = i.customer_id AND a.active = 1
+     JOIN clients c ON c.id = a.client_id
      ${clientId ? "WHERE a.client_id = ?" : ""}`,
     clientId ? [clientId] : [],
   );
   const out = new Map<number, Map<string, MetaAgg>>();
   for (const r of rows) {
+    if (hasMediaService(r.services, "google") === false) continue;
     const byWeek = out.get(r.client_id) ?? new Map<string, MetaAgg>();
     out.set(r.client_id, byWeek);
     const cur = byWeek.get(r.ref_date) ?? { week: { ...EMPTY_WEEK }, leads: 0, leadSpend: 0 };
@@ -1844,10 +1866,10 @@ export function portfolioSummary(rows: PortfolioRow[]) {
   let mrrTotal = 0;
   const staleFills: PortfolioRow[] = [];
   for (const r of rows) {
-    mrrTotal += r.client.mrr;
+    mrrTotal += currentMrr(r.client);
     if (!r.score.band) byBand.sem_dado++;
     else byBand[r.score.band]++;
-    if (r.score.band === "vermelho" || r.score.band === "amarelo") mrrAtRisk += r.client.mrr;
+    if (r.score.band === "vermelho" || r.score.band === "amarelo") mrrAtRisk += currentMrr(r.client);
     if (r.score.confidence !== "alta") staleFills.push(r);
   }
   return { byBand, mrrAtRisk, mrrTotal, staleFills };

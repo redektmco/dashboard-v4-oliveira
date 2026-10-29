@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { all, one } from "./db";
 import { DIMENSIONS, targetKeysFor } from "./model/catalog";
+import { serviceScope } from "./model/services";
 import {
   getAllTargets,
   getWeights,
@@ -72,8 +73,9 @@ async function loadConfigSnapshot() {
 
   const crmOn = new Set(integrations.filter((i) => i.active).map((i) => i.client_id));
   const metaOn = new Set([...metaLinks, ...googleLinks].filter((l) => l.active).map((l) => l.client_id));
-  const semMeta = clients.filter((c) => !hasTargets(c, targets.get(c.id)));
-  const semFonte = clients.filter((c) => !crmOn.has(c.id) && !metaOn.has(c.id));
+  const needsCampaigns = (c: ClientRow) => { const scope = serviceScope(c.services); return scope.media !== false || scope.crm !== false; };
+  const semMeta = clients.filter((c) => needsCampaigns(c) && !hasTargets(c, targets.get(c.id)));
+  const semFonte = clients.filter((c) => needsCampaigns(c) && !crmOn.has(c.id) && !metaOn.has(c.id));
 
   const emailOn = isEmailConfigured();
   const waOn = isWhatsappConfigured();
@@ -124,8 +126,8 @@ async function loadConfigSnapshot() {
       severity: "bloqueia",
       title: `${semMeta.length} ${plural(semMeta.length, "cliente sem forecast", "clientes sem forecast")}`,
       shortTitle: `${semMeta.length} ${plural(semMeta.length, "cliente sem forecast", "clientes sem forecast")}`,
-      consequence: "Sem forecast não há régua: o score dessas contas não é calculado e elas somem dos alertas.",
-      shortConsequence: "O score dessas contas não é calculado.",
+      consequence: "Sem forecast, os indicadores de resultado ficam sem régua. Outras dimensões podem continuar compondo o score.",
+      shortConsequence: "Indicadores de resultado ficam sem régua.",
       clients: pick(semMeta),
       action: {
         label: "Definir forecasts",

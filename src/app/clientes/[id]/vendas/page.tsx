@@ -8,9 +8,9 @@ import { listSales, salesPage } from "@/lib/crm/sales";
 import { PeriodPicker } from "@/components/cliente/period-picker";
 import { PageHead } from "@/components/page-head";
 import { Card } from "@/components/kit";
-import { brl } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
+const money = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const dateTime = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "medium" });
 const day = (value: string) => value.split("-").reverse().join("/");
 
@@ -41,7 +41,7 @@ export default async function SalesPage({ params, searchParams }: {
     {!integration && <Card className="p-4 text-[13px] text-ink-300">Sem integração de vendas configurada. O histórico existente permanece disponível.</Card>}
     {integration && !integration.active && <Card className="p-4 text-[13px] text-ink-300">Integração desativada. O histórico de vendas permanece disponível.</Card>}
     <div className="grid gap-3 sm:grid-cols-3">
-      {[{ label: "Vendas no período", value: sales.count.toLocaleString("pt-BR") }, { label: "Valor total", value: brl(sales.revenue) }, { label: "Ticket médio", value: sales.ticket === null ? "—" : brl(sales.ticket) }].map(metric =>
+      {[{ label: "Vendas no período", value: sales.count.toLocaleString("pt-BR") }, { label: "Valor total", value: money(sales.revenue) }, { label: "Ticket médio", value: sales.ticket === null ? "—" : money(sales.ticket) }].map(metric =>
         <Card key={metric.label} className="p-4"><p className="text-[12px] text-ink-400">{metric.label}</p><p className="mt-2 break-words text-[24px] font-semibold text-ink-100">{metric.value}</p></Card>)}
     </div>
     <Card className="min-w-0 overflow-hidden">
@@ -52,7 +52,7 @@ export default async function SalesPage({ params, searchParams }: {
           <thead className="bg-ink-800 text-[11px] uppercase text-ink-400"><tr>{["ID interno", "Recebimento (São Paulo)", "ID do negócio", "Valor", "Semana de referência"].map(label => <th key={label} scope="col" className="px-4 py-3">{label}</th>)}</tr></thead>
           <tbody>{sales.rows.map(sale => <tr key={sale.id} className="border-t border-[var(--border-hair)] text-ink-200">
             <td className="px-4 py-3 font-mono">#{sale.id}</td><td className="whitespace-nowrap px-4 py-3">{dateTime.format(new Date(sale.receivedAt))}</td>
-            <td className="max-w-[240px] break-all px-4 py-3">{sale.externalId ?? "—"}</td><td className="whitespace-nowrap px-4 py-3 tnum">{brl(sale.value)}</td><td className="whitespace-nowrap px-4 py-3">{day(sale.referenceWeek)}</td>
+            <td className="max-w-[240px] break-all px-4 py-3">{sale.externalId ?? "—"}</td><td className="whitespace-nowrap px-4 py-3 tnum">{money(sale.value)}</td><td className="whitespace-nowrap px-4 py-3">{day(sale.referenceWeek)}</td>
           </tr>)}</tbody>
         </table>
       </div>}

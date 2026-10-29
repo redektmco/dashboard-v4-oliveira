@@ -1,5 +1,6 @@
 "use server";
 
+import { recurringMrr } from "@/lib/client-lifecycle";
 import { revalidatePath } from "next/cache";
 import { refreshClient } from "@/lib/refresh";
 import { redirect } from "next/navigation";
@@ -113,7 +114,7 @@ export async function createChurnRequest(_prev: ActionResult, formData: FormData
       desired_end: desiredEnd,
       owner_user_id: ownerId,
       retention_chance: chance,
-      mrr: client.mrr,
+      mrr: recurringMrr(client),
       contract_code: client.contract_code,
       services: client.services ?? [],
       evidences: parseEvidences(str(formData, "evidences")),

@@ -127,6 +127,7 @@ export async function bulkArchive(ids: number[], archived: boolean): Promise<Act
   const alvo = clients.filter((c) => Boolean(c.active) === archived);
   if (!alvo.length) return { error: archived ? "Nenhum cliente ativo selecionado." : "Nenhum cliente arquivado selecionado." };
 
+  if (!archived && alvo.some((c) => c.lifecycle_status !== "active")) return { error: "Há clientes pausados, encerrados ou aguardando início. Confirme a situação individualmente na ficha antes de restaurar." };
   for (const c of alvo) {
     await updateClient(c.id, { active: archived ? 0 : 1 });
     await logChange(me, "cliente", `${archived ? "Cliente arquivado" : "Cliente reativado"} em massa: ${c.name}`, {
